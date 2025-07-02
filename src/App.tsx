@@ -1,4 +1,3 @@
-import React from 'react';
 import { SupabaseTest } from './components/SupabaseTest';
 import './App.css';
 

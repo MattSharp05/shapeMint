@@ -1,4 +1,4 @@
--- Create enums
+-- Creating enums
 CREATE TYPE source_type AS ENUM ('text', 'image');
 CREATE TYPE model_status AS ENUM ('generating', 'ready', 'failed');
 CREATE TYPE provider_type AS ENUM ('printify', 'craftcloud', 'jlcpcb', 'xometry');
@@ -81,7 +81,7 @@ CREATE INDEX idx_models_visibility ON models(is_public, is_marketplace_listed);
 CREATE INDEX idx_orders_user_status ON orders(user_id, status);
 CREATE INDEX idx_model_likes_user_model ON model_likes(user_id, model_id);
 
--- Add RLS policies
+-- Add RLS policies (who can access and modify what data in each table)
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE models ENABLE ROW LEVEL SECURITY;
 ALTER TABLE manufacturing_quotes ENABLE ROW LEVEL SECURITY;

@@ -1,48 +1,82 @@
 import { useState, useEffect } from 'react';
 import type { User } from '../types';
+import { supabase } from '../lib/supabase';
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate auth check
-    const savedUser = localStorage.getItem('shapemint_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setLoading(false);
+    // Check active sessions and sets the user
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const shapemintUser: User = {
+          id: session.user.id,
+          email: session.user.email!,
+          name: session.user.user_metadata.name || session.user.email!.split('@')[0],
+          createdAt: session.user.created_at
+        };
+        setUser(shapemintUser);
+      }
+      setLoading(false);
+    });
+
+    // Listen for changes on auth state (logged in, signed out, etc.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+      if (session?.user) {
+        const shapemintUser: User = {
+          id: session.user.id,
+          email: session.user.email!,
+          name: session.user.user_metadata.name || session.user.email!.split('@')[0],
+          createdAt: session.user.created_at
+        };
+        setUser(shapemintUser);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email: string, password: string) => {
-    // Simulate login
-    const mockUser: User = {
-      id: '1',
-      email,
-      name: email.split('@')[0],
-      createdAt: new Date().toISOString(),
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    if (!data.user) throw new Error('No user returned from Supabase');
+    
+    const shapemintUser: User = {
+      id: data.user.id,
+      email: data.user.email!,
+      name: data.user.user_metadata.name || data.user.email!.split('@')[0],
+      createdAt: data.user.created_at
     };
-    setUser(mockUser);
-    localStorage.setItem('shapemint_user', JSON.stringify(mockUser));
-    return mockUser;
+    return shapemintUser;
   };
 
   const register = async (email: string, password: string, name: string) => {
-    // Simulate registration
-    const mockUser: User = {
-      id: '1',
+    const { data, error } = await supabase.auth.signUp({
       email,
-      name,
-      createdAt: new Date().toISOString(),
+      password,
+      options: {
+        data: { name }
+      }
+    });
+    if (error) throw error;
+    if (!data.user) throw new Error('No user returned from Supabase');
+    
+    const shapemintUser: User = {
+      id: data.user.id,
+      email: data.user.email!,
+      name: data.user.user_metadata.name || data.user.email!.split('@')[0],
+      createdAt: data.user.created_at
     };
-    setUser(mockUser);
-    localStorage.setItem('shapemint_user', JSON.stringify(mockUser));
-    return mockUser;
+    return shapemintUser;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
     setUser(null);
-    localStorage.removeItem('shapemint_user');
   };
 
   return { user, loading, login, register, logout };

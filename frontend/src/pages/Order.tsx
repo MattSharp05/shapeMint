@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // ✅ Add useEffect import
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Package, Truck, CreditCard, MapPin, Check } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
 import { ModelViewer } from '../components/3D/ModelViewer';
+import { Modal } from '../components/UI/Modal';
+import { supabase } from '../supabaseClient';
+import { OrderSuccessModal } from '../components/Order/OrderSuccessModal';
 
 const materials = [
   { 
@@ -39,11 +42,11 @@ const materials = [
 
 const vendors = [
   {
-    id: 'printcraft',
-    name: 'PrintCraft Pro',
+    id: 'slant',
+    name: 'Slant',
     rating: 4.8,
     deliveryTime: '3-5 business days',
-    location: 'California, USA'
+    location: 'Remote'
   },
   {
     id: '3dsolutions',
@@ -61,16 +64,36 @@ const vendors = [
   }
 ];
 
+// Add this helper function to map color names to Slant3D API values
+const mapColorToSlantAPI = (color: string): string => {
+  const colorMap: { [key: string]: string } = {
+    'White': 'white',
+    'Black': 'black',
+    'Red': 'red',
+    'Blue': 'blue',
+    'Green': 'green',
+    'Yellow': 'yellow',
+    'Orange': 'orange',
+    'Purple': 'purple',
+    'Gray': 'gray',
+    'Grey': 'grey',
+    'Clear': 'white', // Map clear to white as fallback
+    'Gold': 'gold',
+    'Pink': 'pink'
+  };
+  return colorMap[color] || 'white'; // Default to white if not found
+};
+
 export function Order() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { modelData, modelUrl } = location.state || {};
-  
+  const { modelData, modelUrl, stlUrl } = location.state || {}; // ✅ Extract stlUrl from state
+
   const [step, setStep] = useState(1);
   const [selectedMaterial, setSelectedMaterial] = useState('pla');
   const [selectedColor, setSelectedColor] = useState('White');
   const [quantity, setQuantity] = useState(1);
-  const [selectedVendor, setSelectedVendor] = useState('printcraft');
+  const [selectedVendor, setSelectedVendor] = useState('slant');
   const [shippingInfo, setShippingInfo] = useState({
     firstName: '',
     lastName: '',
@@ -88,6 +111,70 @@ export function Order() {
     cvv: '',
     nameOnCard: ''
   });
+  const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
+  const [isQuoteLoading, setIsQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState('');
+  const [quoteSuccess, setQuoteSuccess] = useState<{ totalPrice?: number, printingCost?: number, shippingCost?: number } | null>(null);
+  const [sameAsBilling, setSameAsBilling] = useState(true);
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [orderSuccess, setOrderSuccess] = useState<any>(null);
+
+  // Declare these after the above state
+  const selectedMaterialData = materials.find(m => m.id === selectedMaterial);
+  const selectedVendorData = vendors.find(v => v.id === selectedVendor);
+  const subtotal = selectedMaterialData ? selectedMaterialData.price * quantity : 0;
+  const shipping = 8.99;
+  const tax = subtotal * 0.08;
+  const total = subtotal + shipping + tax;
+  const isMarketplaceItem = modelData?.isMarketplaceItem;
+
+  // Slant quote form state
+  const [slantForm, setSlantForm] = useState({
+    name: 'Matthew Sharp',
+    email: 'm5sharp@icloud.com',
+    phone: '8324682144',
+    orderNumber: `ORDER_${Date.now()}`,
+    filename: 'test',
+    fileURL: '',
+    quantity: '1',
+    color: 'white',
+    profile: 'PLA Plastic',
+    bill_to_street_1: '6101 Jet Port Industrial BLVD',
+    bill_to_street_2: 'UOF437-A-2',
+    bill_to_street_3: '',
+    bill_to_city: 'Tampa',
+    bill_to_state: 'FL',
+    bill_to_zip: '33634',
+    bill_to_country_as_iso: 'US',
+    bill_to_is_US_residential: 'true',
+    ship_to_name: 'Matthew Sharp',
+    ship_to_street_1: '6101 Jet Port Industrial BLVD',
+    ship_to_street_2: 'UOF437-A-2',
+    ship_to_street_3: '',
+    ship_to_city: 'Tampa',
+    ship_to_state: 'FL',
+    ship_to_zip: '33634',
+    ship_to_country_as_iso: 'US',
+    ship_to_is_US_residential: 'true',
+    order_item_name: 'test',
+    order_quantity: '1',
+    order_image_url: '',
+    order_sku: '',
+    order_item_color: 'white'
+  });
+
+  // ✅ Auto-populate file URL when component mounts
+  useEffect(() => {
+    if (stlUrl) {
+      setSlantForm(prev => ({
+        ...prev,
+        fileURL: stlUrl,
+        filename: modelData?.prompt ? 
+          `${modelData.prompt.substring(0, 20)}...` : 
+          'Generated Model'
+      }));
+    }
+  }, [stlUrl, modelData]);
 
   if (!modelData || !modelUrl) {
     return (
@@ -103,15 +190,6 @@ export function Order() {
     );
   }
 
-  const selectedMaterialData = materials.find(m => m.id === selectedMaterial);
-  const selectedVendorData = vendors.find(v => v.id === selectedVendor);
-  const subtotal = selectedMaterialData ? selectedMaterialData.price * quantity : 0;
-  const shipping = 8.99;
-  const tax = subtotal * 0.08;
-  const total = subtotal + shipping + tax;
-
-  const isMarketplaceItem = modelData.isMarketplaceItem;
-
   const handleNext = () => {
     if (step < 4) setStep(step + 1);
   };
@@ -120,10 +198,82 @@ export function Order() {
     if (step > 1) setStep(step - 1);
   };
 
-  const handlePlaceOrder = () => {
-    // Simulate order placement
-    alert('Order placed successfully! You will receive a confirmation email shortly.');
-    navigate('/dashboard');
+  const handlePlaceOrder = async () => {
+    console.log('DEBUG: Place Order button clicked');
+    try {
+      setIsQuoteLoading(true);
+      setQuoteError('');
+      if (!slantForm.fileURL || !slantForm.name || !slantForm.email) {
+        setQuoteError('Please fill in all required fields');
+        setIsQuoteLoading(false);
+        return;
+      }
+      if (!paymentInfo.cardNumber || !paymentInfo.expiryDate || !paymentInfo.cvv || !paymentInfo.nameOnCard) {
+        setQuoteError('Please fill in all payment information');
+        setIsQuoteLoading(false);
+        return;
+      }
+      console.log('=== PLACING ORDER ===');
+      console.log('Order data:', slantForm);
+      console.log('Payment info:', paymentInfo);
+      const orderData = {
+        email: slantForm.email,
+        phone: slantForm.phone,
+        name: slantForm.name,
+        orderNumber: slantForm.orderNumber,
+        filename: slantForm.filename,
+        fileURL: slantForm.fileURL,
+        bill_to_street_1: slantForm.bill_to_street_1,
+        bill_to_street_2: slantForm.bill_to_street_2,
+        bill_to_street_3: slantForm.bill_to_street_3,
+        bill_to_city: slantForm.bill_to_city,
+        bill_to_state: slantForm.bill_to_state,
+        bill_to_zip: slantForm.bill_to_zip,
+        bill_to_country_as_iso: slantForm.bill_to_country_as_iso,
+        bill_to_is_US_residential: slantForm.bill_to_is_US_residential,
+        ship_to_name: slantForm.ship_to_name,
+        ship_to_street_1: slantForm.ship_to_street_1,
+        ship_to_street_2: slantForm.ship_to_street_2,
+        ship_to_street_3: slantForm.ship_to_street_3,
+        ship_to_city: slantForm.ship_to_city,
+        ship_to_state: slantForm.ship_to_state,
+        ship_to_zip: slantForm.ship_to_zip,
+        ship_to_country_as_iso: slantForm.ship_to_country_as_iso,
+        ship_to_is_US_residential: slantForm.ship_to_is_US_residential,
+        order_item_name: slantForm.order_item_name,
+        order_quantity: slantForm.order_quantity,
+        order_image_url: slantForm.order_image_url,
+        order_sku: slantForm.order_sku,
+        order_item_color: mapColorToSlantAPI(slantForm.order_item_color),
+        profile: slantForm.profile || 'PLA'
+      };
+      const { data, error } = await supabase.functions.invoke('slant3d-order', {
+        body: { 
+          orderData,
+          paymentInfo
+        }
+      });
+      if (error) {
+        console.error('❌ Supabase error:', error);
+        setQuoteError(`Connection error: ${error.message}`);
+        setIsQuoteLoading(false);
+        return;
+      }
+      if (!data.success) {
+        console.error('❌ Order creation failed:', data);
+        setQuoteError(data.error || 'Failed to create order');
+        setIsQuoteLoading(false);
+        return;
+      }
+      console.log('✅ Order created successfully:', data.data);
+      setOrderSuccess(data.data);
+      setIsSuccessModalOpen(true);
+    } catch (err) {
+      console.error('❌ Order error:', err);
+      setQuoteError(`Network error: ${(err as any).message}`);
+    } finally {
+      setIsQuoteLoading(false);
+    }
   };
 
   const getColorStyle = (color: string) => {
@@ -141,6 +291,9 @@ export function Order() {
     };
     return { backgroundColor: colorMap[color] || '#f3f4f6' };
   };
+
+  // Helper for required label
+  const requiredLabel = (label: string) => <span>{label} <span className="text-red-500">*</span></span>;
 
   return (
     <div className="pt-16 min-h-screen bg-gray-50">
@@ -266,25 +419,34 @@ export function Order() {
                     <div
                       key={vendor.id}
                       onClick={() => setSelectedVendor(vendor.id)}
-                      className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                      className={`p-4 border-2 rounded-lg cursor-pointer transition-all flex justify-between items-center ${
                         selectedVendor === vendor.id
                           ? 'border-purple-500 bg-purple-50'
                           : 'border-gray-200 hover:border-gray-300'
                       }`}
                     >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h4 className="font-medium text-gray-900 mb-1">{vendor.name}</h4>
-                          <div className="flex items-center space-x-4 text-sm text-gray-600">
-                            <div className="flex items-center space-x-1">
-                              <MapPin className="h-3 w-3" />
-                              <span>{vendor.location}</span>
-                            </div>
-                            <span>⭐ {vendor.rating}</span>
-                            <span>🚚 {vendor.deliveryTime}</span>
+                      <div>
+                        <h4 className="font-medium text-gray-900 mb-1">{vendor.name}</h4>
+                        <div className="flex items-center space-x-4 text-sm text-gray-600">
+                          <div className="flex items-center space-x-1">
+                            <MapPin className="h-3 w-3" />
+                            <span>{vendor.location}</span>
                           </div>
+                          <span>⭐ {vendor.rating}</span>
+                          <span>🚚 {vendor.deliveryTime}</span>
                         </div>
                       </div>
+                      {vendor.id === 'slant' && false && (
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            setIsQuoteModalOpen(true);
+                          }}
+                          className="ml-4 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg shadow hover:from-purple-600 hover:to-indigo-600 transition-colors"
+                        >
+                          Get Quote
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -294,69 +456,109 @@ export function Order() {
             {step === 3 && (
               <Card className="p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-6">
-                  Shipping Information
+                  Shipping & Quote Information
                 </h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input
-                    label="First Name"
-                    value={shippingInfo.firstName}
-                    onChange={(e) => setShippingInfo({...shippingInfo, firstName: e.target.value})}
-                    required
-                  />
-                  <Input
-                    label="Last Name"
-                    value={shippingInfo.lastName}
-                    onChange={(e) => setShippingInfo({...shippingInfo, lastName: e.target.value})}
-                    required
-                  />
-                  <Input
-                    label="Email"
-                    type="email"
-                    value={shippingInfo.email}
-                    onChange={(e) => setShippingInfo({...shippingInfo, email: e.target.value})}
-                    required
-                    className="md:col-span-2"
-                  />
-                  <Input
-                    label="Phone"
-                    value={shippingInfo.phone}
-                    onChange={(e) => setShippingInfo({...shippingInfo, phone: e.target.value})}
-                    required
-                    className="md:col-span-2"
-                  />
-                  <Input
-                    label="Address"
-                    value={shippingInfo.address}
-                    onChange={(e) => setShippingInfo({...shippingInfo, address: e.target.value})}
-                    required
-                    className="md:col-span-2"
-                  />
-                  <Input
-                    label="City"
-                    value={shippingInfo.city}
-                    onChange={(e) => setShippingInfo({...shippingInfo, city: e.target.value})}
-                    required
-                  />
-                  <Input
-                    label="State"
-                    value={shippingInfo.state}
-                    onChange={(e) => setShippingInfo({...shippingInfo, state: e.target.value})}
-                    required
-                  />
-                  <Input
-                    label="ZIP Code"
-                    value={shippingInfo.zipCode}
-                    onChange={(e) => setShippingInfo({...shippingInfo, zipCode: e.target.value})}
-                    required
-                  />
-                  <Input
-                    label="Country"
-                    value={shippingInfo.country}
-                    onChange={(e) => setShippingInfo({...shippingInfo, country: e.target.value})}
-                    required
-                  />
-                </div>
+                <form className="space-y-6">
+                  {/* Customer Info */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input label="Name" value={slantForm.name} onChange={e => setSlantForm(f => ({...f, name: e.target.value}))} required />
+                    <Input label="Email" value={slantForm.email} onChange={e => setSlantForm(f => ({...f, email: e.target.value}))} required />
+                    <Input label="Phone" value={slantForm.phone} onChange={e => setSlantForm(f => ({...f, phone: e.target.value}))} required />
+                    <Input label="Order Number" value={slantForm.orderNumber} onChange={e => setSlantForm(f => ({...f, orderNumber: e.target.value}))} required />
+                  </div>
+                  {/* Order Info */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input label="File Name" value={slantForm.filename} onChange={e => setSlantForm(f => ({...f, filename: e.target.value}))} required />
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        File URL
+                        {/* ✅ Show status if auto-populated */}
+                        {stlUrl && (
+                          <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
+                            Auto-filled
+                          </span>
+                        )}
+                      </label>
+                      <input
+                        type="url"
+                        value={slantForm.fileURL}
+                        onChange={e => setSlantForm(f => ({...f, fileURL: e.target.value}))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        placeholder="https://..."
+                        required
+                      />
+                    </div>
+                    <Input label="Quantity" value={slantForm.quantity} onChange={e => setSlantForm(f => ({...f, quantity: e.target.value}))} required />
+                    <Input label="Color" value={slantForm.color} onChange={e => setSlantForm(f => ({...f, color: e.target.value}))} required />
+                    <Input label="Profile" value={slantForm.profile} onChange={e => setSlantForm(f => ({...f, profile: e.target.value}))} />
+                  </div>
+                  {/* Billing Address */}
+                  <div className="pt-2 font-semibold text-gray-700">Billing Address</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input label="Street 1" value={slantForm.bill_to_street_1} onChange={e => setSlantForm(f => ({...f, bill_to_street_1: e.target.value}))} required />
+                    <Input label="Street 2" value={slantForm.bill_to_street_2} onChange={e => setSlantForm(f => ({...f, bill_to_street_2: e.target.value}))} />
+                    <Input label="Street 3" value={slantForm.bill_to_street_3} onChange={e => setSlantForm(f => ({...f, bill_to_street_3: e.target.value}))} />
+                    <Input label="City" value={slantForm.bill_to_city} onChange={e => setSlantForm(f => ({...f, bill_to_city: e.target.value}))} required />
+                    <Input label="State" value={slantForm.bill_to_state} onChange={e => setSlantForm(f => ({...f, bill_to_state: e.target.value}))} required />
+                    <Input label="Zip" value={slantForm.bill_to_zip} onChange={e => setSlantForm(f => ({...f, bill_to_zip: e.target.value}))} required />
+                    <Input label="Country (ISO)" value={slantForm.bill_to_country_as_iso} onChange={e => setSlantForm(f => ({...f, bill_to_country_as_iso: e.target.value}))} required />
+                    <Input label="US Residential?" value={slantForm.bill_to_is_US_residential} onChange={e => setSlantForm(f => ({...f, bill_to_is_US_residential: e.target.value}))} required />
+                  </div>
+                  {/* Same as Billing Checkbox */}
+                  <div className="flex items-center mb-2">
+                    <input
+                      type="checkbox"
+                      checked={sameAsBilling}
+                      onChange={e => {
+                        setSameAsBilling(e.target.checked);
+                        if (e.target.checked) {
+                          setSlantForm(f => ({
+                            ...f,
+                            ship_to_name: f.name,
+                            ship_to_street_1: f.bill_to_street_1,
+                            ship_to_street_2: f.bill_to_street_2,
+                            ship_to_street_3: f.bill_to_street_3,
+                            ship_to_city: f.bill_to_city,
+                            ship_to_state: f.bill_to_state,
+                            ship_to_zip: f.bill_to_zip,
+                            ship_to_country_as_iso: f.bill_to_country_as_iso,
+                            ship_to_is_US_residential: f.bill_to_is_US_residential
+                          }));
+                        }
+                      }}
+                      className="mr-2"
+                    />
+                    <label className="text-sm text-gray-700">Shipping address same as billing</label>
+                  </div>
+                  {/* Shipping Address */}
+                  {!sameAsBilling && (
+                    <>
+                      <div className="pt-2 font-semibold text-gray-700">Shipping Address</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Input label="Name" value={slantForm.ship_to_name} onChange={e => setSlantForm(f => ({...f, ship_to_name: e.target.value}))} required />
+                        <Input label="Street 1" value={slantForm.ship_to_street_1} onChange={e => setSlantForm(f => ({...f, ship_to_street_1: e.target.value}))} required />
+                        <Input label="Street 2" value={slantForm.ship_to_street_2} onChange={e => setSlantForm(f => ({...f, ship_to_street_2: e.target.value}))} />
+                        <Input label="Street 3" value={slantForm.ship_to_street_3} onChange={e => setSlantForm(f => ({...f, ship_to_street_3: e.target.value}))} />
+                        <Input label="City" value={slantForm.ship_to_city} onChange={e => setSlantForm(f => ({...f, ship_to_city: e.target.value}))} required />
+                        <Input label="State" value={slantForm.ship_to_state} onChange={e => setSlantForm(f => ({...f, ship_to_state: e.target.value}))} required />
+                        <Input label="Zip" value={slantForm.ship_to_zip} onChange={e => setSlantForm(f => ({...f, ship_to_zip: e.target.value}))} required />
+                        <Input label="Country (ISO)" value={slantForm.ship_to_country_as_iso} onChange={e => setSlantForm(f => ({...f, ship_to_country_as_iso: e.target.value}))} required />
+                        <Input label="US Residential?" value={slantForm.ship_to_is_US_residential} onChange={e => setSlantForm(f => ({...f, ship_to_is_US_residential: e.target.value}))} required />
+                      </div>
+                    </>
+                  )}
+                  {/* Order Details */}
+                  <div className="pt-2 font-semibold text-gray-700">Order Details</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input label="Order Item Name" value={slantForm.order_item_name} onChange={e => setSlantForm(f => ({...f, order_item_name: e.target.value}))} required />
+                    <Input label="Order Quantity" value={slantForm.order_quantity} onChange={e => setSlantForm(f => ({...f, order_quantity: e.target.value}))} required />
+                    <Input label="Order Image URL" value={slantForm.order_image_url} onChange={e => setSlantForm(f => ({...f, order_image_url: e.target.value}))} />
+                    <Input label="Order SKU" value={slantForm.order_sku} onChange={e => setSlantForm(f => ({...f, order_sku: e.target.value}))} />
+                    <Input label="Order Item Color" value={slantForm.order_item_color} onChange={e => setSlantForm(f => ({...f, order_item_color: e.target.value}))} required />
+                    <Input label="Profile" value={slantForm.profile} onChange={e => setSlantForm(f => ({...f, profile: e.target.value}))} />
+                  </div>
+                  {/* Submit button can be added here for quote or order */}
+                </form>
               </Card>
             )}
 
@@ -416,7 +618,7 @@ export function Order() {
                 </Button>
               ) : (
                 <Button 
-                  onClick={handlePlaceOrder}
+                  onClick={step === 3 ? handleNext : handlePlaceOrder}
                   className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
                 >
                   Place Order
@@ -425,16 +627,18 @@ export function Order() {
             </div>
           </div>
 
-          {/* Order Summary */}
+          {/* 3D Model Preview always visible */}
           <div className="space-y-6">
             <Card className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 3D Model Preview
               </h3>
-              <ModelViewer 
-                modelUrl={modelUrl}
-                className="h-48 w-full mb-4"
-              />
+              {modelUrl && (
+                <ModelViewer 
+                  modelUrl={modelUrl}
+                  className="h-48 w-full mb-4"
+                />
+              )}
               <div className="text-sm text-gray-600">
                 {isMarketplaceItem ? (
                   <>
@@ -450,56 +654,280 @@ export function Order() {
                   </>
                 )}
               </div>
-            </Card>
-
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Order Summary
-              </h3>
               
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span>Material:</span>
-                  <span>{selectedMaterialData?.name}</span>
+              {/* ✅ Show file URL status */}
+              {stlUrl && (
+                <div className="mt-4 p-3 bg-green-50 rounded-lg">
+                  <p className="text-sm text-green-700">
+                    <span className="font-medium">✅ STL File Ready:</span> Auto-populated from generation
+                  </p>
                 </div>
-                <div className="flex justify-between">
-                  <span>Color:</span>
-                  <span>{selectedColor}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Quantity:</span>
-                  <span>{quantity}</span>
-                </div>
-                {step >= 2 && (
-                  <div className="flex justify-between">
-                    <span>Vendor:</span>
-                    <span>{selectedVendorData?.name}</span>
+              )}
+            </Card>
+            {/* Order Summary only visible on step 3 or later */}
+            {step >= 3 && (
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  Order Summary
+                </h3>
+                {!quoteSuccess ? (
+                  <div className="text-gray-500 text-sm mb-4">
+                    Fill out shipping information to see your order summary.
+                  </div>
+                ) : (
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between">
+                      <span>Total:</span>
+                      <span className="font-semibold">${quoteSuccess.totalPrice}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Printing:</span>
+                      <span>${quoteSuccess.printingCost}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Shipping:</span>
+                      <span>${quoteSuccess.shippingCost}</span>
+                    </div>
                   </div>
                 )}
-                
-                <div className="border-t border-gray-200 pt-3 space-y-2">
-                  <div className="flex justify-between">
-                    <span>Subtotal:</span>
-                    <span>${subtotal.toFixed(2)}</span>
+                {/* Hide Buy Now button on payment step */}
+                {step !== 4 && (
+                  <button
+                    type="button"
+                    className="mt-6 w-full px-6 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg shadow hover:from-purple-600 hover:to-indigo-600 transition-colors disabled:opacity-60"
+                    disabled={isQuoteLoading || !slantForm.fileURL}
+                    onClick={quoteSuccess ? () => setStep(4) : async () => {
+                      setIsQuoteLoading(true);
+                      setQuoteError('');
+                      setQuoteSuccess(null);
+                      try {
+                        const orderData = {
+                          email: slantForm.email,
+                          phone: slantForm.phone,
+                          name: slantForm.name,
+                          orderNumber: slantForm.orderNumber,
+                          filename: slantForm.filename,
+                          fileURL: slantForm.fileURL,
+                          bill_to_street_1: slantForm.bill_to_street_1,
+                          bill_to_street_2: slantForm.bill_to_street_2,
+                          bill_to_street_3: slantForm.bill_to_street_3,
+                          bill_to_city: slantForm.bill_to_city,
+                          bill_to_state: slantForm.bill_to_state,
+                          bill_to_zip: slantForm.bill_to_zip,
+                          bill_to_country_as_iso: slantForm.bill_to_country_as_iso,
+                          bill_to_is_US_residential: slantForm.bill_to_is_US_residential,
+                          ship_to_name: slantForm.ship_to_name,
+                          ship_to_street_1: slantForm.ship_to_street_1,
+                          ship_to_street_2: slantForm.ship_to_street_2,
+                          ship_to_street_3: slantForm.ship_to_street_3,
+                          ship_to_city: slantForm.ship_to_city,
+                          ship_to_state: slantForm.ship_to_state,
+                          ship_to_zip: slantForm.ship_to_zip,
+                          ship_to_country_as_iso: slantForm.ship_to_country_as_iso,
+                          ship_to_is_US_residential: slantForm.ship_to_is_US_residential,
+                          order_item_name: slantForm.order_item_name,
+                          order_quantity: slantForm.order_quantity,
+                          order_image_url: slantForm.order_image_url,
+                          order_sku: slantForm.order_sku,
+                          order_item_color: mapColorToSlantAPI(slantForm.order_item_color),
+                          profile: 'PLA'
+                        };
+                        const { data, error } = await supabase.functions.invoke('slant3d-quote', {
+                          body: { orderData }
+                        });
+                        if (error) {
+                          setQuoteError(`Connection error: ${error.message}`);
+                          return;
+                        }
+                        if (data.error) {
+                          setQuoteError(data.message);
+                          return;
+                        }
+                        setQuoteSuccess(data.data);
+                      } catch (err) {
+                        setQuoteError(`Network error: ${(err as any).message}`);
+                      } finally {
+                        setIsQuoteLoading(false);
+                      }
+                    }}
+                  >
+                    {quoteSuccess ? 'Buy Now' : (isQuoteLoading ? 'Getting Quote...' : 'Get Quote')}
+                  </button>
+                )}
+                {/* Show validation message if no file URL */}
+                {!slantForm.fileURL && (
+                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm">
+                    File URL is required to get a quote
                   </div>
-                  <div className="flex justify-between">
-                    <span>Shipping:</span>
-                    <span>${shipping.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Tax:</span>
-                    <span>${tax.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between font-semibold text-base border-t border-gray-200 pt-2">
-                    <span>Total:</span>
-                    <span>${total.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-            </Card>
+                )}
+              </Card>
+            )}
           </div>
         </div>
       </div>
+      <Modal isOpen={isQuoteModalOpen} onClose={() => setIsQuoteModalOpen(false)} title="Get a Quote from Slant">
+        {/* Error Display */}
+        {quoteError && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Quote Error</h3>
+                <p className="mt-1 text-sm text-red-700">{quoteError}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Success Display */}
+        {quoteSuccess && (
+          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-green-800">Quote Received!</h3>
+                <div className="mt-1 text-sm text-green-700">
+                  <p><strong>Total:</strong> ${quoteSuccess.totalPrice}</p>
+                  <p><strong>Printing:</strong> ${quoteSuccess.printingCost}</p>
+                  <p><strong>Shipping:</strong> ${quoteSuccess.shippingCost}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        <form
+          className="space-y-4 max-h-[70vh] overflow-y-auto px-1"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setIsQuoteLoading(true);
+            setQuoteError('');
+            setQuoteSuccess(null);
+            try {
+              const orderData = {
+                email: slantForm.email,
+                phone: slantForm.phone,
+                name: slantForm.name,
+                orderNumber: slantForm.orderNumber,
+                filename: slantForm.filename,
+                fileURL: slantForm.fileURL,
+                bill_to_street_1: slantForm.bill_to_street_1,
+                bill_to_street_2: slantForm.bill_to_street_2,
+                bill_to_street_3: slantForm.bill_to_street_3,
+                bill_to_city: slantForm.bill_to_city,
+                bill_to_state: slantForm.bill_to_state,
+                bill_to_zip: slantForm.bill_to_zip,
+                bill_to_country_as_iso: slantForm.bill_to_country_as_iso,
+                bill_to_is_US_residential: slantForm.bill_to_is_US_residential,
+                ship_to_name: slantForm.ship_to_name,
+                ship_to_street_1: slantForm.ship_to_street_1,
+                ship_to_street_2: slantForm.ship_to_street_2,
+                ship_to_street_3: slantForm.ship_to_street_3,
+                ship_to_city: slantForm.ship_to_city,
+                ship_to_state: slantForm.ship_to_state,
+                ship_to_zip: slantForm.ship_to_zip,
+                ship_to_country_as_iso: slantForm.ship_to_country_as_iso,
+                ship_to_is_US_residential: slantForm.ship_to_is_US_residential,
+                order_item_name: slantForm.order_item_name,
+                order_quantity: slantForm.order_quantity,
+                order_image_url: slantForm.order_image_url,
+                order_sku: slantForm.order_sku,
+                order_item_color: mapColorToSlantAPI(slantForm.order_item_color),
+                profile: 'PLA'
+              };
+              console.log('📤 Sending order data:', orderData);
+              const { data, error } = await supabase.functions.invoke('slant3d-quote', {
+                body: { orderData }
+              });
+              if (error) {
+                console.error('❌ Supabase error:', error);
+                setQuoteError(`Connection error: ${error.message}`);
+                return;
+              }
+              if (data.error) {
+                console.error('❌ API error:', data);
+                setQuoteError(data.message);
+                return;
+              }
+              console.log('✅ Quote received:', data);
+              setQuoteSuccess(data.data);
+            } catch (err) {
+              console.error('❌ Network error:', err);
+              setQuoteError(`Network error: ${(err as any).message}`);
+            } finally {
+              setIsQuoteLoading(false);
+            }
+          }}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input label={requiredLabel('Name')} value={slantForm.name} onChange={e => setSlantForm(f => ({...f, name: e.target.value}))} required />
+            <Input label={requiredLabel('Email')} value={slantForm.email} onChange={e => setSlantForm(f => ({...f, email: e.target.value}))} required />
+            <Input label={requiredLabel('Phone')} value={slantForm.phone} onChange={e => setSlantForm(f => ({...f, phone: e.target.value}))} required />
+            <Input label={requiredLabel('Order Number')} value={slantForm.orderNumber} onChange={e => setSlantForm(f => ({...f, orderNumber: e.target.value}))} required />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input label={requiredLabel('File Name')} value={slantForm.filename} onChange={e => setSlantForm(f => ({...f, filename: e.target.value}))} required />
+            <Input label={requiredLabel('File URL')} value={slantForm.fileURL} onChange={e => setSlantForm(f => ({...f, fileURL: e.target.value}))} required />
+            <Input label={requiredLabel('Quantity')} value={slantForm.quantity} onChange={e => setSlantForm(f => ({...f, quantity: e.target.value}))} required />
+            <Input label={requiredLabel('Color')} value={slantForm.color} onChange={e => setSlantForm(f => ({...f, color: e.target.value}))} required />
+            <Input label="Profile" value={slantForm.profile} onChange={e => setSlantForm(f => ({...f, profile: e.target.value}))} />
+          </div>
+          <div className="pt-2 font-semibold text-gray-700">Billing Address</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input label={requiredLabel('Street 1')} value={slantForm.bill_to_street_1} onChange={e => setSlantForm(f => ({...f, bill_to_street_1: e.target.value}))} required />
+            <Input label="Street 2" value={slantForm.bill_to_street_2} onChange={e => setSlantForm(f => ({...f, bill_to_street_2: e.target.value}))} />
+            <Input label="Street 3" value={slantForm.bill_to_street_3} onChange={e => setSlantForm(f => ({...f, bill_to_street_3: e.target.value}))} />
+            <Input label={requiredLabel('City')} value={slantForm.bill_to_city} onChange={e => setSlantForm(f => ({...f, bill_to_city: e.target.value}))} required />
+            <Input label={requiredLabel('State')} value={slantForm.bill_to_state} onChange={e => setSlantForm(f => ({...f, bill_to_state: e.target.value}))} required />
+            <Input label={requiredLabel('Zip')} value={slantForm.bill_to_zip} onChange={e => setSlantForm(f => ({...f, bill_to_zip: e.target.value}))} required />
+            <Input label={requiredLabel('Country (ISO)')} value={slantForm.bill_to_country_as_iso} onChange={e => setSlantForm(f => ({...f, bill_to_country_as_iso: e.target.value}))} required />
+            <Input label={requiredLabel('US Residential?')} value={slantForm.bill_to_is_US_residential} onChange={e => setSlantForm(f => ({...f, bill_to_is_US_residential: e.target.value}))} required />
+          </div>
+          <div className="pt-2 font-semibold text-gray-700">Shipping Address</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input label={requiredLabel('Name')} value={slantForm.ship_to_name} onChange={e => setSlantForm(f => ({...f, ship_to_name: e.target.value}))} required />
+            <Input label={requiredLabel('Street 1')} value={slantForm.ship_to_street_1} onChange={e => setSlantForm(f => ({...f, ship_to_street_1: e.target.value}))} required />
+            <Input label="Street 2" value={slantForm.ship_to_street_2} onChange={e => setSlantForm(f => ({...f, ship_to_street_2: e.target.value}))} />
+            <Input label="Street 3" value={slantForm.ship_to_street_3} onChange={e => setSlantForm(f => ({...f, ship_to_street_3: e.target.value}))} />
+            <Input label={requiredLabel('City')} value={slantForm.ship_to_city} onChange={e => setSlantForm(f => ({...f, ship_to_city: e.target.value}))} required />
+            <Input label={requiredLabel('State')} value={slantForm.ship_to_state} onChange={e => setSlantForm(f => ({...f, ship_to_state: e.target.value}))} required />
+            <Input label={requiredLabel('Zip')} value={slantForm.ship_to_zip} onChange={e => setSlantForm(f => ({...f, ship_to_zip: e.target.value}))} required />
+            <Input label={requiredLabel('Country (ISO)')} value={slantForm.ship_to_country_as_iso} onChange={e => setSlantForm(f => ({...f, ship_to_country_as_iso: e.target.value}))} required />
+            <Input label={requiredLabel('US Residential?')} value={slantForm.ship_to_is_US_residential} onChange={e => setSlantForm(f => ({...f, ship_to_is_US_residential: e.target.value}))} required />
+          </div>
+          <div className="pt-2 font-semibold text-gray-700">Order Details</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input label={requiredLabel('Order Item Name')} value={slantForm.order_item_name} onChange={e => setSlantForm(f => ({...f, order_item_name: e.target.value}))} required />
+            <Input label={requiredLabel('Order Quantity')} value={slantForm.order_quantity} onChange={e => setSlantForm(f => ({...f, order_quantity: e.target.value}))} required />
+            <Input label="Order Image URL" value={slantForm.order_image_url} onChange={e => setSlantForm(f => ({...f, order_image_url: e.target.value}))} />
+            <Input label="Order SKU" value={slantForm.order_sku} onChange={e => setSlantForm(f => ({...f, order_sku: e.target.value}))} />
+            <Input label={requiredLabel('Order Item Color')} value={slantForm.order_item_color} onChange={e => setSlantForm(f => ({...f, order_item_color: e.target.value}))} required />
+            <Input label="Profile" value={slantForm.profile} onChange={e => setSlantForm(f => ({...f, profile: e.target.value}))} />
+          </div>
+          <div className="pt-4 flex justify-end">
+            <button
+              type="submit"
+              className="px-6 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg shadow hover:from-purple-600 hover:to-indigo-600 transition-colors disabled:opacity-60"
+              disabled={isQuoteLoading}
+            >
+              {isQuoteLoading ? 'Getting Quote...' : 'Get Quote'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+      {isSuccessModalOpen && orderSuccess && (
+        <OrderSuccessModal
+          isOpen={isSuccessModalOpen}
+          onClose={() => setIsSuccessModalOpen(false)}
+          orderData={orderSuccess}
+        />
+      )}
     </div>
   );
 }

@@ -33,9 +33,9 @@ export function Generate() {
         });
       }, 1000);
 
-      // Call the Edge Function via our service
+      // ✅ Fix the prompt handling
       const response = await modelService.generate3DModel({
-        prompt: data.prompt,
+        prompt: data.prompt || '', // ✅ Ensure prompt is always a string
         image: data.image,
       });
 

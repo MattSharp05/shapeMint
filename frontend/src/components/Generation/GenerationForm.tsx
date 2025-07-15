@@ -1,32 +1,86 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Upload, Type, Settings, Wand2 } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { Input } from '../UI/Input';
 import { Card } from '../UI/Card';
+import { useAuth } from '../../hooks/useAuth';
+import { meshyService } from '../../services/meshy';
 
 interface GenerationFormProps {
-  onGenerate: (data: any) => void;
+  onSuccess?: () => void;
   loading?: boolean;
 }
 
-export function GenerationForm({ onGenerate, loading }: GenerationFormProps) {
+export function GenerationForm({ onSuccess, loading: initialLoading }: GenerationFormProps) {
+  const { user } = useAuth();
   const [mode, setMode] = useState<'text' | 'image'>('text');
   const [prompt, setPrompt] = useState('');
   const [image, setImage] = useState<File | null>(null);
+  const [loading, setLoading] = useState(initialLoading);
+  const [error, setError] = useState<string>();
   const [settings, setSettings] = useState({
     size: 'medium' as const,
     style: 'realistic' as const,
     quality: 'standard' as const,
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onGenerate({
-      mode,
-      prompt: mode === 'text' ? prompt : undefined,
-      image: mode === 'image' ? image : undefined,
-      settings,
-    });
+    if (!user) {
+      setError('Please log in to generate models');
+      return;
+    }
+
+    if (!prompt.trim()) {
+      setError('Please enter a prompt');
+      return;
+    }
+
+    setLoading(true);
+    setError(undefined);
+    
+    try {
+      // Convert form data to Meshy API format
+      const generationData = {
+        prompt: prompt.trim(),
+        style: settings.style,
+        negative_prompt: '',
+        seed: Math.floor(Math.random() * 1000000)
+      };
+
+      console.log('Starting model generation with params:', generationData);
+
+      // Generate and store the model
+      await meshyService.generateAndStoreModel(generationData, user.id);
+      
+      // Clear form
+      setPrompt('');
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (err) {
+      console.error('Error generating model:', err);
+      if (err instanceof Error) {
+        if (err.message.includes('preview') || err.message.includes('Preview')) {
+          setError('Failed to create preview. Please try a different prompt or try again later.');
+        } else if (err.message.includes('refine') || err.message.includes('Refine')) {
+          setError('Failed to refine model. Please try again.');
+        } else if (err.message.includes('download')) {
+          setError('Failed to download model files. Please try again.');
+        } else if (err.message.includes('storage') || err.message.includes('database')) {
+          setError('Failed to save model. Please try again.');
+        } else {
+          setError(err.message);
+        }
+      } else if (typeof err === 'string') {
+        setError(err);
+      } else {
+        setError('Failed to generate model. Please try again.');
+      }
+      console.log('Full error details:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -157,12 +211,19 @@ export function GenerationForm({ onGenerate, loading }: GenerationFormProps) {
             </div>
           </div>
 
+          {error && (
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200">
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
+          )}
+
           <Button
             type="submit"
             icon={Wand2}
             loading={loading}
             className="w-full"
             size="lg"
+            disabled={!user}
           >
             {loading ? 'Generating...' : 'Generate 3D Model'}
           </Button>

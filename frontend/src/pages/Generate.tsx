@@ -15,6 +15,9 @@ export function Generate() {
   const [generatedModel, setGeneratedModel] = useState<string | null>(null);
   const [generationData, setGenerationData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refining, setRefining] = useState(false);
+  const [refineProgress, setRefineProgress] = useState(0);
+  const [refineError, setRefineError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleGenerate = async (data: any) => {
@@ -84,6 +87,49 @@ export function Generate() {
       setProgress(0);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleRefine = async () => {
+    if (!generationData?.taskId) return;
+    setRefining(true);
+    setRefineProgress(0);
+    setRefineError(null);
+    setStatus('generating');
+    // Simulate progress for better UX
+    const progressInterval = setInterval(() => {
+      setRefineProgress((prev) => (prev < 90 ? prev + 5 : prev));
+    }, 1000);
+    try {
+      const response = await modelService.refineModel({ preview_task_id: generationData.taskId });
+      clearInterval(progressInterval);
+      setRefineProgress(100);
+      if (!response.success) {
+        setRefining(false);
+        setStatus('failed');
+        setRefineError(response.error || 'Failed to refine model');
+        return;
+      }
+      // Update preview and generationData with refined model
+      setGeneratedModel(response.data.modelUrl);
+      setGenerationData((prev: any) => ({
+        ...prev,
+        modelDetails: response.data,
+        taskId: response.data.taskId,
+        fileUrls: {
+          glb: response.data.modelUrl,
+          obj: response.data.objUrl,
+          stl: response.data.stlUrl,
+        },
+        refined: true,
+      }));
+      setStatus('completed');
+      setRefining(false);
+    } catch (err) {
+      clearInterval(progressInterval);
+      setRefining(false);
+      setStatus('failed');
+      setRefineError('An unexpected error occurred during refinement');
     }
   };
 
@@ -164,6 +210,30 @@ export function Generate() {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 3D Preview
               </h3>
+              {/* Refine Button */}
+              {status === 'completed' && generatedModel && (
+                <div className="mb-4">
+                  <Button
+                    onClick={handleRefine}
+                    loading={refining}
+                    disabled={refining}
+                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 mb-2"
+                  >
+                    {refining ? 'Refining...' : 'Refine Model'}
+                  </Button>
+                  {refining && (
+                    <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                      <div
+                        className="bg-gradient-to-r from-purple-600 to-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${refineProgress}%` }}
+                      />
+                    </div>
+                  )}
+                  {refineError && (
+                    <div className="text-red-600 text-xs mt-2">{refineError}</div>
+                  )}
+                </div>
+              )}
               
               {/* Debug buttons */}
               <div className="mb-4 space-x-2">

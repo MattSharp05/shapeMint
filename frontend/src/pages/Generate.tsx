@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 import { GenerationForm } from '../components/Generation/GenerationForm';
 import { GenerationProgress } from '../components/Generation/GenerationProgress';
 import { ModelViewer } from '../components/3D/ModelViewer';
@@ -8,42 +9,15 @@ import { Card } from '../components/UI/Card';
 import { Download, Share2, ShoppingCart } from 'lucide-react';
 
 export function Generate() {
-  const [generating, setGenerating] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<'pending' | 'generating' | 'completed' | 'failed'>('pending');
-  const [generatedModel, setGeneratedModel] = useState<string | null>(null);
-  const [generationData, setGenerationData] = useState<any>(null);
+
+
   const navigate = useNavigate();
 
-  const handleGenerate = async (data: any) => {
-    setGenerating(true);
-    setStatus('generating');
-    setProgress(0);
-    setGenerationData(data);
 
-    // Simulate generation process
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setStatus('completed');
-          setGenerating(false);
-          setGeneratedModel('mock-model-url');
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 300);
-  };
 
   const handleBuyNow = () => {
-    // Pass the generated model data to the order page
-    navigate('/order', { 
-      state: { 
-        modelData: generationData,
-        modelUrl: generatedModel 
-      } 
-    });
+    navigate('/order');
   };
 
   return (
@@ -61,11 +35,11 @@ export function Generate() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Generation Form */}
           <div className="space-y-6">
-            <GenerationForm onGenerate={handleGenerate} loading={generating} />
+            <GenerationForm onSuccess={() => setStatus('completed')} />
             
-            {(generating || status === 'completed') && (
+            {status !== 'pending' && (
               <GenerationProgress
-                progress={progress}
+                progress={status === 'completed' ? 100 : 50}
                 status={status}
                 estimatedTime="45 seconds"
               />
@@ -79,7 +53,7 @@ export function Generate() {
                 3D Preview
               </h3>
               <ModelViewer 
-                modelUrl={generatedModel || undefined}
+                modelUrl={undefined}
                 className="h-80 w-full"
               />
             </Card>

@@ -22,7 +22,7 @@ export function GenerationForm({ onGenerate, loading }: GenerationFormProps) {
     e.preventDefault();
     onGenerate({
       mode,
-      prompt: mode === 'text' ? prompt : undefined,
+      prompt: prompt || '', // ✅ Always send a string, even if empty
       image: mode === 'image' ? image : undefined,
       settings,
     });
@@ -66,7 +66,7 @@ export function GenerationForm({ onGenerate, loading }: GenerationFormProps) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit}>
           {/* Input Section */}
           {mode === 'text' ? (
             <div>
@@ -104,6 +104,22 @@ export function GenerationForm({ onGenerate, loading }: GenerationFormProps) {
                   <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 10MB</p>
                 </label>
               </div>
+              
+              {/* ✅ ADD OPTIONAL TEXTURE PROMPT FOR IMAGES */}
+              {mode === 'image' && (
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Texture prompt (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder="Describe the texture or style you want..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  />
+                </div>
+              )}
             </div>
           )}
 

@@ -7,6 +7,7 @@ import { Button } from '../components/UI/Button';
 import { Card } from '../components/UI/Card';
 import { Download, Share2, ShoppingCart, Upload } from 'lucide-react';
 import { modelService } from '../services/modelService';
+import { useGLTF } from '@react-three/drei';
 
 export function Generate() {
   const [generating, setGenerating] = useState(false);
@@ -92,6 +93,11 @@ export function Generate() {
 
   const handleRefine = async () => {
     if (!generationData?.taskId) return;
+    // Clear cache for the current model URL before refining
+    if (generatedModel) {
+      console.log('🧹 Clearing cache for current model before refining:', generatedModel);
+      useGLTF.clear(generatedModel);
+    }
     setRefining(true);
     setRefineProgress(0);
     setRefineError(null);
@@ -111,7 +117,7 @@ export function Generate() {
         return;
       }
       // Update preview and generationData with refined model
-      setGeneratedModel(response.data.modelUrl);
+      setGeneratedModel(response.data.originalUrls?.glb || response.data.modelUrl);
       setGenerationData((prev: any) => ({
         ...prev,
         modelDetails: response.data,

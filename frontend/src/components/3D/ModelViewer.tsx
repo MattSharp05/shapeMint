@@ -21,19 +21,26 @@ class ThreeErrorBoundary extends Component<
   }
 
   static getDerivedStateFromError(error: Error) {
+    console.error('🚨 Error boundary caught error:', error);
     return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Three.js Error Boundary caught an error:', error, errorInfo);
+    console.error('🚨 Three.js Error Boundary caught an error:', error, errorInfo);
+    // Handle Promise errors specifically
+    if (error instanceof Promise) {
+      console.error('🚨 Promise error in error boundary');
+      error.catch((promiseError: any) => {
+        console.error('🚨 Promise rejection details:', promiseError);
+      });
+    }
   }
 
   render() {
     if (this.state.hasError) {
-      console.error('Rendering fallback due to error:', this.state.error);
+      console.error('🚨 Rendering fallback due to error:', this.state.error);
       return this.props.fallback;
     }
-
     return this.props.children;
   }
 }
@@ -62,21 +69,34 @@ function Model({ url }: { url: string }) {
   
   // Clean and validate the URL
   const cleanUrl = url.trim();
-  console.log('🧹 Cleaned URL:', cleanUrl);
+  // Add cache busting for refined models
+  const isRefinedModel = cleanUrl.includes('_refined');
+  const finalUrl = isRefinedModel ? `${cleanUrl}?cb=${Date.now()}` : cleanUrl;
+  console.log('🧹 Processing URL:', {
+    original: cleanUrl,
+    final: finalUrl,
+    isRefined: isRefinedModel
+  });
   
   try {
-    console.log('📦 Attempting useGLTF load...');
+    console.log('📦 Attempting useGLTF load with final URL:', finalUrl);
     // Use useGLTF from drei which handles URLs better
-    const gltfResult = useGLTF(cleanUrl);
+    const gltfResult = useGLTF(finalUrl);
     console.log('✅ useGLTF returned result:', gltfResult);
     
+    // Add more detailed logging about the GLTF result
+    console.log('📋 GLTF result keys:', Object.keys(gltfResult));
+    console.log('📋 GLTF scenes:', gltfResult.scenes?.length || 'no scenes');
+    console.log('📋 GLTF animations:', gltfResult.animations?.length || 'no animations');
     const { scene } = gltfResult;
     console.log('🎭 Extracted scene:', scene);
     console.log('🎭 Scene children count:', scene.children.length);
     console.log('🎭 Scene type:', scene.type);
+    console.log('🎭 Scene userData:', scene.userData);
     
     if (!scene) {
-      console.error('❌ Scene is null or undefined');
+      console.error('❌ Scene is null or undefined from GLTF result');
+      console.error('❌ Full GLTF result:', JSON.stringify(gltfResult, null, 2));
       return <LoadingBox />;
     }
     
@@ -119,7 +139,31 @@ function Model({ url }: { url: string }) {
     return <primitive object={clonedScene} />;
   } catch (error) {
     console.error('💥 useGLTF failed with error:', error);
-    console.error('💥 Error stack:', (error as Error).stack);
+    // Handle Promise errors specifically
+    if (error instanceof Promise) {
+      console.error('💥 Promise error detected - async loading issue');
+      error.then((resolvedError: any) => {
+        console.error('💥 Promise resolved with error:', resolvedError);
+      }).catch((rejectedError: any) => {
+        console.error('💥 Promise rejected with error:', rejectedError);
+      });
+      return <LoadingBox />;
+    }
+    // Type guard for Error-like object
+    const errObj = error as { name?: string; message?: string; stack?: string };
+    console.error('💥 Error name:', errObj?.name);
+    console.error('💥 Error message:', errObj?.message);
+    console.error('💥 Error stack:', errObj?.stack);
+    // Log more details about the error type
+    if (errObj?.message?.includes('404')) {
+      console.error('💥 404 Error - File not found at URL:', cleanUrl);
+    } else if (errObj?.message?.includes('CORS')) {
+      console.error('💥 CORS Error - Cross-origin request blocked for URL:', cleanUrl);
+    } else if (errObj?.message?.includes('Invalid')) {
+      console.error('💥 Invalid File Error - GLB file may be corrupted or invalid');
+    } else {
+      console.error('💥 Unknown error type during GLTF loading');
+    }
     return <LoadingBox />;
   }
 }

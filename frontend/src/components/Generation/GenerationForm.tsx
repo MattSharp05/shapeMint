@@ -1,31 +1,110 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Upload, Type, Settings, Wand2 } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { Card } from '../UI/Card';
+import { useAuth } from '../../hooks/useAuth';
+import { meshyService } from '../../services/meshy';
+import { ModelService } from '../../services/model';
+import { modelService } from '../../services/modelService';
 
 interface GenerationFormProps {
-  onGenerate: (data: any) => void;
+  onSuccess?: () => void;
   loading?: boolean;
 }
 
-export function GenerationForm({ onGenerate, loading }: GenerationFormProps) {
+export function GenerationForm({ onSuccess, loading: initialLoading }: GenerationFormProps) {
+  const { user } = useAuth();
   const [mode, setMode] = useState<'text' | 'image'>('text');
   const [prompt, setPrompt] = useState('');
   const [image, setImage] = useState<File | null>(null);
+  const [loading, setLoading] = useState(initialLoading);
+  const [error, setError] = useState<string>();
   const [settings, setSettings] = useState({
     size: 'medium' as const,
     style: 'realistic' as const,
     quality: 'standard' as const,
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onGenerate({
-      mode,
-      prompt: prompt || '', // ✅ Always send a string, even if empty
-      image: mode === 'image' ? image : undefined,
-      settings,
-    });
+    if (!user) {
+      setError('Please log in to generate models');
+      return;
+    }
+
+    if (!prompt.trim()) {
+      setError('Please enter a prompt');
+      return;
+    }
+
+    // Validate user.id is a UUID
+    const uuidRegex = /^[0-9a-fA-F-]{36}$/;
+    if (!user.id || !uuidRegex.test(user.id)) {
+      setError('No valid user ID found. Please log in.');
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(undefined);
+    
+    try {
+      // Convert form data to Meshy API format
+      const generationData = {
+        prompt: prompt.trim(),
+        style: settings.style,
+        negative_prompt: '',
+        seed: Math.floor(Math.random() * 1000000)
+      };
+
+      console.log('Starting model generation with params:', generationData);
+
+      // Call Edge Function to generate the model
+      const response = await modelService.generate3DModel({ prompt: generationData.prompt });
+      if (response.success && response.data?.modelUrl) {
+        // Store model metadata in Supabase DB
+        await new ModelService().createModel({
+          user_id: user.id,
+          name: `Model ${Date.now()}`,
+          prompt: generationData.prompt,
+          style: generationData.style,
+          obj_url: response.data.objUrl || '',
+          stl_url: response.data.stlUrl || '',
+          glb_url: response.data.modelUrl,
+          status: 'completed',
+        });
+      } else {
+        throw new Error(response.error || 'Failed to generate model');
+      }
+      
+      // Clear form
+      setPrompt('');
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (err) {
+      console.error('Error generating model:', err);
+      if (err instanceof Error) {
+        if (err.message.includes('preview') || err.message.includes('Preview')) {
+          setError('Failed to create preview. Please try a different prompt or try again later.');
+        } else if (err.message.includes('refine') || err.message.includes('Refine')) {
+          setError('Failed to refine model. Please try again.');
+        } else if (err.message.includes('download')) {
+          setError('Failed to download model files. Please try again.');
+        } else if (err.message.includes('storage') || err.message.includes('database')) {
+          setError('Failed to save model. Please try again.');
+        } else {
+          setError(err.message);
+        }
+      } else if (typeof err === 'string') {
+        setError(err);
+      } else {
+        setError('Failed to generate model. Please try again.');
+      }
+      console.log('Full error details:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,12 +251,19 @@ export function GenerationForm({ onGenerate, loading }: GenerationFormProps) {
             </div>
           </div>
 
+          {error && (
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200">
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
+          )}
+
           <Button
             type="submit"
             icon={Wand2}
             loading={loading}
             className="w-full"
             size="lg"
+            disabled={!user}
           >
             {loading ? 'Generating...' : 'Generate 3D Model'}
           </Button>

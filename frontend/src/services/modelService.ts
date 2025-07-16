@@ -18,6 +18,12 @@ export const modelService = {
     try {
       const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-3d-model`;
       const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      // Validate userId is a UUID
+      const uuidRegex = /^[0-9a-fA-F-]{36}$/;
+      if (!userId || !uuidRegex.test(userId)) {
+        throw new Error('No valid user ID found. Please log in.');
+      }
 
       let body: FormData | string;
       let headers: Record<string, string> = {};
@@ -53,6 +59,7 @@ export const modelService = {
         formData.append('prompt', prompt); // This can be empty string for texture prompt
         formData.append('image', image);
         formData.append('mode', 'preview'); // ✅ Add mode parameter
+        if (userId) formData.append('user_id', userId);
         body = formData;
         
         // ✅ Don't set Content-Type for FormData - let browser set it with boundary
@@ -60,7 +67,8 @@ export const modelService = {
         // Text-to-3D request
         body = JSON.stringify({ 
           prompt, 
-          mode: "preview"
+          mode: "preview",
+          user_id: userId || null
         });
         headers['Content-Type'] = 'application/json';
       }

@@ -98,12 +98,14 @@ export function Marketplace() {
     modelService.fetchMarketplaceModels().then(setMarketplaceModels);
   }, []);
 
-  // Map real models to the mockDesigns structure for display
+  const DEFAULT_MODEL_THUMBNAIL = 'https://placehold.co/400x300?text=3D+Model';
+
   const realDesigns = marketplaceModels.map((model) => ({
     id: model.id,
     title: model.name || 'Untitled Model',
     description: model.prompt || '',
-    thumbnail: model.thumbnail_url || 'https://via.placeholder.com/400x300?text=No+Thumbnail',
+    // TODO: Use rendered model snapshot if available
+    thumbnail: model.thumbnail_url || DEFAULT_MODEL_THUMBNAIL,
     price: 9.99, // Placeholder price, can be replaced with real pricing logic
     category: model.style || 'Other',
     downloads: 0, // Placeholder

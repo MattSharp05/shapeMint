@@ -18,12 +18,15 @@ export const modelService = {
     try {
       const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-3d-model`;
       const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
-      // Validate userId is a UUID
-      const uuidRegex = /^[0-9a-fA-F-]{36}$/;
-      if (!userId || !uuidRegex.test(userId)) {
-        throw new Error('No valid user ID found. Please log in.');
+      if (!session?.user?.id) {
+        return {
+          success: false,
+          data: null,
+          error: 'Please log in to generate models',
+        };
       }
+
+      const userId = session.user.id;
 
       let body: FormData | string;
       let headers: Record<string, string> = {};

@@ -3,16 +3,15 @@ import { Upload, Type, Settings, Wand2 } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { Card } from '../UI/Card';
 import { useAuth } from '../../hooks/useAuth';
-import { meshyService } from '../../services/meshy';
-import { ModelService } from '../../services/model';
 import { modelService } from '../../services/modelService';
 
 interface GenerationFormProps {
   onSuccess?: () => void;
   loading?: boolean;
+  onGenerate?: (data: { prompt: string; image?: File | null; settings?: any }) => void;
 }
 
-export function GenerationForm({ onSuccess, loading: initialLoading }: GenerationFormProps) {
+export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate }: GenerationFormProps) {
   const { user } = useAuth();
   const [mode, setMode] = useState<'text' | 'image'>('text');
   const [prompt, setPrompt] = useState('');
@@ -49,6 +48,17 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
     setError(undefined);
     
     try {
+      if (onGenerate) {
+        // Pass all relevant data to parent handler
+        await onGenerate({
+          prompt: prompt.trim(),
+          image,
+          settings,
+        });
+        setPrompt('');
+        if (onSuccess) onSuccess();
+        return;
+      }
       // Convert form data to Meshy API format
       const generationData = {
         prompt: prompt.trim(),
@@ -63,16 +73,16 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
       const response = await modelService.generate3DModel({ prompt: generationData.prompt });
       if (response.success && response.data?.modelUrl) {
         // Store model metadata in Supabase DB
-        await new ModelService().createModel({
-          user_id: user.id,
-          name: `Model ${Date.now()}`,
-          prompt: generationData.prompt,
-          style: generationData.style,
-          obj_url: response.data.objUrl || '',
-          stl_url: response.data.stlUrl || '',
-          glb_url: response.data.modelUrl,
-          status: 'completed',
-        });
+        // await new ModelService().createModel({ // This line was removed as per the edit hint
+        //   user_id: user.id,
+        //   name: `Model ${Date.now()}`,
+        //   prompt: generationData.prompt,
+        //   style: generationData.style,
+        //   obj_url: response.data.objUrl || '',
+        //   stl_url: response.data.stlUrl || '',
+        //   glb_url: response.data.modelUrl,
+        //   status: 'completed',
+        // });
       } else {
         throw new Error(response.error || 'Failed to generate model');
       }

@@ -20,6 +20,8 @@ export function Generate() {
   const [refining, setRefining] = useState(false);
   const [refineProgress, setRefineProgress] = useState(0);
   const [refineError, setRefineError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [progress, setProgress] = useState(0);
   const navigate = useNavigate();
 
   // Refine handler
@@ -71,6 +73,75 @@ export function Generate() {
     }
   };
 
+  const handleGenerate = async (data: any) => {
+    setGenerating(true);
+    setStatus('generating');
+    setProgress(0);
+    setGenerationData(data);
+    setError(null);
+
+    try {
+      // Start progress simulation for better UX
+      const progressInterval = setInterval(() => {
+        setProgress((prev) => {
+          // Cap at 90% until we get actual completion
+          return prev < 90 ? prev + 5 : prev;
+        });
+      }, 1000);
+
+      const response = await modelService.generate3DModel({
+        prompt: data.prompt || '',
+        image: data.image,
+      });
+
+      clearInterval(progressInterval);
+
+      if (!response.success) {
+        setStatus('failed');
+        setError(response.error || 'Failed to generate model');
+        setProgress(0);
+        return;
+      }
+
+      // Extract model URL from the Edge Function response
+      const modelUrl = response.data.modelUrl;
+      
+      if (!modelUrl) {
+        setStatus('failed');
+        setError('No model URL received from generation service');
+        setProgress(0);
+        return;
+      }
+
+      setGeneratedModel(modelUrl);
+      setStatus('completed');
+      setProgress(100);
+      
+      // Store ALL model details including file URLs
+      setGenerationData({
+        ...data,
+        modelDetails: response.data,
+        taskId: response.data.taskId,
+        format: 'GLB',
+        polygons: 'Unknown',
+        fileSize: 'Unknown',
+        // Store all file URLs for later use
+        fileUrls: {
+          glb: response.data.modelUrl,
+          obj: response.data.objUrl,
+          stl: response.data.stlUrl,
+        }
+      });
+    } catch (err) {
+      console.error('Error during model generation:', err);
+      setStatus('failed');
+      setError('An unexpected error occurred');
+      setProgress(0);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const handleBuyNow = () => {
     navigate('/order', { state: { modelData: generationData, modelUrl: generatedModel } });
   };
@@ -90,18 +161,15 @@ export function Generate() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Generation Form */}
           <div className="space-y-6">
-            <GenerationForm 
-              onSuccess={() => setStatus('completed')}
-              // You may want to pass setGeneratedModel, setGenerationData, etc.
-            />
-            {status !== 'pending' && (
+            <GenerationForm onGenerate={handleGenerate} loading={generating} />
+            {(generating || status === 'completed' || status === 'failed') && (
               <GenerationProgress
-                progress={status === 'completed' ? 100 : 50}
+                progress={progress}
                 status={status}
-                estimatedTime="45 seconds"
+                estimatedTime={generating ? "45 seconds" : undefined}
               />
             )}
-            {error && (
+            {error && status === 'failed' && (
               <Card className="p-4 bg-red-50 border-red-200">
                 <p className="text-red-600 text-sm">{error}</p>
                 <Button 

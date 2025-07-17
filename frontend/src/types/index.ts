@@ -57,3 +57,21 @@ export interface Order {
   trackingNumber?: string;
   createdAt: string;
 }
+
+export interface MarketplaceModel {
+  id: string;
+  user_id: string;
+  name?: string;
+  prompt?: string;
+  style?: string;
+  obj_url?: string;
+  stl_url?: string;
+  glb_url?: string;
+  thumbnail_url?: string;
+  status: 'processing' | 'completed' | 'failed';
+  created_at: string;
+  updated_at: string;
+  task_id?: string;
+  // Optionally, can add userName, price, downloads, likes, etc. if we join 
+  //...with other tables or mock them for now
+}

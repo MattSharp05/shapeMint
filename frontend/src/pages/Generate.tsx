@@ -143,7 +143,57 @@ export function Generate() {
   };
 
   const handleBuyNow = () => {
-    navigate('/order', { state: { modelData: generationData, modelUrl: generatedModel } });
+    console.log('🛒 Buy Now clicked from Generate page!');
+    console.log('🛒 generationData:', generationData);
+    console.log('🛒 generatedModel:', generatedModel);
+    console.log('🛒 stlUrl:', generationData?.fileUrls?.stl || generationData?.modelDetails?.stlUrl);
+    
+    if (!generationData || !generatedModel) {
+      console.error('❌ Missing required data for navigation');
+      alert('Error: Missing model data. Please regenerate the model.');
+      return;
+    }
+    
+    const stlUrl = generationData?.fileUrls?.stl || generationData?.modelDetails?.stlUrl;
+    console.log('🛒 Navigating to Order page with data:', {
+      modelData: generationData,
+      modelUrl: generatedModel,
+      stlUrl
+    });
+    
+    navigate('/order', { 
+      state: { 
+        modelData: generationData, 
+        modelUrl: generatedModel,
+        stlUrl
+      } 
+    });
+  };
+
+  const handleDownload = () => {
+    console.log('💾 Download clicked!');
+    console.log('💾 generationData:', generationData);
+    console.log('💾 generatedModel:', generatedModel);
+    
+    if (!generationData || !generatedModel) {
+      console.error('❌ Missing required data for navigation');
+      alert('Error: Missing model data. Please regenerate the model.');
+      return;
+    }
+    
+    console.log('💾 Navigating to Download Checkout page');
+    navigate('/download-checkout', {
+      state: {
+        modelData: {
+          prompt: generationData?.prompt,
+          settings: generationData?.settings,
+          isGenerated: true
+        },
+        modelUrl: generatedModel,
+        price: 12.99, // Default price for generated models
+        isGenerated: true
+      }
+    });
   };
 
   return (
@@ -220,7 +270,7 @@ export function Generate() {
                 </h3>
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Button icon={Download} className="w-full">
+                    <Button icon={Download} className="w-full" onClick={handleDownload}>
                       Download
                     </Button>
                     <Button variant="outline" icon={Share2} className="w-full">

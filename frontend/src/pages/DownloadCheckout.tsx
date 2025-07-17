@@ -5,11 +5,21 @@ import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
 import { ModelViewer } from '../components/3D/ModelViewer';
+import { stripeService } from '../services/stripe';
+import { useAuth } from '../hooks/useAuth';
 
 export function DownloadCheckout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { modelData, modelUrl, price, isGenerated } = location.state || {};
+  
+  // ✅ Debug logging
+  console.log('💾 DownloadCheckout page loaded');
+  console.log('💾 location.state:', location.state);
+  console.log('💾 modelData:', modelData);
+  console.log('💾 modelUrl:', modelUrl);
+  console.log('💾 price:', price);
+  console.log('💾 isGenerated:', isGenerated);
   
   const [paymentInfo, setPaymentInfo] = useState({
     email: '',
@@ -23,6 +33,7 @@ export function DownloadCheckout() {
     zipCode: ''
   });
   const [processing, setProcessing] = useState(false);
+  const { user } = useAuth();
 
   if (!modelData || !modelUrl) {
     return (
@@ -38,18 +49,81 @@ export function DownloadCheckout() {
     );
   }
 
-  const tax = price * 0.08;
-  const total = price + tax;
+  // ✅ Ensure price is valid and provide fallback
+  const validPrice = typeof price === 'number' && !isNaN(price) && price > 0 ? price : 12.99;
+  const tax = validPrice * 0.08;
+  const total = validPrice + tax;
 
-  const handlePurchase = async () => {
+  const handleCheckout = async () => {
     setProcessing(true);
     
-    // Simulate payment processing
-    setTimeout(() => {
+    try {
+      // ✅ Add validation checks
+      console.log('🔍 Checkout validation:');
+      console.log('  - total:', total);
+      console.log('  - price:', price);
+      console.log('  - tax:', tax);
+      console.log('  - email:', paymentInfo.email);
+      console.log('  - user:', user);
+      console.log('  - modelData:', modelData);
+      console.log('  - modelUrl:', modelUrl);
+
+      // Validate required fields
+      if (!paymentInfo.email) {
+        alert('Please enter your email address');
+        setProcessing(false);
+        return;
+      }
+
+      if (!total || isNaN(total) || total <= 0) {
+        alert('Invalid price. Please refresh the page and try again.');
+        setProcessing(false);
+        return;
+      }
+
+      if (!modelData || !modelUrl) {
+        alert('Model data is missing. Please go back and select a model.');
+        setProcessing(false);
+        return;
+      }
+
+      console.log('✅ All validation checks passed, creating checkout session...');
+
+      await stripeService.redirectToCheckout({
+        amount: total,
+        paymentType: 'download',
+        metadata: {
+          userId: user?.id || 'anonymous',
+          email: paymentInfo.email,
+          modelName: isGenerated ? (modelData.prompt || 'Generated Model') : (modelData.designTitle || 'Model'),
+          modelUrl: modelUrl,
+          isGenerated: isGenerated || false,
+          modelId: modelData.designId || modelData.id || 'unknown'
+        }
+      });
+    } catch (error: any) {
+      console.error('🚨 Checkout error details:', error);
+      console.error('🚨 Error type:', typeof error);
+      console.error('🚨 Error message:', error?.message);
+      console.error('🚨 Error stack:', error?.stack);
+      
+      let errorMessage = 'Failed to start checkout. Please try again.';
+      
+      if (error?.message) {
+        if (error.message.includes('amount')) {
+          errorMessage = 'Invalid amount. Please refresh the page.';
+        } else if (error.message.includes('email')) {
+          errorMessage = 'Please enter a valid email address.';
+        } else if (error.message.includes('metadata')) {
+          errorMessage = 'Missing product information. Please go back and select a model.';
+        } else {
+          errorMessage = `Checkout failed: ${error.message}`;
+        }
+      }
+      
+      alert(errorMessage);
       setProcessing(false);
-      alert('Purchase successful! Your download will begin shortly.');
-      navigate('/dashboard');
-    }, 2000);
+    }
   };
 
   return (
@@ -77,7 +151,7 @@ export function DownloadCheckout() {
           <div className="space-y-6">
             <Card className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-6">
-                Payment Information
+                Customer Information
               </h3>
               
               <div className="space-y-4">
@@ -89,87 +163,23 @@ export function DownloadCheckout() {
                   onChange={(e) => setPaymentInfo({...paymentInfo, email: e.target.value})}
                   required
                 />
-                
-                <Input
-                  label="Card Number"
-                  placeholder="1234 5678 9012 3456"
-                  value={paymentInfo.cardNumber}
-                  onChange={(e) => setPaymentInfo({...paymentInfo, cardNumber: e.target.value})}
-                  required
-                />
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="Expiry Date"
-                    placeholder="MM/YY"
-                    value={paymentInfo.expiryDate}
-                    onChange={(e) => setPaymentInfo({...paymentInfo, expiryDate: e.target.value})}
-                    required
-                  />
-                  <Input
-                    label="CVV"
-                    placeholder="123"
-                    value={paymentInfo.cvv}
-                    onChange={(e) => setPaymentInfo({...paymentInfo, cvv: e.target.value})}
-                    required
-                  />
-                </div>
-                
-                <Input
-                  label="Name on Card"
-                  value={paymentInfo.nameOnCard}
-                  onChange={(e) => setPaymentInfo({...paymentInfo, nameOnCard: e.target.value})}
-                  required
-                />
               </div>
-            </Card>
 
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-6">
-                Billing Address
-              </h3>
-              
-              <div className="space-y-4">
-                <Input
-                  label="Address"
-                  value={paymentInfo.billingAddress}
-                  onChange={(e) => setPaymentInfo({...paymentInfo, billingAddress: e.target.value})}
-                  required
-                />
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="City"
-                    value={paymentInfo.city}
-                    onChange={(e) => setPaymentInfo({...paymentInfo, city: e.target.value})}
-                    required
-                  />
-                  <Input
-                    label="State"
-                    value={paymentInfo.state}
-                    onChange={(e) => setPaymentInfo({...paymentInfo, state: e.target.value})}
-                    required
-                  />
-                </div>
-                
-                <Input
-                  label="ZIP Code"
-                  value={paymentInfo.zipCode}
-                  onChange={(e) => setPaymentInfo({...paymentInfo, zipCode: e.target.value})}
-                  required
-                />
-              </div>
-            </Card>
+              <Button
+                onClick={handleCheckout}
+                loading={processing}
+                className="w-full mt-6"
+                size="lg"
+                icon={CreditCard}
+                disabled={!paymentInfo.email}
+              >
+                {processing ? 'Redirecting to Checkout...' : `Pay $${total.toFixed(2)} with Stripe`}
+              </Button>
 
-            <Button 
-              onClick={handlePurchase}
-              loading={processing}
-              className="w-full"
-              size="lg"
-              icon={Download}
-            >
-              {processing ? 'Processing...' : `Complete Purchase - $${total.toFixed(2)}`}
-            </Button>
+              <p className="text-xs text-gray-500 mt-3 text-center">
+                You'll be redirected to Stripe's secure checkout page
+              </p>
+            </Card>
           </div>
 
           {/* Order Summary */}
@@ -207,7 +217,7 @@ export function DownloadCheckout() {
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span>Digital Download:</span>
-                  <span>${price.toFixed(2)}</span>
+                  <span>${validPrice.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Tax:</span>

@@ -47,8 +47,24 @@ export function DownloadCheckout() {
     // Simulate payment processing
     setTimeout(() => {
       setProcessing(false);
-      alert('Purchase successful! Your download will begin shortly.');
-      navigate('/dashboard');
+      
+      // Generate purchase ID
+      const purchaseId = `DL${Date.now().toString().slice(-6)}`;
+      
+      // Prepare purchase data for confirmation page
+      const purchaseData = {
+        purchaseId,
+        modelData,
+        modelUrl,
+        price,
+        tax,
+        total,
+        isGenerated,
+        purchaseDate: new Date().toLocaleDateString()
+      };
+      
+      // Navigate to download confirmation page
+      navigate('/download-confirmation', { state: { purchaseData } });
     }, 2000);
   };
 

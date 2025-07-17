@@ -4,6 +4,7 @@ import { Search, Filter, Grid, List, Heart, Download } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
+import { useFavorites } from '../hooks/useFavorites';
 
 const mockDesigns = [
   {
@@ -89,6 +90,7 @@ export function Marketplace() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState('popular');
   const navigate = useNavigate();
+  const { isFavorited, toggleFavorite } = useFavorites();
 
   const filteredDesigns = mockDesigns.filter(design => {
     const matchesSearch = design.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -134,6 +136,20 @@ export function Marketplace() {
         price: design.price,
         isGenerated: false
       }
+    });
+  };
+
+  const handleToggleFavorite = (design: typeof mockDesigns[0]) => {
+    toggleFavorite({
+      id: design.id,
+      title: design.title,
+      description: design.description,
+      thumbnail: design.thumbnail,
+      price: design.price,
+      category: design.category,
+      downloads: design.downloads,
+      likes: design.likes,
+      userName: design.userName
     });
   };
 
@@ -233,8 +249,16 @@ export function Marketplace() {
                         Featured
                       </div>
                     )}
-                    <button className="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-sm rounded-full hover:bg-white transition-colors">
-                      <Heart className="h-4 w-4 text-gray-600" />
+                    <button 
+                      onClick={() => handleToggleFavorite(design)}
+                      className="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-sm rounded-full hover:bg-white transition-colors"
+                      title={isFavorited(design.id) ? "Remove from favorites" : "Add to favorites"}
+                    >
+                      <Heart className={`h-4 w-4 ${
+                        isFavorited(design.id) 
+                          ? 'text-red-500 fill-current' 
+                          : 'text-gray-600'
+                      }`} />
                     </button>
                   </div>
                   <div className="p-6">
@@ -339,6 +363,17 @@ export function Marketplace() {
                             <Heart className="h-3 w-3" />
                             <span>{design.likes}</span>
                           </div>
+                          <button
+                            onClick={() => handleToggleFavorite(design)}
+                            className="flex items-center space-x-1 hover:text-red-500 transition-colors"
+                            title={isFavorited(design.id) ? "Remove from favorites" : "Add to favorites"}
+                          >
+                            <Heart className={`h-3 w-3 ${
+                              isFavorited(design.id) 
+                                ? 'text-red-500 fill-current' 
+                                : 'text-gray-500'
+                            }`} />
+                          </button>
                         </div>
                       </div>
                       <div className="text-right ml-6">

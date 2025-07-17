@@ -4,6 +4,91 @@ import { ArrowLeft, Download, ShoppingCart, Heart, Share2, Eye, Star, Calendar, 
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
 import { ModelViewer } from '../components/3D/ModelViewer';
+import { useFavorites } from '../hooks/useFavorites';
+
+// Mock designs data for related designs
+const mockRelatedDesigns = [
+  {
+    id: '21',
+    title: 'Smart Mug Warmer',
+    thumbnail: 'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=200',
+    price: 15.99,
+    category: 'Home & Garden',
+    userName: 'SmartHome'
+  },
+  {
+    id: '22',
+    title: 'Ceramic Tea Cup',
+    thumbnail: 'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=200',
+    price: 11.50,
+    category: 'Home & Garden',
+    userName: 'CeramicCraft'
+  },
+  {
+    id: '23',
+    title: 'Travel Mug',
+    thumbnail: 'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=200',
+    price: 18.99,
+    category: 'Home & Garden',
+    userName: 'TravelGear'
+  },
+  {
+    id: '24',
+    title: 'Abstract Sculpture',
+    thumbnail: 'https://images.pexels.com/photos/1094767/pexels-photo-1094767.jpeg?auto=compress&cs=tinysrgb&w=200',
+    price: 22.50,
+    category: 'Art & Decor',
+    userName: 'ModernArt'
+  },
+  {
+    id: '25',
+    title: 'Wall Art Piece',
+    thumbnail: 'https://images.pexels.com/photos/1094767/pexels-photo-1094767.jpeg?auto=compress&cs=tinysrgb&w=200',
+    price: 28.99,
+    category: 'Art & Decor',
+    userName: 'WallDesigns'
+  },
+  {
+    id: '26',
+    title: 'Phone Holder Stand',
+    thumbnail: 'https://images.pexels.com/photos/404280/pexels-photo-404280.jpeg?auto=compress&cs=tinysrgb&w=200',
+    price: 12.99,
+    category: 'Accessories',
+    userName: 'TechStand'
+  },
+  {
+    id: '27',
+    title: 'Tablet Stand',
+    thumbnail: 'https://images.pexels.com/photos/404280/pexels-photo-404280.jpeg?auto=compress&cs=tinysrgb&w=200',
+    price: 16.50,
+    category: 'Accessories',
+    userName: 'DeviceStands'
+  },
+  {
+    id: '28',
+    title: 'LED Desk Lamp',
+    thumbnail: 'https://images.pexels.com/photos/1166643/pexels-photo-1166643.jpeg?auto=compress&cs=tinysrgb&w=200',
+    price: 32.99,
+    category: 'Lighting',
+    userName: 'BrightLights'
+  },
+  {
+    id: '29',
+    title: 'Pen Holder',
+    thumbnail: 'https://images.pexels.com/photos/159644/art-supplies-brushes-rulers-scissors-159644.jpeg?auto=compress&cs=tinysrgb&w=200',
+    price: 8.99,
+    category: 'Office',
+    userName: 'OfficeTools'
+  },
+  {
+    id: '30',
+    title: 'Small Succulent Pot',
+    thumbnail: 'https://images.pexels.com/photos/1647962/pexels-photo-1647962.jpeg?auto=compress&cs=tinysrgb&w=200',
+    price: 12.75,
+    category: 'Home & Garden',
+    userName: 'PlantLife'
+  }
+];
 
 // Mock data - in a real app, this would come from an API
 const mockDesignDetails = {
@@ -331,9 +416,17 @@ export function DesignDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
-  const [isLiked, setIsLiked] = useState(false);
+  const { isFavorited, toggleFavorite } = useFavorites();
 
   const design = mockDesignDetails[id as keyof typeof mockDesignDetails];
+  
+  // Get related designs from the same category, excluding current design
+  const relatedDesigns = mockRelatedDesigns
+    .filter(relatedDesign => 
+      relatedDesign.category === design?.category && 
+      relatedDesign.id !== design?.id
+    )
+    .slice(0, 3); // Show max 3 related designs
 
   if (!design) {
     return (
@@ -387,6 +480,20 @@ export function DesignDetails() {
     });
   };
 
+  const handleToggleFavorite = () => {
+    toggleFavorite({
+      id: design.id,
+      title: design.title,
+      description: design.description,
+      thumbnail: design.thumbnail,
+      price: design.price,
+      category: design.category,
+      downloads: design.downloads,
+      likes: design.likes,
+      userName: design.userName
+    });
+  };
+
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'printing', label: 'Printing Info' },
@@ -428,13 +535,14 @@ export function DesignDetails() {
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => setIsLiked(!isLiked)}
-                    className={`flex items-center space-x-1 transition-colors ${
-                      isLiked ? 'text-red-500' : 'text-gray-500 hover:text-red-500'
-                    }`}
+                    onClick={handleToggleFavorite}
+                    className="flex items-center space-x-1 text-gray-500 hover:text-red-500 transition-colors"
+                    title={isFavorited(design.id) ? "Remove from favorites" : "Add to favorites"}
                   >
-                    <Heart className={`h-4 w-4 ${isLiked ? 'fill-current' : ''}`} />
-                    <span>{design.likes + (isLiked ? 1 : 0)}</span>
+                    <Heart className={`h-4 w-4 ${
+                      isFavorited(design.id) ? 'text-red-500 fill-current' : ''
+                    }`} />
+                    <span>{design.likes}</span>
                   </button>
                   <button className="text-gray-500 hover:text-gray-700">
                     <Share2 className="h-4 w-4" />
@@ -748,9 +856,55 @@ export function DesignDetails() {
 
             <Card className="p-6">
               <h4 className="font-medium text-gray-900 mb-4">Related Designs</h4>
-              <div className="text-center py-8 text-gray-500">
-                <p className="text-sm">Related designs coming soon...</p>
-              </div>
+              {relatedDesigns.length > 0 ? (
+                <div className="space-y-4">
+                  {relatedDesigns.map((relatedDesign) => (
+                    <Link 
+                      key={relatedDesign.id}
+                      to={`/design/${relatedDesign.id}`}
+                      className="block hover:bg-gray-50 rounded-lg p-3 transition-colors"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <img
+                          src={relatedDesign.thumbnail}
+                          alt={relatedDesign.title}
+                          className="w-12 h-12 rounded-lg object-cover"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <h5 className="text-sm font-medium text-gray-900 truncate">
+                            {relatedDesign.title}
+                          </h5>
+                          <p className="text-xs text-gray-500">
+                            by {relatedDesign.userName}
+                          </p>
+                          <p className="text-sm font-bold text-purple-600">
+                            ${relatedDesign.price}
+                          </p>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                  
+                  <div className="pt-3 border-t border-gray-200">
+                    <Link 
+                      to={`/marketplace?category=${encodeURIComponent(design.category)}`}
+                      className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+                    >
+                      View all {design.category} designs →
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-6 text-gray-500">
+                  <p className="text-sm">No related designs found in this category.</p>
+                  <Link 
+                    to="/marketplace"
+                    className="text-sm text-purple-600 hover:text-purple-700 font-medium mt-2 inline-block"
+                  >
+                    Browse all designs →
+                  </Link>
+                </div>
+              )}
             </Card>
           </div>
         </div>

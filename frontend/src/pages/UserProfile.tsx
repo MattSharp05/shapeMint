@@ -1,83 +1,161 @@
-import React, { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, MapPin, Calendar, Star, Download, Heart, Grid, List, Eye, Award, TrendingUp } from 'lucide-react';
-import { Card } from '../components/UI/Card';
+import React from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { ArrowLeft, MapPin, Star, Shield, ExternalLink, Heart, Download } from 'lucide-react';
 import { Button } from '../components/UI/Button';
+import { Card } from '../components/UI/Card';
 
-// Mock user data - in a real app, this would come from an API
-const mockUserProfiles = {
-  'DesignPro': {
-    username: 'DesignPro',
-    displayName: 'Alex Chen',
-    avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=200',
-    bio: 'Passionate 3D designer specializing in functional household items and modern aesthetics. I love creating designs that blend form and function seamlessly.',
-    location: 'San Francisco, CA',
-    joinedDate: '2023-05-15',
-    rating: 4.8,
-    totalDesigns: 23,
-    totalDownloads: 5420,
-    totalLikes: 1230,
-    totalViews: 45600,
-    verified: true,
-    specialties: ['Home & Garden', 'Kitchen', 'Modern Design', 'Functional Items'],
+interface UserProfile {
+  username: string;
+  displayName: string;
+  avatar: string;
+  bio: string;
+  location: string;
+  joinDate: string;
+  rating: number;
+  totalSales: number;
+  isVerified: boolean;
+  specialties: string[];
+  socialLinks: {
+    website?: string;
+    instagram?: string;
+    twitter?: string;
+  };
+  designs: {
+    id: string;
+    title: string;
+    thumbnail: string;
+    price: number;
+    downloads: number;
+    likes: number;
+  }[];
+}
+
+const mockUserProfiles: Record<string, UserProfile> = {
+  'TechCreator': {
+    username: 'TechCreator',
+    displayName: 'David Kim',
+    avatar: 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=200',
+    bio: 'Passionate about creating functional tech accessories that blend form and function. Specializing in ergonomic designs for the modern digital lifestyle.',
+    location: 'Seattle, WA',
+    joinDate: 'March 2023',
+    rating: 4.7,
+    totalSales: 1247,
+    isVerified: true,
+    specialties: ['Tech Accessories', 'Ergonomic Design', 'Functional Items'],
     socialLinks: {
-      website: 'https://alexchen.design',
-      instagram: '@alexchen_3d',
-      twitter: '@alexchen3d'
+      website: 'https://techcreator.design',
+      instagram: '@techcreator_designs',
+      twitter: '@techcreator'
     },
-    achievements: [
-      { title: 'Top Seller', description: 'Over 1000 downloads', icon: Award },
-      { title: 'Rising Star', description: 'Fastest growing creator', icon: TrendingUp },
-      { title: 'Community Favorite', description: 'Highly rated designs', icon: Star }
-    ],
     designs: [
       {
         id: '1',
-        title: 'Modern Coffee Mug',
-        thumbnail: 'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=400',
+        title: 'Modern Phone Stand',
+        thumbnail: 'https://images.pexels.com/photos/4158/apple-iphone-smartphone-desk.jpg?auto=compress&cs=tinysrgb&w=400',
         price: 12.99,
-        downloads: 245,
-        likes: 89,
-        views: 1234,
-        category: 'Home & Garden',
-        featured: true,
-        createdAt: '2025-01-10'
+        downloads: 234,
+        likes: 89
+      },
+      {
+        id: '2',
+        title: 'Ergonomic Laptop Stand',
+        thumbnail: 'https://images.pexels.com/photos/205316/pexels-photo-205316.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 24.99,
+        downloads: 156,
+        likes: 67
+      },
+      {
+        id: '3',
+        title: 'Cable Management Box',
+        thumbnail: 'https://images.pexels.com/photos/442150/pexels-photo-442150.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 18.99,
+        downloads: 98,
+        likes: 45
+      },
+      {
+        id: '4',
+        title: 'Wireless Charger Stand',
+        thumbnail: 'https://images.pexels.com/photos/4219654/pexels-photo-4219654.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 22.99,
+        downloads: 187,
+        likes: 73
+      }
+    ]
+  },
+  'LightDesigns': {
+    username: 'LightDesigns',
+    displayName: 'Sarah Johnson',
+    avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=200',
+    bio: 'Illuminating spaces with thoughtful design. I create lighting solutions that transform any environment into something special.',
+    location: 'Portland, OR',
+    joinDate: 'January 2023',
+    rating: 4.9,
+    totalSales: 892,
+    isVerified: false,
+    specialties: ['Lighting Design', 'Ambient Solutions', 'Interior Accessories'],
+    socialLinks: {
+      instagram: '@lightdesigns_studio',
+      website: 'https://lightdesigns.co'
+    },
+    designs: [
+      {
+        id: '5',
+        title: 'Minimalist Lamp',
+        thumbnail: 'https://images.pexels.com/photos/1112598/pexels-photo-1112598.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 34.99,
+        downloads: 145,
+        likes: 92
+      },
+      {
+        id: '6',
+        title: 'Pendant Light Shade',
+        thumbnail: 'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 28.99,
+        downloads: 78,
+        likes: 56
       },
       {
         id: '7',
-        title: 'Minimalist Desk Lamp',
-        thumbnail: 'https://images.pexels.com/photos/1166643/pexels-photo-1166643.jpeg?auto=compress&cs=tinysrgb&w=400',
-        price: 24.99,
-        downloads: 156,
-        likes: 78,
-        views: 890,
-        category: 'Lighting',
-        featured: false,
-        createdAt: '2025-01-08'
-      },
+        title: 'Desk Task Light',
+        thumbnail: 'https://images.pexels.com/photos/1112598/pexels-photo-1112598.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 31.99,
+        downloads: 112,
+        likes: 68
+      }
+    ]
+  },
+  'DesignPro': {
+    username: 'DesignPro',
+    displayName: 'Alex Thompson',
+    avatar: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=200',
+    bio: 'Professional designer with 8+ years of experience in product design and 3D modeling. Creating innovative solutions for everyday problems.',
+    location: 'San Francisco, CA',
+    joinDate: 'February 2023',
+    rating: 4.8,
+    totalSales: 1456,
+    isVerified: true,
+    specialties: ['Product Design', '3D Modeling', 'Prototyping'],
+    socialLinks: {
+      website: 'https://designpro.studio',
+      twitter: '@designpro_3d',
+      instagram: '@designpro_studio'
+    },
+    designs: [
       {
         id: '8',
-        title: 'Kitchen Utensil Holder',
-        thumbnail: 'https://images.pexels.com/photos/1080721/pexels-photo-1080721.jpeg?auto=compress&cs=tinysrgb&w=400',
-        price: 15.50,
+        title: 'Decorative Vase',
+        thumbnail: 'https://images.pexels.com/photos/1029604/pexels-photo-1029604.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 19.99,
         downloads: 203,
-        likes: 92,
-        views: 1100,
-        category: 'Home & Garden',
-        featured: false,
-        createdAt: '2025-01-05'
+        likes: 87
       },
       {
         id: '9',
-        title: 'Ergonomic Phone Stand',
-        thumbnail: 'https://images.pexels.com/photos/404280/pexels-photo-404280.jpeg?auto=compress&cs=tinysrgb&w=400',
-        price: 9.99,
-        downloads: 312,
-        likes: 145,
-        views: 1567,
-        category: 'Accessories',
-        featured: false,
-        createdAt: '2025-01-03'
+        title: 'Modern Bookend',
+        thumbnail: 'https://images.pexels.com/photos/159711/books-bookstore-book-reading-159711.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 16.99,
+        downloads: 134,
+        likes: 62
       }
     ]
   },
@@ -85,412 +163,356 @@ const mockUserProfiles = {
     username: 'ArtisticMind',
     displayName: 'Maria Rodriguez',
     avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=200',
-    bio: 'Contemporary artist exploring the intersection of digital art and physical form through 3D printing. My work focuses on geometric patterns and abstract sculptures.',
-    location: 'Barcelona, Spain',
-    joinedDate: '2023-03-22',
+    bio: 'Artist and designer passionate about bringing creativity into functional objects. Every piece tells a story and serves a purpose.',
+    location: 'Miami, FL',
+    joinDate: 'April 2023',
     rating: 4.6,
-    totalDesigns: 18,
-    totalDownloads: 3240,
-    totalLikes: 890,
-    totalViews: 28400,
-    verified: false,
-    specialties: ['Art & Decor', 'Sculptures', 'Geometric', 'Abstract'],
+    totalSales: 678,
+    isVerified: false,
+    specialties: ['Artistic Design', 'Decorative Items', 'Creative Solutions'],
     socialLinks: {
-      website: 'https://mariarodriguez.art',
-      instagram: '@maria_3d_art'
+      instagram: '@artistic_mind_designs',
+      website: 'https://artisticmind.art'
     },
-    achievements: [
-      { title: 'Creative Excellence', description: 'Unique artistic designs', icon: Star },
-      { title: 'Community Choice', description: 'Most liked designs', icon: Heart }
-    ],
     designs: [
       {
-        id: '2',
-        title: 'Geometric Vase',
-        thumbnail: 'https://images.pexels.com/photos/1094767/pexels-photo-1094767.jpeg?auto=compress&cs=tinysrgb&w=400',
-        price: 18.50,
+        id: '10',
+        title: 'Artistic Bowl',
+        thumbnail: 'https://images.pexels.com/photos/1029604/pexels-photo-1029604.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 22.99,
+        downloads: 89,
+        likes: 54
+      },
+      {
+        id: '11',
+        title: 'Sculptural Candle Holder',
+        thumbnail: 'https://images.pexels.com/photos/1112598/pexels-photo-1112598.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 18.99,
+        downloads: 76,
+        likes: 43
+      }
+    ]
+  },
+  'GreenThumb': {
+    username: 'GreenThumb',
+    displayName: 'Emma Wilson',
+    avatar: 'https://images.pexels.com/photos/1181519/pexels-photo-1181519.jpeg?auto=compress&cs=tinysrgb&w=200',
+    bio: 'Bringing nature into homes and workspaces through thoughtful garden accessories and planters. Sustainable design is my passion.',
+    location: 'Austin, TX',
+    joinDate: 'May 2023',
+    rating: 4.5,
+    totalSales: 534,
+    isVerified: false,
+    specialties: ['Garden Accessories', 'Planters', 'Sustainable Design'],
+    socialLinks: {
+      instagram: '@greenthumb_designs',
+      website: 'https://greenthumb.garden'
+    },
+    designs: [
+      {
+        id: '12',
+        title: 'Garden Planter',
+        thumbnail: 'https://images.pexels.com/photos/1005058/pexels-photo-1005058.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 15.99,
+        downloads: 167,
+        likes: 78
+      },
+      {
+        id: '13',
+        title: 'Hanging Planter',
+        thumbnail: 'https://images.pexels.com/photos/1005058/pexels-photo-1005058.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 18.99,
+        downloads: 123,
+        likes: 65
+      },
+      {
+        id: '14',
+        title: 'Herb Garden Kit',
+        thumbnail: 'https://images.pexels.com/photos/1005058/pexels-photo-1005058.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 24.99,
+        downloads: 98,
+        likes: 52
+      },
+      {
+        id: '15',
+        title: 'Window Sill Planter',
+        thumbnail: 'https://images.pexels.com/photos/1005058/pexels-photo-1005058.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 12.99,
+        downloads: 145,
+        likes: 71
+      }
+    ]
+  },
+  'OrganizeIT': {
+    username: 'OrganizeIT',
+    displayName: 'Michael Chen',
+    avatar: 'https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=200',
+    bio: 'Organization expert helping people declutter and optimize their spaces. Every design is focused on functionality and efficiency.',
+    location: 'Denver, CO',
+    joinDate: 'June 2023',
+    rating: 4.6,
+    totalSales: 789,
+    isVerified: true,
+    specialties: ['Organization', 'Storage Solutions', 'Productivity Tools'],
+    socialLinks: {
+      website: 'https://organizeit.pro',
+      twitter: '@organizeit_pro',
+      instagram: '@organizeit_solutions'
+    },
+    designs: [
+      {
+        id: '16',
+        title: 'Desk Organizer',
+        thumbnail: 'https://images.pexels.com/photos/301920/pexels-photo-301920.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 14.99,
         downloads: 189,
-        likes: 142,
-        views: 2100,
-        category: 'Art & Decor',
-        featured: false,
-        createdAt: '2025-01-12'
+        likes: 84
+      },
+      {
+        id: '17',
+        title: 'Drawer Dividers Set',
+        thumbnail: 'https://images.pexels.com/photos/301920/pexels-photo-301920.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 11.99,
+        downloads: 156,
+        likes: 67
+      },
+      {
+        id: '18',
+        title: 'Wall-Mount File Holder',
+        thumbnail: 'https://images.pexels.com/photos/301920/pexels-photo-301920.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 16.99,
+        downloads: 134,
+        likes: 58
+      },
+      {
+        id: '19',
+        title: 'Modular Storage Cubes',
+        thumbnail: 'https://images.pexels.com/photos/301920/pexels-photo-301920.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 19.99,
+        downloads: 112,
+        likes: 49
+      },
+      {
+        id: '20',
+        title: 'Cable Organizer Tray',
+        thumbnail: 'https://images.pexels.com/photos/442150/pexels-photo-442150.jpeg?auto=compress&cs=tinysrgb&w=400',
+        price: 13.99,
+        downloads: 98,
+        likes: 41
       }
     ]
   }
 };
 
 export function UserProfile() {
-  const { username } = useParams();
-  const navigate = useNavigate();
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [sortBy, setSortBy] = useState('newest');
-
-  const user = mockUserProfiles[username as keyof typeof mockUserProfiles];
-
-  if (!user) {
+  const { username } = useParams<{ username: string }>();
+  
+  if (!username) {
     return (
-      <div className="pt-16 min-h-screen bg-gray-50 flex items-center justify-center">
-        <Card className="p-8 text-center">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">User Not Found</h2>
-          <p className="text-gray-600 mb-6">The user profile you're looking for doesn't exist.</p>
-          <Button onClick={() => navigate('/marketplace')}>
-            Back to Marketplace
-          </Button>
-        </Card>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">User not found</h1>
+          <Link to="/marketplace">
+            <Button>Back to Marketplace</Button>
+          </Link>
+        </div>
       </div>
     );
   }
 
-  const sortedDesigns = [...user.designs].sort((a, b) => {
-    switch (sortBy) {
-      case 'newest':
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      case 'popular':
-        return b.downloads - a.downloads;
-      case 'liked':
-        return b.likes - a.likes;
-      case 'price-high':
-        return b.price - a.price;
-      case 'price-low':
-        return a.price - b.price;
-      default:
-        return 0;
-    }
-  });
+  const profile = mockUserProfiles[username];
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">User not found</h1>
+          <Link to="/marketplace">
+            <Button>Back to Marketplace</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="pt-16 min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="mb-8">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors mb-6"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Back</span>
-          </button>
-        </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Back Button */}
+        <Link 
+          to="/marketplace" 
+          className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Marketplace
+        </Link>
 
         {/* Profile Header */}
         <Card className="p-8 mb-8">
           <div className="flex flex-col md:flex-row items-start md:items-center space-y-6 md:space-y-0 md:space-x-8">
-            <div className="relative">
-              <img
-                src={user.avatar}
-                alt={user.displayName}
-                className="w-32 h-32 rounded-full object-cover"
-              />
-              {user.verified && (
-                <div className="absolute -bottom-2 -right-2 bg-blue-500 text-white p-2 rounded-full">
-                  <Star className="h-4 w-4 fill-current" />
-                </div>
-              )}
-            </div>
+            <img
+              src={profile.avatar}
+              alt={profile.displayName}
+              className="w-24 h-24 rounded-full object-cover"
+            />
             
             <div className="flex-1">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
-                <div>
-                  <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                    {user.displayName}
-                    {user.verified && (
-                      <span className="ml-2 text-blue-500">
-                        <Star className="h-6 w-6 inline fill-current" />
-                      </span>
-                    )}
-                  </h1>
-                  <p className="text-xl text-gray-600">@{user.username}</p>
-                </div>
-                
-                <div className="flex items-center space-x-4 mt-4 md:mt-0">
-                  <div className="flex items-center space-x-1 text-yellow-500">
-                    <Star className="h-5 w-5 fill-current" />
-                    <span className="font-medium">{user.rating}</span>
-                  </div>
-                  <Button variant="outline">
-                    Follow
-                  </Button>
-                </div>
+              <div className="flex items-center space-x-3 mb-2">
+                <h1 className="text-3xl font-bold text-gray-900">{profile.displayName}</h1>
+                {profile.isVerified && (
+                  <Shield className="h-6 w-6 text-blue-500" title="Verified Creator" />
+                )}
               </div>
               
-              <p className="text-gray-600 mb-4 max-w-2xl">
-                {user.bio}
-              </p>
+              <p className="text-gray-600 text-lg mb-4">@{profile.username}</p>
               
-              <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 mb-4">
+              <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500 mb-4">
                 <div className="flex items-center space-x-1">
                   <MapPin className="h-4 w-4" />
-                  <span>{user.location}</span>
+                  <span>{profile.location}</span>
                 </div>
                 <div className="flex items-center space-x-1">
-                  <Calendar className="h-4 w-4" />
-                  <span>Joined {new Date(user.joinedDate).toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'long' 
-                  })}</span>
+                  <Star className="h-4 w-4 fill-current text-yellow-400" />
+                  <span>{profile.rating} rating</span>
                 </div>
+                <span>{profile.totalSales.toLocaleString()} sales</span>
+                <span>Joined {profile.joinDate}</span>
               </div>
               
-              {/* Social Links */}
-              {user.socialLinks && (
-                <div className="flex space-x-4 mb-4">
-                  {user.socialLinks.website && (
-                    <a 
-                      href={user.socialLinks.website} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-purple-600 hover:text-purple-700 text-sm"
-                    >
-                      Website
-                    </a>
-                  )}
-                  {user.socialLinks.instagram && (
-                    <a 
-                      href={`https://instagram.com/${user.socialLinks.instagram.replace('@', '')}`}
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-purple-600 hover:text-purple-700 text-sm"
-                    >
-                      {user.socialLinks.instagram}
-                    </a>
-                  )}
-                  {user.socialLinks.twitter && (
-                    <a 
-                      href={`https://twitter.com/${user.socialLinks.twitter.replace('@', '')}`}
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-purple-600 hover:text-purple-700 text-sm"
-                    >
-                      {user.socialLinks.twitter}
-                    </a>
-                  )}
-                </div>
-              )}
+              <p className="text-gray-700 mb-6">{profile.bio}</p>
               
-              {/* Specialties */}
-              <div className="flex flex-wrap gap-2">
-                {user.specialties.map((specialty) => (
-                  <span 
+              <div className="flex flex-wrap gap-2 mb-6">
+                {profile.specialties.map((specialty) => (
+                  <span
                     key={specialty}
-                    className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm"
+                    className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm"
                   >
                     {specialty}
                   </span>
                 ))}
               </div>
+              
+              {/* Social Links */}
+              <div className="flex space-x-4">
+                {profile.socialLinks.website && (
+                  <a
+                    href={profile.socialLinks.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center space-x-1 text-gray-600 hover:text-purple-600 transition-colors"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span>Website</span>
+                  </a>
+                )}
+                {profile.socialLinks.instagram && (
+                  <a
+                    href="#"
+                    className="flex items-center space-x-1 text-gray-600 hover:text-purple-600 transition-colors"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span>{profile.socialLinks.instagram}</span>
+                  </a>
+                )}
+                {profile.socialLinks.twitter && (
+                  <a
+                    href="#"
+                    className="flex items-center space-x-1 text-gray-600 hover:text-purple-600 transition-colors"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span>{profile.socialLinks.twitter}</span>
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </Card>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Stats & Achievements Sidebar */}
-          <div className="space-y-6">
-            {/* Stats */}
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Stats</h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Designs</span>
-                  <span className="font-bold text-gray-900">{user.totalDesigns}</span>
+        {/* Designs Section */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">
+            Designs by {profile.displayName} ({profile.designs.length})
+          </h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {profile.designs.map((design) => (
+              <Card key={design.id} className="overflow-hidden hover">
+                <div className="relative">
+                  <img
+                    src={design.thumbnail}
+                    alt={design.title}
+                    className="w-full h-48 object-cover"
+                  />
+                  <button className="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-sm rounded-full hover:bg-white transition-colors">
+                    <Heart className="h-4 w-4 text-gray-400 hover:text-red-500" />
+                  </button>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Downloads</span>
-                  <span className="font-bold text-gray-900">{user.totalDownloads.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Likes</span>
-                  <span className="font-bold text-gray-900">{user.totalLikes.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Views</span>
-                  <span className="font-bold text-gray-900">{user.totalViews.toLocaleString()}</span>
-                </div>
-              </div>
-            </Card>
-
-            {/* Achievements */}
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Achievements</h3>
-              <div className="space-y-3">
-                {user.achievements.map((achievement, index) => (
-                  <div key={index} className="flex items-start space-x-3">
-                    <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-2 rounded-lg">
-                      <achievement.icon className="h-4 w-4 text-white" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900 text-sm">{achievement.title}</h4>
-                      <p className="text-xs text-gray-500">{achievement.description}</p>
+                <div className="p-6">
+                  <div className="flex justify-between items-start mb-2">
+                    <Link 
+                      to={`/design/${design.id}`}
+                      className="text-lg font-semibold text-gray-900 hover:text-purple-600 transition-colors cursor-pointer"
+                    >
+                      {design.title}
+                    </Link>
+                    <span className="text-2xl font-bold text-purple-600">
+                      ${design.price}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-4 text-sm text-gray-500">
+                      <div className="flex items-center space-x-1">
+                        <Download className="h-3 w-3" />
+                        <span>{design.downloads}</span>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <Heart className="h-3 w-3" />
+                        <span>{design.likes}</span>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </Card>
-          </div>
-
-          {/* Designs */}
-          <div className="lg:col-span-3">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">
-                Designs ({user.designs.length})
-              </h2>
-              
-              <div className="flex items-center space-x-4">
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                >
-                  <option value="newest">Newest</option>
-                  <option value="popular">Most Downloaded</option>
-                  <option value="liked">Most Liked</option>
-                  <option value="price-high">Price: High to Low</option>
-                  <option value="price-low">Price: Low to High</option>
-                </select>
-                
-                <div className="flex border border-gray-300 rounded-lg">
-                  <button
-                    onClick={() => setViewMode('grid')}
-                    className={`p-2 ${viewMode === 'grid' ? 'bg-purple-50 text-purple-600' : 'text-gray-400'}`}
-                  >
-                    <Grid className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setViewMode('list')}
-                    className={`p-2 ${viewMode === 'list' ? 'bg-purple-50 text-purple-600' : 'text-gray-400'}`}
-                  >
-                    <List className="h-4 w-4" />
-                  </button>
+                  
+                  <div className="space-y-2">
+                    <Link to={`/download-checkout`} state={{
+                      modelData: {
+                        designId: design.id,
+                        designTitle: design.title,
+                        creator: profile.username,
+                        isMarketplaceItem: true
+                      },
+                      modelUrl: `mock-model-url-${design.id}`,
+                      price: design.price,
+                      isGenerated: false
+                    }}>
+                      <Button size="sm" className="w-full">
+                        <Download className="h-3 w-3 mr-1" />
+                        Buy Digital Files
+                      </Button>
+                    </Link>
+                    <Link to={`/order`} state={{
+                      modelData: {
+                        prompt: design.title,
+                        settings: {
+                          style: 'realistic',
+                          quality: 'high',
+                          size: 'medium'
+                        },
+                        isMarketplaceItem: true,
+                        designId: design.id,
+                        designTitle: design.title,
+                        creator: profile.username
+                      },
+                      modelUrl: `mock-model-url-${design.id}`
+                    }}>
+                      <Button size="sm" variant="outline" className="w-full">
+                        Order Physical Print
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
-              </div>
-            </div>
-
-            {/* Designs Grid/List */}
-            <div className={`grid gap-6 ${
-              viewMode === 'grid' 
-                ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' 
-                : 'grid-cols-1'
-            }`}>
-              {sortedDesigns.map((design) => (
-                <Card key={design.id} className="overflow-hidden hover">
-                  {viewMode === 'grid' ? (
-                    <>
-                      <div className="relative">
-                        <img
-                          src={design.thumbnail}
-                          alt={design.title}
-                          className="w-full h-48 object-cover"
-                        />
-                        {design.featured && (
-                          <div className="absolute top-2 left-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-2 py-1 rounded-md text-xs font-medium">
-                            Featured
-                          </div>
-                        )}
-                        <button className="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-sm rounded-full hover:bg-white transition-colors">
-                          <Heart className="h-4 w-4 text-gray-600" />
-                        </button>
-                      </div>
-                      <div className="p-6">
-                        <div className="flex justify-between items-start mb-2">
-                          <Link 
-                            to={`/design/${design.id}`}
-                            className="text-lg font-semibold text-gray-900 hover:text-purple-600 transition-colors"
-                          >
-                            {design.title}
-                          </Link>
-                          <span className="text-2xl font-bold text-purple-600">
-                            ${design.price}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                            {design.category}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {design.createdAt}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm text-gray-500">
-                          <div className="flex items-center space-x-4">
-                            <div className="flex items-center space-x-1">
-                              <Download className="h-3 w-3" />
-                              <span>{design.downloads}</span>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                              <Heart className="h-3 w-3" />
-                              <span>{design.likes}</span>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                              <Eye className="h-3 w-3" />
-                              <span>{design.views}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex">
-                      <img
-                        src={design.thumbnail}
-                        alt={design.title}
-                        className="w-32 h-32 object-cover"
-                      />
-                      <div className="flex-1 p-6">
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-2">
-                              <Link 
-                                to={`/design/${design.id}`}
-                                className="text-lg font-semibold text-gray-900 hover:text-purple-600 transition-colors"
-                              >
-                                {design.title}
-                              </Link>
-                              {design.featured && (
-                                <span className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-2 py-1 rounded-md text-xs font-medium">
-                                  Featured
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center space-x-4 text-sm text-gray-500 mb-2">
-                              <span className="bg-gray-100 px-2 py-1 rounded">
-                                {design.category}
-                              </span>
-                              <span>{design.createdAt}</span>
-                              <div className="flex items-center space-x-1">
-                                <Download className="h-3 w-3" />
-                                <span>{design.downloads}</span>
-                              </div>
-                              <div className="flex items-center space-x-1">
-                                <Heart className="h-3 w-3" />
-                                <span>{design.likes}</span>
-                              </div>
-                              <div className="flex items-center space-x-1">
-                                <Eye className="h-3 w-3" />
-                                <span>{design.views}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-right ml-6">
-                            <div className="text-2xl font-bold text-purple-600">
-                              ${design.price}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              ))}
-            </div>
-
-            {user.designs.length === 0 && (
-              <Card className="p-12 text-center">
-                <div className="text-gray-400 mb-4">
-                  <Grid className="h-16 w-16 mx-auto" />
-                </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No designs yet</h3>
-                <p className="text-gray-500">This creator hasn't published any designs yet.</p>
               </Card>
-            )}
+            ))}
           </div>
         </div>
       </div>

@@ -142,8 +142,45 @@ export function Generate() {
     }
   };
 
+  const handleEdit = () => {
+    setIsEditing(true);
+    setStatus('pending');
+    setGeneratedModel(null);
+  };
+
+  const handleRegenerate = () => {
+    setIsEditing(false);
+    setStatus('pending');
+    setGeneratedModel(null);
+    setGenerationData(null);
+    setHasGenerated(false);
+    setFormKey(prev => prev + 1); // Force form to re-render completely
+  };
+
   const handleBuyNow = () => {
     navigate('/order', { state: { modelData: generationData, modelUrl: generatedModel } });
+  };
+
+    const handleDownload = () => {
+    // Navigate to download checkout page
+    navigate('/download-checkout', {
+      state: {
+        modelData: generationData,
+        modelUrl: generatedModel,
+        price: 9.99, // Base price for generated models
+        isGenerated: true
+      }
+    });
+  };
+
+  const handleUploadToMarketplace = () => {
+    // Navigate to marketplace upload page
+    navigate('/marketplace-upload', {
+      state: {
+        modelData: generationData,
+        modelUrl: generatedModel
+      }
+    });
   };
 
   return (
@@ -161,26 +198,50 @@ export function Generate() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Generation Form */}
           <div className="space-y-6">
-            <GenerationForm onGenerate={handleGenerate} loading={generating} />
-            {(generating || status === 'completed' || status === 'failed') && (
+            <GenerationForm 
+              key={formKey}
+              onGenerate={handleGenerate} 
+              loading={generating}
+              initialData={isEditing ? generationData : null}
+              isEditing={isEditing}
+            />
+            
+            {/* Edit/Regenerate Buttons */}
+            {hasGenerated && status === 'completed' && !isEditing && (
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  Want to make changes?
+                </h3>ß
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Button 
+                    variant="outline" 
+                    icon={Edit} 
+                    className="w-full"
+                    onClick={handleEdit}
+                  >
+                    Edit Prompt
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    icon={RotateCcw}
+                    className="w-full"
+                    onClick={handleRegenerate}
+                  >
+                    Regenerate
+                  </Button>
+                </div>
+                <p className="text-sm text-gray-500 mt-3 text-center">
+                  Edit to modify your current prompt, or regenerate with a fresh start
+                </p>
+              </Card>
+            )}
+            
+            {(generating || status === 'completed') && (
               <GenerationProgress
                 progress={progress}
                 status={status}
-                estimatedTime={generating ? "45 seconds" : undefined}
+                estimatedTime="45 seconds"
               />
-            )}
-            {error && status === 'failed' && (
-              <Card className="p-4 bg-red-50 border-red-200">
-                <p className="text-red-600 text-sm">{error}</p>
-                <Button 
-                  onClick={() => setStatus('pending')} 
-                  variant="outline" 
-                  size="sm" 
-                  className="mt-2"
-                >
-                  Try Again
-                </Button>
-              </Card>
             )}
           </div>
 
@@ -194,23 +255,6 @@ export function Generate() {
                 modelUrl={generatedModel || undefined}
                 className="h-80 w-full"
               />
-              {/* Refine Button */}
-              {status === 'completed' && generatedModel && (
-                <Button onClick={handleRefine} loading={refining} disabled={refining} className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 mt-4">
-                  {refining ? 'Refining...' : 'Refine Model'}
-                </Button>
-              )}
-              {refining && (
-                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                  <div
-                    className="bg-gradient-to-r from-purple-600 to-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${refineProgress}%` }}
-                  />
-                </div>
-              )}
-              {refineError && (
-                <div className="text-red-600 text-xs mt-2">{refineError}</div>
-              )}
             </Card>
 
             {status === 'completed' && generatedModel && (
@@ -220,21 +264,26 @@ export function Generate() {
                 </h3>
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Button icon={Download} className="w-full">
+                    <Button 
+                      icon={Download} 
+                      className="w-full"
+                      onClick={handleDownload}
+                    >
                       Download
                     </Button>
                     <Button variant="outline" icon={Share2} className="w-full">
                       Share
                     </Button>
                   </div>
+                  
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Button 
                       variant="outline" 
-                      icon={ShoppingCart} 
+                      icon={Upload} 
                       className="w-full"
-                      onClick={() => navigate('/manufacturing')}
+                      onClick={handleUploadToMarketplace}
                     >
-                      Get Quote
+                      Upload to Marketplace
                     </Button>
                     <Button 
                       icon={ShoppingCart} 
@@ -244,6 +293,7 @@ export function Generate() {
                       Buy Now
                     </Button>
                   </div>
+                  
                   <div className="pt-4 border-t border-gray-200">
                     <h4 className="font-medium text-gray-900 mb-2">Model Details</h4>
                     <div className="grid grid-cols-2 gap-4 text-sm">

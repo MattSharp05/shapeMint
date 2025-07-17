@@ -19,10 +19,33 @@ export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate 
   const [loading, setLoading] = useState(initialLoading);
   const [error, setError] = useState<string>();
   const [settings, setSettings] = useState({
-    size: 'medium' as const,
-    style: 'realistic' as const,
-    quality: 'standard' as const,
+    size: (initialData?.settings?.size || 'medium') as const,
+    style: (initialData?.settings?.style || 'realistic') as const,
+    quality: (initialData?.settings?.quality || 'standard') as const,
   });
+
+  // Update form when initialData changes (for editing)
+  React.useEffect(() => {
+    if (initialData && isEditing) {
+      setMode(initialData.mode || 'text');
+      setPrompt(initialData.prompt || '');
+      setSettings({
+        size: initialData.settings?.size || 'medium',
+        style: initialData.settings?.style || 'realistic',
+        quality: initialData.settings?.quality || 'standard',
+      });
+    } else {
+      // Reset to defaults when no initial data (regenerate case)
+      setMode('text');
+      setPrompt('');
+      setImage(null);
+      setSettings({
+        size: 'medium',
+        style: 'realistic',
+        quality: 'standard',
+      });
+    }
+  }, [initialData, isEditing]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,6 +149,18 @@ export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate 
 
   return (
     <Card className="p-6">
+      {isEditing && (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+            <span className="text-sm font-medium text-blue-900">Editing Mode</span>
+          </div>
+          <p className="text-sm text-blue-700 mt-1">
+            Modify your prompt and settings, then generate a new version
+          </p>
+        </div>
+      )}
+      
       <div className="space-y-6">
         {/* Mode Selection */}
         <div className="flex space-x-4">
@@ -155,12 +190,12 @@ export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate 
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="space-y-6">
           {/* Input Section */}
           {mode === 'text' ? (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Describe your 3D model
+                {isEditing ? 'Edit your description' : 'Describe your 3D model'}
               </label>
               <textarea
                 value={prompt}
@@ -193,22 +228,6 @@ export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate 
                   <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 10MB</p>
                 </label>
               </div>
-              
-              {/* ✅ ADD OPTIONAL TEXTURE PROMPT FOR IMAGES */}
-              {mode === 'image' && (
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Texture prompt (optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Describe the texture or style you want..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  />
-                </div>
-              )}
             </div>
           )}
 
@@ -228,7 +247,7 @@ export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate 
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                 >
                   <option value="small">Small</option>
-                  <option value="medium">Length: 100mm</option>
+                  <option value="medium">Medium</option>
                   <option value="large">Large</option>
                 </select>
               </div>
@@ -261,21 +280,14 @@ export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate 
             </div>
           </div>
 
-          {error && (
-            <div className="p-3 rounded-lg bg-red-50 border border-red-200">
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-          )}
-
           <Button
             type="submit"
             icon={Wand2}
             loading={loading}
             className="w-full"
             size="lg"
-            disabled={!user}
           >
-            {loading ? 'Generating...' : 'Generate 3D Model'}
+            {loading ? 'Generating...' : isEditing ? 'Generate Updated Model' : 'Generate 3D Model'}
           </Button>
         </form>
       </div>

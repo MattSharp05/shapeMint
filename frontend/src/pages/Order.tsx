@@ -8,6 +8,8 @@ import { ModelViewer } from '../components/3D/ModelViewer';
 import { Modal } from '../components/UI/Modal';
 import { supabase } from '../supabaseClient';
 import { OrderSuccessModal } from '../components/Order/OrderSuccessModal';
+import { stripeService } from '../services/stripe';
+import { useAuth } from '../hooks/useAuth';
 
 const materials = [
   { 
@@ -88,6 +90,14 @@ export function Order() {
   const location = useLocation();
   const navigate = useNavigate();
   const { modelData, modelUrl, stlUrl } = location.state || {}; // ✅ Extract stlUrl from state
+  const { user } = useAuth();
+
+  // ✅ Debug logging
+  console.log('📦 Order page loaded');
+  console.log('📦 location.state:', location.state);
+  console.log('📦 modelData:', modelData);
+  console.log('📦 modelUrl:', modelUrl);
+  console.log('📦 stlUrl:', stlUrl);
 
   const [step, setStep] = useState(1);
   const [selectedMaterial, setSelectedMaterial] = useState('pla');
@@ -165,13 +175,24 @@ export function Order() {
 
   // ✅ Auto-populate file URL when component mounts
   useEffect(() => {
+    console.log('📦 Order page useEffect - Auto-populating form data');
+    console.log('📦 stlUrl:', stlUrl);
+    console.log('📦 modelData:', modelData);
+    
     if (stlUrl) {
+      const filename = modelData?.prompt ? 
+        `${modelData.prompt.substring(0, 20)}...` : 
+        'Generated Model';
+      
+      console.log('📦 Setting slantForm with:', {
+        fileURL: stlUrl,
+        filename
+      });
+      
       setSlantForm(prev => ({
         ...prev,
         fileURL: stlUrl,
-        filename: modelData?.prompt ? 
-          `${modelData.prompt.substring(0, 20)}...` : 
-          'Generated Model'
+        filename
       }));
     }
   }, [stlUrl, modelData]);
@@ -199,79 +220,92 @@ export function Order() {
   };
 
   const handlePlaceOrder = async () => {
-    console.log('DEBUG: Place Order button clicked');
+    console.log('🛒 Place Order button clicked');
+    console.log('🛒 Current state:', {
+      quoteSuccess,
+      total,
+      slantForm: {
+        fileURL: slantForm.fileURL,
+        name: slantForm.name,
+        email: slantForm.email
+      }
+    });
+    
+    console.log('🛒 handlePlaceOrder function called successfully');
+    
     try {
       setIsQuoteLoading(true);
       setQuoteError('');
+      
+      // Validate required fields
       if (!slantForm.fileURL || !slantForm.name || !slantForm.email) {
+        console.error('❌ Validation failed:', {
+          fileURL: !!slantForm.fileURL,
+          name: !!slantForm.name,
+          email: !!slantForm.email
+        });
         setQuoteError('Please fill in all required fields');
         setIsQuoteLoading(false);
         return;
       }
-      if (!paymentInfo.cardNumber || !paymentInfo.expiryDate || !paymentInfo.cvv || !paymentInfo.nameOnCard) {
-        setQuoteError('Please fill in all payment information');
+
+      const checkoutAmount = quoteSuccess?.totalPrice || total;
+      console.log('💰 Checkout amount:', checkoutAmount);
+
+      if (!checkoutAmount || checkoutAmount <= 0) {
+        console.error('❌ Invalid checkout amount:', checkoutAmount);
+        setQuoteError('Invalid price amount. Please get a quote first.');
         setIsQuoteLoading(false);
         return;
       }
-      console.log('=== PLACING ORDER ===');
-      console.log('Order data:', slantForm);
-      console.log('Payment info:', paymentInfo);
-      const orderData = {
-        email: slantForm.email,
-        phone: slantForm.phone,
-        name: slantForm.name,
-        orderNumber: slantForm.orderNumber,
-        filename: slantForm.filename,
-        fileURL: slantForm.fileURL,
-        bill_to_street_1: slantForm.bill_to_street_1,
-        bill_to_street_2: slantForm.bill_to_street_2,
-        bill_to_street_3: slantForm.bill_to_street_3,
-        bill_to_city: slantForm.bill_to_city,
-        bill_to_state: slantForm.bill_to_state,
-        bill_to_zip: slantForm.bill_to_zip,
-        bill_to_country_as_iso: slantForm.bill_to_country_as_iso,
-        bill_to_is_US_residential: slantForm.bill_to_is_US_residential,
-        ship_to_name: slantForm.ship_to_name,
-        ship_to_street_1: slantForm.ship_to_street_1,
-        ship_to_street_2: slantForm.ship_to_street_2,
-        ship_to_street_3: slantForm.ship_to_street_3,
-        ship_to_city: slantForm.ship_to_city,
-        ship_to_state: slantForm.ship_to_state,
-        ship_to_zip: slantForm.ship_to_zip,
-        ship_to_country_as_iso: slantForm.ship_to_country_as_iso,
-        ship_to_is_US_residential: slantForm.ship_to_is_US_residential,
-        order_item_name: slantForm.order_item_name,
-        order_quantity: slantForm.order_quantity,
-        order_image_url: slantForm.order_image_url,
-        order_sku: slantForm.order_sku,
-        order_item_color: mapColorToSlantAPI(slantForm.order_item_color),
-        profile: slantForm.profile || 'PLA'
-      };
-      const { data, error } = await supabase.functions.invoke('slant3d-order', {
-        body: { 
-          orderData,
-          paymentInfo
+
+      console.log('🚀 Calling Stripe checkout with:', {
+        amount: checkoutAmount,
+        paymentType: 'manufacturing',
+        metadata: {
+          userId: user?.id,
+          email: slantForm.email,
+          orderNumber: slantForm.orderNumber,
+          filename: slantForm.filename
         }
       });
-      if (error) {
-        console.error('❌ Supabase error:', error);
-        setQuoteError(`Connection error: ${error.message}`);
-        setIsQuoteLoading(false);
-        return;
-      }
-      if (!data.success) {
-        console.error('❌ Order creation failed:', data);
-        setQuoteError(data.error || 'Failed to create order');
-        setIsQuoteLoading(false);
-        return;
-      }
-      console.log('✅ Order created successfully:', data.data);
-      setOrderSuccess(data.data);
-      setIsSuccessModalOpen(true);
-    } catch (err) {
-      console.error('❌ Order error:', err);
-      setQuoteError(`Network error: ${(err as any).message}`);
-    } finally {
+
+      // Use Stripe checkout instead of processing payment inline
+      await stripeService.redirectToCheckout({
+        amount: checkoutAmount,
+        paymentType: 'manufacturing',
+        metadata: {
+          userId: user?.id || '',
+          email: slantForm.email || '',
+          phone: slantForm.phone || '',
+          name: slantForm.name || '',
+          orderNumber: slantForm.orderNumber || '',
+          filename: slantForm.filename || '',
+          fileURL: slantForm.fileURL || '',
+          material: selectedMaterial || '',
+          color: selectedColor || '',
+          quantity: quantity.toString(),
+          vendor: selectedVendor || '',
+          // Essential shipping info (keeping under 500 chars each)
+          billCity: slantForm.bill_to_city || '',
+          billState: slantForm.bill_to_state || '',
+          billZip: slantForm.bill_to_zip || '',
+          shipCity: slantForm.ship_to_city || '',
+          shipState: slantForm.ship_to_state || '',
+          shipZip: slantForm.ship_to_zip || ''
+        }
+      });
+
+      console.log('✅ Stripe checkout initiated successfully');
+
+    } catch (error: any) {
+      console.error('❌ Error initiating checkout:', error);
+      console.error('❌ Error details:', {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name
+      });
+      setQuoteError(`Failed to start checkout: ${error?.message || 'Please try again.'}`);
       setIsQuoteLoading(false);
     }
   };
@@ -618,10 +652,11 @@ export function Order() {
                 </Button>
               ) : (
                 <Button 
-                  onClick={step === 3 ? handleNext : handlePlaceOrder}
+                  onClick={handlePlaceOrder}
+                  loading={isQuoteLoading}
                   className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
                 >
-                  Place Order
+                  {isQuoteLoading ? 'Redirecting to Stripe...' : 'Place Order with Stripe'}
                 </Button>
               )}
             </div>
@@ -696,7 +731,14 @@ export function Order() {
                     type="button"
                     className="mt-6 w-full px-6 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg shadow hover:from-purple-600 hover:to-indigo-600 transition-colors disabled:opacity-60"
                     disabled={isQuoteLoading || !slantForm.fileURL}
-                    onClick={quoteSuccess ? () => setStep(4) : async () => {
+                    onClick={async () => {
+                      if (quoteSuccess) {
+                        console.log('🛒 Buy Now button clicked - redirecting to Stripe');
+                        await handlePlaceOrder();
+                        return;
+                      }
+                      
+                      console.log('📊 Getting quote from Slant3D...');
                       setIsQuoteLoading(true);
                       setQuoteError('');
                       setQuoteSuccess(null);
@@ -751,7 +793,7 @@ export function Order() {
                       }
                     }}
                   >
-                    {quoteSuccess ? 'Buy Now' : (isQuoteLoading ? 'Getting Quote...' : 'Get Quote')}
+                    {quoteSuccess ? 'Buy Now - Proceed to Stripe' : (isQuoteLoading ? 'Getting Quote...' : 'Get Quote')}
                   </button>
                 )}
                 {/* Show validation message if no file URL */}

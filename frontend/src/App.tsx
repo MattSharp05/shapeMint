@@ -14,6 +14,8 @@ import { DownloadCheckout } from './pages/DownloadCheckout';
 import { MarketplaceUpload } from './pages/MarketplaceUpload';
 import { DesignDetails } from './pages/DesignDetails';
 import { UserProfile } from './pages/UserProfile';
+import { PaymentSuccess } from './pages/PaymentSuccess';
+import { PaymentCancel } from './pages/PaymentCancel';
 import { AuthProvider } from './hooks/useAuth';
 
 function App() {
@@ -36,6 +38,8 @@ function App() {
               <Route path="/marketplace-upload" element={<MarketplaceUpload />} />
               <Route path="/design/:id" element={<DesignDetails />} />
               <Route path="/creator/:username" element={<UserProfile />} />
+              <Route path="/success" element={<PaymentSuccess />} />
+              <Route path="/cancel" element={<PaymentCancel />} />
             </Routes>
           </main>
           <Footer />

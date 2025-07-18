@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Search, Filter, Grid, List, Heart, Download } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
+import { modelService } from '../services/modelService';
+import { MarketplaceModel } from '../types';
 
 const mockDesigns = [
   {
@@ -88,9 +90,36 @@ export function Marketplace() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState('popular');
+  const [marketplaceModels, setMarketplaceModels] = useState<MarketplaceModel[]>([]);
   const navigate = useNavigate();
 
-  const filteredDesigns = mockDesigns.filter(design => {
+  useEffect(() => {
+    // Fetch real models from Supabase
+    modelService.fetchMarketplaceModels().then(setMarketplaceModels);
+  }, []);
+
+  const DEFAULT_MODEL_THUMBNAIL = 'https://placehold.co/400x300?text=3D+Model';
+
+  const realDesigns = marketplaceModels.map((model) => ({
+    id: model.id,
+    title: model.name || 'Untitled Model',
+    description: model.prompt || '',
+    // TODO: Use rendered model snapshot if available
+    thumbnail: model.thumbnail_url || DEFAULT_MODEL_THUMBNAIL,
+    price: 9.99, // Placeholder price, can be replaced with real pricing logic
+    category: model.style || 'Other',
+    downloads: 0, // Placeholder
+    likes: 0, // Placeholder
+    userName: model.user_id.slice(0, 8), // Placeholder, ideally fetch user name
+    featured: false, // Placeholder
+    modelUrl: model.glb_url || model.obj_url || model.stl_url || '',
+  }));
+
+  // Combine real models and mock data (real models first)
+  // TODO: Remove mockDesigns when real data is sufficient
+  const allDesigns = [...realDesigns, ...mockDesigns];
+
+  const filteredDesigns = allDesigns.filter(design => {
     const matchesSearch = design.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          design.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || design.category === selectedCategory;

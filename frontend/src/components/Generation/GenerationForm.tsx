@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { Upload, Type, Settings, Wand2 } from 'lucide-react';
 import { Button } from '../UI/Button';
+import { Input } from '../UI/Input';
 import { Card } from '../UI/Card';
 import { useAuth } from '../../hooks/useAuth';
-import { modelService } from '../../services/modelService';
+import { meshyService } from '../../services/meshy';
 
 interface GenerationFormProps {
-  onSuccess?: () => void;
+  onSuccess?: (model?: any) => void;
   loading?: boolean;
-  onGenerate?: (data: { prompt: string; image?: File | null; settings?: any }) => void;
 }
 
-export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate }: GenerationFormProps) {
+export function GenerationForm({ onSuccess, loading: initialLoading }: GenerationFormProps) {
   const { user } = useAuth();
   const [mode, setMode] = useState<'text' | 'image'>('text');
   const [prompt, setPrompt] = useState('');
@@ -36,29 +36,10 @@ export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate 
       return;
     }
 
-    // Validate user.id is a UUID
-    const uuidRegex = /^[0-9a-fA-F-]{36}$/;
-    if (!user.id || !uuidRegex.test(user.id)) {
-      setError('No valid user ID found. Please log in.');
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError(undefined);
     
     try {
-      if (onGenerate) {
-        // Pass all relevant data to parent handler
-        await onGenerate({
-          prompt: prompt.trim(),
-          image,
-          settings,
-        });
-        setPrompt('');
-        if (onSuccess) onSuccess();
-        return;
-      }
       // Convert form data to Meshy API format
       const generationData = {
         prompt: prompt.trim(),
@@ -69,28 +50,17 @@ export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate 
 
       console.log('Starting model generation with params:', generationData);
 
-      // Call Edge Function to generate the model
-      const response = await modelService.generate3DModel({ prompt: generationData.prompt });
-      if (response.success && response.data?.modelUrl) {
-        // Store model metadata in Supabase DB
-        // await new ModelService().createModel({ // This line was removed as per the edit hint
-        //   user_id: user.id,
-        //   name: `Model ${Date.now()}`,
-        //   prompt: generationData.prompt,
-        //   style: generationData.style,
-        //   obj_url: response.data.objUrl || '',
-        //   stl_url: response.data.stlUrl || '',
-        //   glb_url: response.data.modelUrl,
-        //   status: 'completed',
-        // });
-      } else {
-        throw new Error(response.error || 'Failed to generate model');
-      }
+      // Generate and store the model
+      const modelData = await meshyService.generateAndStoreModel(generationData, user.id);
       
       // Clear form
       setPrompt('');
       if (onSuccess) {
-        onSuccess();
+        onSuccess({
+          prompt: generationData.prompt,
+          style: generationData.style,
+          urls: modelData // This will contain the model URLs
+        });
       }
     } catch (err) {
       console.error('Error generating model:', err);
@@ -155,7 +125,7 @@ export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate 
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="space-y-6">
           {/* Input Section */}
           {mode === 'text' ? (
             <div>
@@ -193,22 +163,6 @@ export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate 
                   <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 10MB</p>
                 </label>
               </div>
-              
-              {/* ✅ ADD OPTIONAL TEXTURE PROMPT FOR IMAGES */}
-              {mode === 'image' && (
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Texture prompt (optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Describe the texture or style you want..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  />
-                </div>
-              )}
             </div>
           )}
 
@@ -228,7 +182,7 @@ export function GenerationForm({ onSuccess, loading: initialLoading, onGenerate 
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                 >
                   <option value="small">Small</option>
-                  <option value="medium">Length: 100mm</option>
+                  <option value="medium">Medium</option>
                   <option value="large">Large</option>
                 </select>
               </div>

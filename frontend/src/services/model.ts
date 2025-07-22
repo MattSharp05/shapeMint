@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClient';
+import { supabase } from '../lib/supabase';
 import type { GeneratedModel, CreateModelInput } from '../types/model';
 
 const MODELS_TABLE = 'generated_models';
@@ -69,7 +69,7 @@ export class ModelService {
   // Upload model file
   async uploadModelFile(modelId: string, fileType: 'obj' | 'stl' | 'glb', file: File): Promise<string> {
     const filePath = `${modelId}/${fileType}`;
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from(MODELS_BUCKET)
       .upload(filePath, file);
 

@@ -7,193 +7,24 @@ import { ModelViewer } from '../components/3D/ModelViewer';
 import { Button } from '../components/UI/Button';
 import { Card } from '../components/UI/Card';
 import { Download, Share2, ShoppingCart } from 'lucide-react';
-import { modelService } from '../services/modelService';
-import { useGLTF } from '@react-three/drei';
 
 export function Generate() {
-  // New status state
   const [status, setStatus] = useState<'pending' | 'generating' | 'completed' | 'failed'>('pending');
-  // Old states you want to keep
-  const [generatedModel, setGeneratedModel] = useState<string | null>(null);
-  const [generationData, setGenerationData] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [refining, setRefining] = useState(false);
-  const [refineProgress, setRefineProgress] = useState(0);
-  const [refineError, setRefineError] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [generatedModel, setGeneratedModel] = useState<any>(null);
+
   const navigate = useNavigate();
 
-  // Refine handler
-  const handleRefine = async () => {
-    if (!generationData?.taskId) return;
-    // Clear cache for the current model URL before refining
-    if (generatedModel) {
-      console.log('🧹 Clearing cache for current model before refining:', generatedModel);
-      useGLTF.clear(generatedModel);
-    }
-    setRefining(true);
-    setRefineProgress(0);
-    setRefineError(null);
-    setStatus('generating');
-    // Simulate progress for better UX
-    const progressInterval = setInterval(() => {
-      setRefineProgress((prev) => (prev < 90 ? prev + 5 : prev));
-    }, 1000);
-    try {
-      const response = await modelService.refineModel({ preview_task_id: generationData.taskId });
-      clearInterval(progressInterval);
-      setRefineProgress(100);
-      if (!response.success) {
-        setRefining(false);
-        setStatus('failed');
-        setRefineError(response.error || 'Failed to refine model');
-        return;
-      }
-      // Update preview and generationData with refined model
-      setGeneratedModel(response.data.originalUrls?.glb || response.data.modelUrl);
-      setGenerationData((prev: any) => ({
-        ...prev,
-        modelDetails: response.data,
-        taskId: response.data.taskId,
-        fileUrls: {
-          glb: response.data.modelUrl,
-          obj: response.data.objUrl,
-          stl: response.data.stlUrl,
-        },
-        refined: true,
-      }));
-      setStatus('completed');
-      setRefining(false);
-    } catch (err) {
-      clearInterval(progressInterval);
-      setRefining(false);
-      setStatus('failed');
-      setRefineError('An unexpected error occurred during refinement');
-    }
-  };
-
-  const handleGenerate = async (data: any) => {
-    setGenerating(true);
-    setStatus('generating');
-    setProgress(0);
-    setGenerationData(data);
-    setError(null);
-
-    try {
-      // Start progress simulation for better UX
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => {
-          // Cap at 90% until we get actual completion
-          return prev < 90 ? prev + 5 : prev;
-        });
-      }, 1000);
-
-      const response = await modelService.generate3DModel({
-        prompt: data.prompt || '',
-        image: data.image,
-      });
-
-      clearInterval(progressInterval);
-
-      if (!response.success) {
-        setStatus('failed');
-        setError(response.error || 'Failed to generate model');
-        setProgress(0);
-        return;
-      }
-
-      // Extract model URL from the Edge Function response
-      const modelUrl = response.data.modelUrl;
-      
-      if (!modelUrl) {
-        setStatus('failed');
-        setError('No model URL received from generation service');
-        setProgress(0);
-        return;
-      }
-
-      setGeneratedModel(modelUrl);
-      setStatus('completed');
-      setProgress(100);
-      
-      // Store ALL model details including file URLs
-      setGenerationData({
-        ...data,
-        modelDetails: response.data,
-        taskId: response.data.taskId,
-        format: 'GLB',
-        polygons: 'Unknown',
-        fileSize: 'Unknown',
-        // Store all file URLs for later use
-        fileUrls: {
-          glb: response.data.modelUrl,
-          obj: response.data.objUrl,
-          stl: response.data.stlUrl,
-        }
-      });
-    } catch (err) {
-      console.error('Error during model generation:', err);
-      setStatus('failed');
-      setError('An unexpected error occurred');
-      setProgress(0);
-    } finally {
-      setGenerating(false);
-    }
+  const handleGenerationSuccess = (modelData: any) => {
+    console.log('Generation completed, model data:', modelData);
+    console.log('Model data structure:', JSON.stringify(modelData, null, 2));
+    console.log('URLs in model data:', modelData?.urls);
+    console.log('GLB URL:', modelData?.urls?.glb);
+    setStatus('completed');
+    setGeneratedModel(modelData);
   };
 
   const handleBuyNow = () => {
-    console.log('🛒 Buy Now clicked from Generate page!');
-    console.log('🛒 generationData:', generationData);
-    console.log('🛒 generatedModel:', generatedModel);
-    console.log('🛒 stlUrl:', generationData?.fileUrls?.stl || generationData?.modelDetails?.stlUrl);
-    
-    if (!generationData || !generatedModel) {
-      console.error('❌ Missing required data for navigation');
-      alert('Error: Missing model data. Please regenerate the model.');
-      return;
-    }
-    
-    const stlUrl = generationData?.fileUrls?.stl || generationData?.modelDetails?.stlUrl;
-    console.log('🛒 Navigating to Order page with data:', {
-      modelData: generationData,
-      modelUrl: generatedModel,
-      stlUrl
-    });
-    
-    navigate('/order', { 
-      state: { 
-        modelData: generationData, 
-        modelUrl: generatedModel,
-        stlUrl
-      } 
-    });
-  };
-
-  const handleDownload = () => {
-    console.log('💾 Download clicked!');
-    console.log('💾 generationData:', generationData);
-    console.log('💾 generatedModel:', generatedModel);
-    
-    if (!generationData || !generatedModel) {
-      console.error('❌ Missing required data for navigation');
-      alert('Error: Missing model data. Please regenerate the model.');
-      return;
-    }
-    
-    console.log('💾 Navigating to Download Checkout page');
-    navigate('/download-checkout', {
-      state: {
-        modelData: {
-          prompt: generationData?.prompt,
-          settings: generationData?.settings,
-          isGenerated: true
-        },
-        modelUrl: generatedModel,
-        price: 12.99, // Default price for generated models
-        isGenerated: true
-      }
-    });
+    navigate('/order');
   };
 
   return (
@@ -211,26 +42,14 @@ export function Generate() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Generation Form */}
           <div className="space-y-6">
-            <GenerationForm onGenerate={handleGenerate} loading={generating} />
-            {(generating || status === 'completed' || status === 'failed') && (
+            <GenerationForm onSuccess={handleGenerationSuccess} />
+            
+            {status !== 'pending' && (
               <GenerationProgress
-                progress={progress}
+                progress={status === 'completed' ? 100 : 50}
                 status={status}
-                estimatedTime={generating ? "45 seconds" : undefined}
+                estimatedTime="45 seconds"
               />
-            )}
-            {error && status === 'failed' && (
-              <Card className="p-4 bg-red-50 border-red-200">
-                <p className="text-red-600 text-sm">{error}</p>
-                <Button 
-                  onClick={() => setStatus('pending')} 
-                  variant="outline" 
-                  size="sm" 
-                  className="mt-2"
-                >
-                  Try Again
-                </Button>
-              </Card>
             )}
           </div>
 
@@ -241,26 +60,9 @@ export function Generate() {
                 3D Preview
               </h3>
               <ModelViewer 
-                modelUrl={generatedModel || undefined}
+                modelUrl={generatedModel?.urls?.urls?.glb}
                 className="h-80 w-full"
               />
-              {/* Refine Button */}
-              {status === 'completed' && generatedModel && (
-                <Button onClick={handleRefine} loading={refining} disabled={refining} className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 mt-4">
-                  {refining ? 'Refining...' : 'Refine Model'}
-                </Button>
-              )}
-              {refining && (
-                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                  <div
-                    className="bg-gradient-to-r from-purple-600 to-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${refineProgress}%` }}
-                  />
-                </div>
-              )}
-              {refineError && (
-                <div className="text-red-600 text-xs mt-2">{refineError}</div>
-              )}
             </Card>
 
             {status === 'completed' && generatedModel && (
@@ -270,13 +72,14 @@ export function Generate() {
                 </h3>
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Button icon={Download} className="w-full" onClick={handleDownload}>
+                    <Button icon={Download} className="w-full">
                       Download
                     </Button>
                     <Button variant="outline" icon={Share2} className="w-full">
                       Share
                     </Button>
                   </div>
+                  
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Button 
                       variant="outline" 
@@ -294,6 +97,7 @@ export function Generate() {
                       Buy Now
                     </Button>
                   </div>
+                  
                   <div className="pt-4 border-t border-gray-200">
                     <h4 className="font-medium text-gray-900 mb-2">Model Details</h4>
                     <div className="grid grid-cols-2 gap-4 text-sm">

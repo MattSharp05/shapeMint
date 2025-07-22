@@ -1,8 +1,8 @@
 import axios from 'axios';
-import { storageService } from './storage';
-import { MeshyResponse } from '../types/model';
+import { modelService } from './model';
+import { MeshyResponse, CreateModelInput } from '../types/model';
 
-const MESHY_API_URL = 'https://api.meshy.ai/openapi/v2';
+const MESHY_API_BASE = '/api/meshy';
 
 interface MeshyGenerationParams {
   prompt: string;
@@ -12,6 +12,33 @@ interface MeshyGenerationParams {
 }
 
 export class MeshyService {
+  private async checkTaskStatus(taskId: string): Promise<{ data: MeshyResponse }> {
+    return axios.get(`${MESHY_API_BASE}/text-to-3d/${taskId}`, { headers: this.headers });
+  }
+
+  private async waitForTaskCompletion(taskId: string, maxAttempts = 90): Promise<MeshyResponse> {
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      const { data: response } = await this.checkTaskStatus(taskId);
+      const { status, progress } = response;
+
+      if (status === 'FAILED') {
+        console.error('Task failed:', response);
+        throw new Error('Task failed: ' + (response.task_error || 'Unknown error'));
+      }
+
+      if (status === 'SUCCEEDED') {
+        return response;
+      }
+
+      console.log(`Task status: ${status}, Progress: ${progress || 0}%, Attempt: ${attempts + 1}/${maxAttempts}`);
+      attempts++;
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    throw new Error('Task timed out');
+  }
   private static instance: MeshyService;
   private headers: { Authorization: string };
 
@@ -34,16 +61,19 @@ export class MeshyService {
     try {
       // Step 1: Create preview task
       console.log('Creating preview task with params:', params);
-      const previewResponse = await axios.post('/api/meshy/text-to-3d', {
+      console.log('Sending preview request to Meshy API...');
+      console.log('Using headers:', this.headers);
+      const previewResponse = await axios.post(`${MESHY_API_BASE}/text-to-3d`, {
         mode: 'preview',
         prompt: params.prompt,
         style: params.style || 'base',
         negative_prompt: params.negative_prompt || '',
         seed: params.seed || Math.floor(Math.random() * 1000000),
         enable_pbr: false
-      });
+      }, { headers: this.headers });
 
       console.log('Preview task creation response:', previewResponse.data);
+      console.log('Full preview response:', previewResponse.data);
       const previewTaskId = previewResponse.data.result;
       if (!previewTaskId) {
         console.error('No preview task ID in response:', previewResponse.data);
@@ -53,10 +83,10 @@ export class MeshyService {
       // Step 2: Poll preview task until complete
       let previewStatus;
       let attempts = 0;
-      const maxAttempts = 30; // 1 minute timeout (2s * 30)
+      const maxAttempts = 90; // 3 minute timeout (2s * 90) - Meshy can take longer during high load
 
       do {
-        const statusResponse = await axios.get(`/api/meshy/text-to-3d/${previewTaskId}`);
+        const statusResponse = await axios.get(`${MESHY_API_BASE}/text-to-3d/${previewTaskId}`, { headers: this.headers });
         console.log('Preview status response:', statusResponse.data);
 
         const { status, progress, task_error } = statusResponse.data;
@@ -71,15 +101,23 @@ export class MeshyService {
         if (status === 'SUCCEEDED') {
           console.log('Full preview response:', JSON.stringify(statusResponse.data, null, 2));
           
-          // For preview tasks, we need to get the preview image
-          const previewImage = statusResponse.data.preview_image || statusResponse.data.result;
-          if (!previewImage) {
-            console.error('No preview image in response:', statusResponse.data);
-            throw new Error('Preview completed but no preview image found');
+          // For preview tasks, we need to get the preview image or result URL
+          const hasPreviewImage = statusResponse.data.preview_image;
+          const hasModelUrls = statusResponse.data.model_urls;
+          const hasThumbnail = statusResponse.data.thumbnail_url;
+          
+          if (!hasPreviewImage && !hasModelUrls && !hasThumbnail) {
+            console.error('No preview image, model URLs, or thumbnail URL in response:', statusResponse.data);
+            throw new Error('Preview completed but no preview URL found');
           }
 
-          console.log('Preview task succeeded:', { taskId: previewTaskId, previewImage });
-          return { taskId: previewTaskId, modelUrl: previewImage };
+          // Use the first available preview URL
+          const previewUrl = statusResponse.data.preview_image || 
+                            (hasModelUrls && statusResponse.data.model_urls.glb) ||
+                            statusResponse.data.thumbnail_url;
+
+          console.log('Preview task succeeded:', { taskId: previewTaskId, previewImage: previewUrl });
+          return { taskId: previewTaskId, modelUrl: previewUrl };
         }
 
         console.log(`Preview status: ${status}, Progress: ${progress || 0}%, Attempt: ${attempts + 1}/${maxAttempts}`);
@@ -109,33 +147,31 @@ export class MeshyService {
     try {
       const preview = await this.generatePreview(params);
       
-      const refineResponse = await axios.post('/api/meshy/text-to-3d', {
+      // Check if we already have model URLs from the preview
+      const statusResponse = await this.checkTaskStatus(preview.taskId);
+      if (statusResponse.data.model_urls?.glb) {
+        console.log('Model URLs found in preview response, skipping refine step');
+        return statusResponse.data.model_urls.glb;
+      }
+
+      console.log('Sending refine request to Meshy API...');
+      console.log('Using headers for refine:', this.headers);
+      const refineResponse = await axios.post(`${MESHY_API_BASE}/text-to-3d`, {
         mode: 'refine',
         preview_task_id: preview.taskId,
         enable_pbr: false
-      });
+      }, { headers: this.headers });
 
+      console.log('Full refine response:', refineResponse.data);
       const refineTaskId = refineResponse.data.result;
       if (!refineTaskId) {
         throw new Error('No refine task ID returned from API');
       }
 
-      // Poll refine task until complete
-      let response: MeshyResponse;
-      do {
-        const statusResponse = await axios.get(`/api/meshy/text-to-3d/${refineTaskId}`);
-        response = statusResponse.data;
-
-        if (response.status === 'FAILED') {
-          throw new Error(`Refine failed: ${response.task_error?.message || 'Unknown error'}`);
-        }
-
-        if (response.status === 'SUCCEEDED' && response.model_url) {
-          return response.model_url;
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      } while (response.status === 'PENDING' || response.status === 'IN_PROGRESS');
+      const response = await this.waitForTaskCompletion(refineTaskId);
+      if (response.status === 'SUCCEEDED' && response.model_url) {
+        return response.model_url;
+      }
 
       throw new Error('Refine task incomplete');
     } catch (error) {
@@ -144,52 +180,56 @@ export class MeshyService {
     }
   }
 
-  async generateAndStoreModel(params: MeshyGenerationParams, userId: string): Promise<void> {
+  async generateAndStoreModel(params: MeshyGenerationParams, userId: string): Promise<any> {
     console.log('Starting model generation with params:', params);
     try {
       const glbUrl = await this.generateModel(params);
+      
+      // Generate other format URLs based on GLB URL pattern
       const objUrl = glbUrl.replace('.glb', '.obj');
       const stlUrl = glbUrl.replace('.glb', '.stl');
       
       const modelId = glbUrl.split('/').pop()?.split('.')[0] || Date.now().toString();
-      const objBlob = await this.downloadModel(objUrl);
-      const stlBlob = await this.downloadModel(stlUrl);
-      const glbBlob = await this.downloadModel(glbUrl);
+      
+      // Store the direct Meshy URLs instead of downloading and re-uploading
+      // This avoids the 403 authentication issues with asset downloads
+      const modelInput: CreateModelInput = {
+        user_id: userId,
+        name: `Model ${modelId.slice(0, 8)}`,
+        prompt: params.prompt,
+        style: params.style || 'base',
+        obj_url: objUrl,
+        stl_url: stlUrl,
+        glb_url: glbUrl,
+        status: 'completed'
+      };
 
-      const objStorageUrl = await storageService.uploadModelFile(modelId, 'obj', objBlob);
-      const stlStorageUrl = await storageService.uploadModelFile(modelId, 'stl', stlBlob);
-      const glbStorageUrl = await storageService.uploadModelFile(modelId, 'glb', glbBlob);
-
-      await storageService.saveModelToDatabase(
-        userId,
-        `Model ${modelId.slice(0, 8)}`,
-        params.prompt,
-        params.style || 'base',
-        { obj: objStorageUrl, stl: stlStorageUrl, glb: glbStorageUrl }
-      );
+      console.log('Storing model with direct URLs:', modelInput);
+      const createdModel = await modelService.createModel(modelInput);
+      console.log('Model stored successfully in Supabase');
+      
+      // Return the model data with URLs for UI display
+      return {
+        ...createdModel,
+        urls: {
+          glb: glbUrl,
+          obj: objUrl,
+          stl: stlUrl
+        }
+      };
+      
     } catch (error) {
       console.error('Error in generate and store flow:', error);
       throw error;
     }
   }
 
-  private async downloadModel(modelUrl: string): Promise<Blob> {
-    try {
-      const response = await axios.get(`/api/meshy/download?url=${encodeURIComponent(modelUrl)}`, {
-        responseType: 'blob',
-        maxRedirects: 5,
-        timeout: 30000
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Error downloading model:', error);
-      throw new Error('Failed to download model');
-    }
-  }
+
 
   async checkGenerationStatus(taskId: string): Promise<MeshyResponse> {
     try {
-      const response = await axios.get(`${MESHY_API_URL}/text-to-3d/${taskId}`, { headers: this.headers });
+      const proxyUrl = `${MESHY_API_BASE}/text-to-3d/${taskId}`;
+      const response = await axios.get(proxyUrl, { headers: this.headers });
       console.log('Generation status response:', {
         status: response.data.status,
         modelUrl: response.data.model_url,

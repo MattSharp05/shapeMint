@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { Upload, Download, DollarSign, Eye, Settings, Trash2 } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
+import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../supabaseClient';
+import type { GeneratedModel } from '../types/model';
 
 const mockUserDesigns = [
   {
@@ -59,6 +62,32 @@ export function Dashboard() {
     { id: 'analytics', label: 'Analytics' },
     { id: 'settings', label: 'Settings' }
   ];
+
+  // Fetch current user
+  const { user } = useAuth();
+  const [generatedModels, setGeneratedModels] = useState<GeneratedModel[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!user) return;
+    setLoadingModels(true);
+    setModelsError(null);
+    supabase
+      .from('generated_models')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          setModelsError(error.message);
+          setGeneratedModels([]);
+        } else {
+          setGeneratedModels(data as GeneratedModel[]);
+        }
+        setLoadingModels(false);
+      });
+  }, [user]);
 
   return (
     <div className="pt-16 min-h-screen bg-gray-50">
@@ -151,6 +180,7 @@ export function Dashboard() {
               <Button>Upload New Design</Button>
             </div>
             
+            {/* Demo content grid (keep unchanged) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {mockUserDesigns.map((design) => (
                 <Card key={design.id} className="overflow-hidden">
@@ -199,6 +229,55 @@ export function Dashboard() {
                   </div>
                 </Card>
               ))}
+            </div>
+            {/* User's Generated Models Section */}
+            <div className="mt-10">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Generated Models</h3>
+              {loadingModels ? (
+                <div className="text-gray-500">Loading your generated models...</div>
+              ) : modelsError ? (
+                <div className="text-red-500">Error: {modelsError}</div>
+              ) : generatedModels.length === 0 ? (
+                <div className="text-gray-500">You have not generated any models yet.</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {generatedModels.map((model) => (
+                    <Card key={model.id} className="overflow-hidden">
+                      {model.thumbnail_url ? (
+                        <img
+                          src={model.thumbnail_url}
+                          alt={model.name || 'Generated Model'}
+                          className="w-full h-48 object-cover bg-gray-100"
+                        />
+                      ) : (
+                        <div className="w-full h-48 flex items-center justify-center bg-gray-100 text-gray-400">
+                          No Thumbnail
+                        </div>
+                      )}
+                      <div className="p-6">
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="text-md font-semibold text-gray-900">
+                            {model.name || 'Untitled Model'}
+                          </h4>
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            model.status === 'completed'
+                              ? 'bg-green-100 text-green-800'
+                              : model.status === 'processing'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {model.status}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-600 mb-2">
+                          <span>Created: {new Date(model.created_at).toLocaleString()}</span>
+                        </div>
+                        {/* Add more model info/actions here as needed */}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

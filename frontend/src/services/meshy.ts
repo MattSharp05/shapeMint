@@ -16,12 +16,14 @@ export class MeshyService {
     return axios.get(`${MESHY_API_BASE}/text-to-3d/${taskId}`, { headers: this.headers });
   }
 
-  private async waitForTaskCompletion(taskId: string, maxAttempts = 90): Promise<MeshyResponse> {
+  private async waitForTaskCompletion(taskId: string, maxAttempts = 150): Promise<MeshyResponse> {
     let attempts = 0;
+    let lastProgress = 0;
 
     while (attempts < maxAttempts) {
       const { data: response } = await this.checkTaskStatus(taskId);
       const { status, progress } = response;
+      const currentProgress = progress || 0;
 
       if (status === 'FAILED') {
         console.error('Task failed:', response);
@@ -29,15 +31,26 @@ export class MeshyService {
       }
 
       if (status === 'SUCCEEDED') {
+        console.log('✅ Task completed successfully!');
         return response;
       }
 
-      console.log(`Task status: ${status}, Progress: ${progress || 0}%, Attempt: ${attempts + 1}/${maxAttempts}`);
+      // If we're at 99% or higher, be more patient (longer intervals)
+      const waitTime = currentProgress >= 99 ? 5000 : 3000;
+      
+      console.log(`Task status: ${status}, Progress: ${currentProgress}%, Attempt: ${attempts + 1}/${maxAttempts}`);
+      
+      // Show progress changes
+      if (currentProgress > lastProgress) {
+        console.log(`📈 Progress increased: ${lastProgress}% → ${currentProgress}%`);
+        lastProgress = currentProgress;
+      }
+      
       attempts++;
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
 
-    throw new Error('Task timed out');
+    throw new Error(`Task timed out after ${maxAttempts} attempts. Last progress: ${lastProgress}%`);
   }
   private static instance: MeshyService;
   private headers: { Authorization: string };

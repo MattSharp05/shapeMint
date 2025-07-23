@@ -58,9 +58,9 @@ export function Dashboard() {
   const tabs = [
     { id: 'designs', label: 'My Designs', count: mockUserDesigns.length },
     { id: 'purchases', label: 'Purchases', count: mockPurchases.length },
-    { id: 'orders', label: 'Orders', count: mockOrders.length },
-    { id: 'analytics', label: 'Analytics' },
-    { id: 'settings', label: 'Settings' }
+    { id: 'orders', label: 'Orders', count: mockOrders.length }
+    //{ id: 'analytics', label: 'Analytics' },
+    //{ id: 'settings', label: 'Settings' }
   ];
 
   // Fetch current user
@@ -176,8 +176,8 @@ export function Dashboard() {
         {activeTab === 'designs' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-gray-900">My Designs</h2>
-              <Button>Upload New Design</Button>
+              <h2 className="text-xl font-semibold text-gray-900">Published Designs</h2>
+              {/*<Button>Upload New Design</Button>*/}
             </div>
             
             {/* Demo content grid (keep unchanged) */}
@@ -232,7 +232,7 @@ export function Dashboard() {
             </div>
             {/* User's Generated Models Section */}
             <div className="mt-10">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Generated Models</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Designs</h3>
               {loadingModels ? (
                 <div className="text-gray-500">Loading your generated models...</div>
               ) : modelsError ? (
@@ -359,7 +359,7 @@ export function Dashboard() {
             </div>
           </div>
         )}
-
+        {/* Analytics Tab Contents
         {activeTab === 'analytics' && (
           <div className="space-y-6">
             <h2 className="text-xl font-semibold text-gray-900">Analytics</h2>
@@ -370,7 +370,9 @@ export function Dashboard() {
             </Card>
           </div>
         )}
+        */}
 
+        {/* Settings Tab Contents
         {activeTab === 'settings' && (
           <div className="space-y-6">
             <h2 className="text-xl font-semibold text-gray-900">Account Settings</h2>
@@ -381,6 +383,7 @@ export function Dashboard() {
             </Card>
           </div>
         )}
+        */}
       </div>
     </div>
   );

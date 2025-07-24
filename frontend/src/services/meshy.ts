@@ -16,41 +16,78 @@ export class MeshyService {
     return axios.get(`${MESHY_API_BASE}/text-to-3d/${taskId}`, { headers: this.headers });
   }
 
-  private async waitForTaskCompletion(taskId: string, maxAttempts = 150): Promise<MeshyResponse> {
+  private async waitForTaskCompletion(taskId: string, maxAttempts = 200): Promise<MeshyResponse> {
     let attempts = 0;
     let lastProgress = 0;
+    let stuckCount = 0;
+    let lastProgressTime = Date.now();
 
     while (attempts < maxAttempts) {
-      const { data: response } = await this.checkTaskStatus(taskId);
-      const { status, progress } = response;
-      const currentProgress = progress || 0;
+      try {
+        const { data: response } = await this.checkTaskStatus(taskId);
+        const { status, progress } = response;
+        const currentProgress = progress || 0;
+        const now = Date.now();
 
-      if (status === 'FAILED') {
-        console.error('Task failed:', response);
-        throw new Error('Task failed: ' + (response.task_error || 'Unknown error'));
-      }
+        if (status === 'FAILED') {
+          console.error('❌ Task failed:', response);
+          throw new Error('Task failed: ' + (response.task_error || 'Unknown error'));
+        }
 
-      if (status === 'SUCCEEDED') {
-        console.log('✅ Task completed successfully!');
-        return response;
-      }
+        if (status === 'SUCCEEDED') {
+          console.log('✅ Task completed successfully!');
+          return response;
+        }
 
-      // If we're at 99% or higher, be more patient (longer intervals)
-      const waitTime = currentProgress >= 99 ? 5000 : 3000;
-      
-      console.log(`Task status: ${status}, Progress: ${currentProgress}%, Attempt: ${attempts + 1}/${maxAttempts}`);
-      
-      // Show progress changes
-      if (currentProgress > lastProgress) {
-        console.log(`📈 Progress increased: ${lastProgress}% → ${currentProgress}%`);
-        lastProgress = currentProgress;
+        // Check if progress is stuck
+        if (currentProgress === lastProgress) {
+          stuckCount++;
+          const timeSinceProgress = now - lastProgressTime;
+          
+          if (stuckCount > 10 && timeSinceProgress > 120000) { // 2 minutes stuck
+            console.warn(`⚠️ Progress stuck at ${currentProgress}% for ${Math.round(timeSinceProgress/1000)}s`);
+          }
+        } else {
+          // Progress changed, reset stuck counter
+          stuckCount = 0;
+          lastProgressTime = now;
+          console.log(`📈 Progress increased: ${lastProgress}% → ${currentProgress}%`);
+          lastProgress = currentProgress;
+        }
+
+        // Adaptive wait times based on progress and stuck status
+        let waitTime;
+        if (currentProgress >= 99) {
+          waitTime = 8000; // 8 seconds for final processing
+        } else if (currentProgress >= 90) {
+          waitTime = 5000; // 5 seconds for high progress
+        } else if (stuckCount > 5) {
+          waitTime = 6000; // 6 seconds if stuck
+        } else {
+          waitTime = 3000; // 3 seconds normal
+        }
+        
+        console.log(`🔄 Task status: ${status}, Progress: ${currentProgress}%, Attempt: ${attempts + 1}/${maxAttempts}, Wait: ${waitTime/1000}s`);
+        
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`❌ Error checking task status (attempt ${attempts + 1}):`, errorMessage);
+        attempts++;
+        
+        // If it's a network error, wait longer before retrying
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // Don't throw on network errors, just continue trying
+        if (attempts >= maxAttempts) {
+          throw new Error(`Task polling failed after ${maxAttempts} attempts. Last error: ${errorMessage}`);
+        }
       }
-      
-      attempts++;
-      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
 
-    throw new Error(`Task timed out after ${maxAttempts} attempts. Last progress: ${lastProgress}%`);
+    throw new Error(`Task timed out after ${maxAttempts} attempts (${Math.round(maxAttempts * 4 / 60)} minutes). Last progress: ${lastProgress}%`);
   }
   private static instance: MeshyService;
   private headers: { Authorization: string };
@@ -93,55 +130,34 @@ export class MeshyService {
         throw new Error('No preview task ID returned from API');
       }
 
-      // Step 2: Poll preview task until complete
-      let previewStatus;
-      let attempts = 0;
-      const maxAttempts = 90; // 3 minute timeout (2s * 90) - Meshy can take longer during high load
-
-      do {
-        const statusResponse = await axios.get(`${MESHY_API_BASE}/text-to-3d/${previewTaskId}`, { headers: this.headers });
-        console.log('Preview status response:', statusResponse.data);
-
-        const { status, progress, task_error } = statusResponse.data;
-        previewStatus = status;
-
-        if (status === 'FAILED') {
-          const errorMsg = task_error?.message || 'Unknown error';
-          console.error('Preview task failed:', errorMsg);
-          throw new Error(`Preview failed: ${errorMsg}`);
+      // Step 2: Poll preview task until complete using improved polling logic
+      const response = await this.waitForTaskCompletion(previewTaskId);
+      
+      if (response.status === 'SUCCEEDED') {
+        console.log('✅ Preview generation completed successfully!');
+        
+        // For preview tasks, we need to get the preview image or result URL
+        // Cast to any to access properties that might not be in the type definition
+        const responseData = response as any;
+        const hasPreviewImage = response.preview_image;
+        const hasModelUrls = responseData.model_urls;
+        const hasThumbnail = responseData.thumbnail_url;
+        const hasModelUrl = response.model_url;
+        
+        if (!hasPreviewImage && !hasModelUrls && !hasThumbnail && !hasModelUrl) {
+          console.error('❌ No preview image, model URLs, thumbnail URL, or model URL in response:', response);
+          throw new Error('Preview completed but no preview URL found');
         }
 
-        if (status === 'SUCCEEDED') {
-          console.log('Full preview response:', JSON.stringify(statusResponse.data, null, 2));
-          
-          // For preview tasks, we need to get the preview image or result URL
-          const hasPreviewImage = statusResponse.data.preview_image;
-          const hasModelUrls = statusResponse.data.model_urls;
-          const hasThumbnail = statusResponse.data.thumbnail_url;
-          
-          if (!hasPreviewImage && !hasModelUrls && !hasThumbnail) {
-            console.error('No preview image, model URLs, or thumbnail URL in response:', statusResponse.data);
-            throw new Error('Preview completed but no preview URL found');
-          }
+        // Use the first available preview URL
+        const previewUrl = response.preview_image || 
+                          (hasModelUrls && responseData.model_urls.glb) ||
+                          responseData.thumbnail_url ||
+                          response.model_url;
 
-          // Use the first available preview URL
-          const previewUrl = statusResponse.data.preview_image || 
-                            (hasModelUrls && statusResponse.data.model_urls.glb) ||
-                            statusResponse.data.thumbnail_url;
-
-          console.log('Preview task succeeded:', { taskId: previewTaskId, previewImage: previewUrl });
-          return { taskId: previewTaskId, modelUrl: previewUrl };
-        }
-
-        console.log(`Preview status: ${status}, Progress: ${progress || 0}%, Attempt: ${attempts + 1}/${maxAttempts}`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        attempts++;
-
-        if (attempts >= maxAttempts) {
-          console.error('Preview task timed out after', maxAttempts * 2, 'seconds');
-          throw new Error('Preview generation timed out');
-        }
-      } while (previewStatus === 'PENDING' || previewStatus === 'IN_PROGRESS');
+        console.log('🎉 Preview task succeeded:', { taskId: previewTaskId, previewImage: previewUrl });
+        return { taskId: previewTaskId, modelUrl: previewUrl };
+      }
 
       console.error('Preview task exited loop without success or failure');
       throw new Error('Preview generation incomplete');

@@ -12,14 +12,21 @@ export function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [confirmPasswordError, setConfirmPasswordError] = useState('');
   const { register } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    setPasswordError('');
+    setConfirmPasswordError('');
+    if (password.length < 6) {
+      setPasswordError('Password must be at least 6 characters long.');
+      return;
+    }
     if (password !== confirmPassword) {
-      alert('Passwords do not match');
+      setConfirmPasswordError('Passwords do not match.');
       return;
     }
     
@@ -91,6 +98,12 @@ export function Register() {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            {password && password.length > 0 && password.length < 6 && (
+              <div className="mt-2 text-sm text-red-600">Password must be at least 6 characters long.</div>
+            )}
+            {passwordError && (
+              <div className="mt-2 text-sm text-red-600">{passwordError}</div>
+            )}
 
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -103,6 +116,12 @@ export function Register() {
                 required
               />
             </div>
+            {confirmPassword && confirmPassword.length > 0 && confirmPassword !== password && (
+              <div className="mt-2 text-sm text-red-600">Passwords do not match.</div>
+            )}
+            {confirmPasswordError && (
+              <div className="mt-2 text-sm text-red-600">{confirmPasswordError}</div>
+            )}
 
             <div className="flex items-center">
               <input type="checkbox" className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" required />

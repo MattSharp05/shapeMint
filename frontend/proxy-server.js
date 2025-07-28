@@ -2,9 +2,14 @@ import express from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import cors from 'cors';
 import axios from 'axios';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 const app = express();
 app.use(cors());
+app.use(express.json({ limit: '50mb' })); // Support large image uploads
 
 // Proxy middleware configuration for Meshy assets
 const meshyAssetsProxy = createProxyMiddleware({
@@ -70,6 +75,94 @@ const meshyAssetsProxy = createProxyMiddleware({
 // Use proxy middleware for /meshy-assets path
 app.use('/meshy-assets', meshyAssetsProxy);
 
+// Meshy API proxy endpoints
+const MESHY_API_KEY = process.env.VITE_MESHY_API_KEY;
+const MESHY_TEXT_TO_3D_BASE = 'https://api.meshy.ai/v2';
+const MESHY_IMAGE_TO_3D_BASE = 'https://api.meshy.ai/openapi/v1';
+
+if (!MESHY_API_KEY) {
+  console.error('❌ VITE_MESHY_API_KEY environment variable is required');
+  process.exit(1);
+}
+
+// Text-to-3D endpoints
+app.post('/api/meshy/text-to-3d', async (req, res) => {
+  try {
+    console.log('🔄 Proxying text-to-3D request:', req.body);
+    const response = await axios.post(`${MESHY_TEXT_TO_3D_BASE}/text-to-3d`, req.body, {
+      headers: {
+        'Authorization': `Bearer ${MESHY_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    console.log('✅ Text-to-3D response:', response.data);
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Text-to-3D proxy error:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({
+      error: error.response?.data || { message: 'Text-to-3D request failed' }
+    });
+  }
+});
+
+app.get('/api/meshy/text-to-3d/:taskId', async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    console.log('🔄 Checking text-to-3D task status:', taskId);
+    const response = await axios.get(`${MESHY_TEXT_TO_3D_BASE}/text-to-3d/${taskId}`, {
+      headers: {
+        'Authorization': `Bearer ${MESHY_API_KEY}`
+      }
+    });
+    console.log('✅ Text-to-3D status response:', response.data);
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Text-to-3D status error:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({
+      error: error.response?.data || { message: 'Failed to check text-to-3D status' }
+    });
+  }
+});
+
+// Image-to-3D endpoints
+app.post('/api/meshy/image-to-3d', async (req, res) => {
+  try {
+    console.log('🔄 Proxying image-to-3D request');
+    const response = await axios.post(`${MESHY_IMAGE_TO_3D_BASE}/image-to-3d`, req.body, {
+      headers: {
+        'Authorization': `Bearer ${MESHY_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    console.log('✅ Image-to-3D response:', response.data);
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Image-to-3D proxy error:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({
+      error: error.response?.data || { message: 'Image-to-3D request failed' }
+    });
+  }
+});
+
+app.get('/api/meshy/image-to-3d/:taskId', async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    console.log('🔄 Checking image-to-3D task status:', taskId);
+    const response = await axios.get(`${MESHY_IMAGE_TO_3D_BASE}/image-to-3d/${taskId}`, {
+      headers: {
+        'Authorization': `Bearer ${MESHY_API_KEY}`
+      }
+    });
+    console.log('✅ Image-to-3D status response:', response.data);
+    res.json(response.data);
+  } catch (error) {
+    console.error('❌ Image-to-3D status error:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({
+      error: error.response?.data || { message: 'Failed to check image-to-3D status' }
+    });
+  }
+});
+
 // Add GLB proxy endpoint for 3D model loading (fixes CORS)
 app.get('/api/meshy/glb', async (req, res) => {
   try {
@@ -83,7 +176,7 @@ app.get('/api/meshy/glb', async (req, res) => {
 
     const response = await axios.get(url, {
       headers: {
-        'Authorization': `Bearer ${process.env.VITE_MESHY_API_KEY}`,
+        'Authorization': `Bearer ${MESHY_API_KEY}`,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': '*/*',
         'Accept-Encoding': 'gzip, deflate, br',

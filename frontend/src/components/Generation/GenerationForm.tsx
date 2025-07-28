@@ -31,8 +31,14 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
       return;
     }
 
-    if (!prompt.trim()) {
+    // Validate inputs based on mode
+    if (mode === 'text' && !prompt.trim()) {
       setError('Please enter a prompt');
+      return;
+    }
+    
+    if (mode === 'image' && !image) {
+      setError('Please select an image');
       return;
     }
 
@@ -40,25 +46,42 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
     setError(undefined);
     
     try {
-      // Convert form data to Meshy API format
-      const generationData = {
-        prompt: prompt.trim(),
-        style: settings.style,
-        negative_prompt: '',
-        seed: Math.floor(Math.random() * 1000000)
-      };
-
-      console.log('Starting model generation with params:', generationData);
-
-      // Generate and store the model
-      const modelData = await meshyService.generateAndStoreModel(generationData, user.id);
+      let modelData;
       
-      // Clear form
-      setPrompt('');
+      if (mode === 'text') {
+        // Text-to-3D generation
+        const generationData = {
+          prompt: prompt.trim(),
+          style: settings.style,
+          negative_prompt: '',
+          seed: Math.floor(Math.random() * 1000000)
+        };
+
+        console.log('Starting text-to-3D generation with params:', generationData);
+        modelData = await meshyService.generateAndStoreModel(generationData, user.id);
+        
+      } else {
+        // Image-to-3D generation
+        const imageOptions = {
+          style: settings.style,
+          enable_pbr: settings.quality === 'standard' ? false : true
+        };
+
+        console.log('Starting image-to-3D generation with file:', image!.name);
+        modelData = await meshyService.generateAndStoreModelFromImage(image!, user.id, imageOptions);
+      }
+      
+      // Clear form based on mode
+      if (mode === 'text') {
+        setPrompt('');
+      } else {
+        setImage(null);
+      }
+      
       if (onSuccess) {
         onSuccess({
-          prompt: generationData.prompt,
-          style: generationData.style,
+          prompt: mode === 'text' ? prompt.trim() : `Image: ${image?.name}`,
+          style: settings.style,
           urls: modelData // This will contain the model URLs
         });
       }

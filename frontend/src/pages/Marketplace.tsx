@@ -110,7 +110,7 @@ export function Marketplace() {
     id: model.id,
     title: model.name || 'Untitled Model',
     description: model.prompt || '',
-    // TODO: Use rendered model snapshot if available
+    // Use actual thumbnail if available, otherwise fallback to placeholder
     thumbnail: model.thumbnail_url || DEFAULT_MODEL_THUMBNAIL,
     price: 9.99, // Placeholder price, can be replaced with real pricing logic
     category: model.style || 'Other',

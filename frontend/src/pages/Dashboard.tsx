@@ -306,7 +306,10 @@ export function Dashboard() {
                         />
                       ) : (
                         <div className="w-full h-48 flex items-center justify-center bg-gray-100 text-gray-400">
-                          No Thumbnail
+                          <div className="text-center">
+                            <div className="text-sm font-medium">No Thumbnail</div>
+                            <div className="text-xs text-gray-500">Generating...</div>
+                          </div>
                         </div>
                       )}
                       <div className="p-6">

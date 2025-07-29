@@ -1,9 +1,6 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import type { IncomingMessage } from 'http';
-
-// Load environment variables
-const env = loadEnv(process.env.NODE_ENV || 'development', process.cwd(), '');
+import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -18,29 +15,11 @@ export default defineConfig({
     cors: true,
     open: true, // Auto-open in default browser
     proxy: {
-      '/api/meshy/download': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/api/meshy/glb': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-        secure: false,
-      },
+      // Route ALL /api/meshy requests to our local proxy server
       '/api/meshy': {
-        target: 'https://api.meshy.ai',
+        target: 'http://localhost:3001',
         changeOrigin: true,
-        secure: true,
-        rewrite: (path) => path.replace(/^\/api\/meshy/, '/openapi/v2'),
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq: any, req: IncomingMessage) => {
-            // Always set the Meshy API key from environment
-            if (env.VITE_MESHY_API_KEY) {
-              proxyReq.setHeader('Authorization', `Bearer ${env.VITE_MESHY_API_KEY}`);
-            }
-          });
-        },
+        secure: false,
       },
       '/api': {
         target: 'http://localhost:3000',

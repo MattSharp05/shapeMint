@@ -23,10 +23,6 @@ export function Generate() {
   const navigate = useNavigate();
 
   const handleGenerationSuccess = (modelData: any) => {
-    console.log('Generation completed, model data:', modelData);
-    console.log('Model data structure:', JSON.stringify(modelData, null, 2));
-    console.log('URLs in model data:', modelData?.urls);
-    console.log('GLB URL:', modelData?.urls?.glb);
     setStatus('completed');
     setGeneratedModel(modelData);
     
@@ -35,6 +31,10 @@ export function Generate() {
   };
 
   const checkThumbnailStatus = async (modelId: string) => {
+    if (!modelId) {
+      return;
+    }
+    
     try {
       const { data: model, error } = await supabase
         .from('generated_models')
@@ -62,14 +62,14 @@ export function Generate() {
 
   // Poll for thumbnail completion
   useEffect(() => {
-    if (generatedModel?.id && status === 'completed') {
+    if (generatedModel?.urls?.id && status === 'completed') {
       const interval = setInterval(() => {
-        checkThumbnailStatus(generatedModel.id);
+        checkThumbnailStatus(generatedModel.urls.id);
       }, 5000); // Check every 5 seconds
       
       return () => clearInterval(interval);
     }
-  }, [generatedModel?.id, status]);
+  }, [generatedModel?.urls?.id, status]);
 
   const handleBuyNow = () => {
     navigate('/order');

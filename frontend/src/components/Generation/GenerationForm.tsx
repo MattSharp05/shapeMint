@@ -32,8 +32,14 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
       return;
     }
 
-    if (!prompt.trim()) {
+    // Validate inputs based on mode
+    if (mode === 'text' && !prompt.trim()) {
       setError('Please enter a prompt');
+      return;
+    }
+    
+    if (mode === 'image' && !image) {
+      setError('Please select an image');
       return;
     }
 
@@ -41,49 +47,42 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
     setError(undefined);
     
     try {
-      // Convert form data to Meshy API format
-      const generationData = {
-        prompt: prompt.trim(),
-        style: settings.style,
-        negative_prompt: '',
-        seed: Math.floor(Math.random() * 1000000)
-      };
+      let modelData;
+      
+      if (mode === 'text') {
+        // Text-to-3D generation
+        const generationData = {
+          prompt: prompt.trim(),
+          style: settings.style,
+          negative_prompt: '',
+          seed: Math.floor(Math.random() * 1000000)
+        };
 
-      console.log('Starting model generation with params:', generationData);
+        console.log('Starting text-to-3D generation with params:', generationData);
+        modelData = await meshyService.generateAndStoreModel(generationData, user.id);
+        
+      } else {
+        // Image-to-3D generation
+        const imageOptions = {
+          style: settings.style,
+          enable_pbr: settings.quality === 'standard' ? false : true
+        };
 
-      // Generate and store the model
-      const modelData = await meshyService.generateAndStoreModel(generationData, user.id);
-
-      // TODO: Uncomment when ready to download and convert files
-      // // Call Edge Function to save GLB to Supabase Storage (test)
-      // if (modelData?.urls?.glb && modelData?.id) {
-      //   try {
-      //     const { data: { session } } = await supabase.auth.getSession();
-      //     const accessToken = session?.access_token;
-      //     const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-stl-to-bucket`, {
-      //       method: 'POST',
-      //       headers: {
-      //         'Content-Type': 'application/json',
-      //         'Authorization': `Bearer ${accessToken || import.meta.env.VITE_SUPABASE_ANON_KEY}`
-      //       },
-      //       body: JSON.stringify({
-      //         glbUrl: modelData.urls.glb,
-      //         modelId: modelData.id
-      //       })
-      //     });
-      //     const result = await res.json();
-      //     console.log('Edge Function save-stl-to-bucket result:', result);
-      //   } catch (err) {
-      //     console.error('Error calling save-stl-to-bucket Edge Function:', err);
-      //   }
-      // }
-
-      // Clear form
-      setPrompt('');
+        console.log('Starting image-to-3D generation with file:', image!.name);
+        modelData = await meshyService.generateAndStoreModelFromImage(image!, user.id, imageOptions);
+      }
+      
+      // Clear form based on mode
+      if (mode === 'text') {
+        setPrompt('');
+      } else {
+        setImage(null);
+      }
+      
       if (onSuccess) {
         onSuccess({
-          prompt: generationData.prompt,
-          style: generationData.style,
+          prompt: mode === 'text' ? prompt.trim() : `Image: ${image?.name}`,
+          style: settings.style,
           urls: modelData // This will contain the model URLs
         });
       }

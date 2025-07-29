@@ -11,9 +11,37 @@ interface MeshyGenerationParams {
   seed?: number;
 }
 
+interface ImageGenerationParams {
+  imageFile: File;
+  style?: string;
+  enable_pbr?: boolean;
+}
+
+// Extended MeshyResponse to include model_urls for compatibility
+interface ExtendedMeshyResponse extends MeshyResponse {
+  model_urls?: {
+    glb?: string;
+    obj?: string;
+    stl?: string;
+  };
+}
+
 export class MeshyService {
-  private async checkTaskStatus(taskId: string): Promise<{ data: MeshyResponse }> {
+  // Text-to-3D task status checking
+  private async checkTextTaskStatus(taskId: string): Promise<{ data: MeshyResponse }> {
     return axios.get(`${MESHY_API_BASE}/text-to-3d/${taskId}`, { headers: this.headers });
+  }
+
+  // Image-to-3D task status checking
+  private async checkImageTaskStatus(taskId: string): Promise<{ data: MeshyResponse }> {
+    return axios.get(`${MESHY_API_BASE}/image-to-3d/${taskId}`, { headers: this.headers });
+  }
+
+  // Generic task status checking (backwards compatibility)
+  private async checkTaskStatus(taskId: string, mode: 'text' | 'image' = 'text'): Promise<{ data: MeshyResponse }> {
+    return mode === 'image' 
+      ? this.checkImageTaskStatus(taskId)
+      : this.checkTextTaskStatus(taskId);
   }
 
   private async waitForTaskCompletion(taskId: string, maxAttempts = 200): Promise<MeshyResponse> {
@@ -178,9 +206,10 @@ export class MeshyService {
       
       // Check if we already have model URLs from the preview
       const statusResponse = await this.checkTaskStatus(preview.taskId);
-      if (statusResponse.data.model_urls?.glb) {
+      const previewData = statusResponse.data as ExtendedMeshyResponse;
+      if (previewData.model_urls?.glb) {
         console.log('Model URLs found in preview response, skipping refine step');
-        return statusResponse.data.model_urls.glb;
+        return previewData.model_urls.glb;
       }
 
       console.log('Sending refine request to Meshy API...');
@@ -254,6 +283,183 @@ export class MeshyService {
   }
 
 
+
+  // Image-to-3D helper methods
+  private convertImageToDataUri(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result);
+      };
+      reader.onerror = () => reject(new Error('Failed to read image file'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  private async createImageTo3DTask(imageDataUri: string, options: Partial<ImageGenerationParams> = {}): Promise<string> {
+    const payload = {
+      image_url: imageDataUri,
+      ai_model: 'meshy-4', // Required for enable_pbr=true
+      enable_pbr: options.enable_pbr || false,
+      should_remesh: true,
+      should_texture: true,
+      topology: 'triangle',
+      target_polycount: 30000
+    };
+
+    console.log('📤 Sending image-to-3D request to Meshy API...');
+    const response = await axios.post(`${MESHY_API_BASE}/image-to-3d`, payload, {
+      headers: this.headers
+    });
+
+    console.log('✅ Image-to-3D task created:', response.data);
+    return response.data.result;
+  }
+
+  // Image-to-3D generation methods
+  async generateModelFromImage(imageFile: File, options: Partial<ImageGenerationParams> = {}): Promise<string> {
+    console.log('🖼️ Starting image-to-3D generation with file:', imageFile.name);
+    try {
+      // Convert image to data URI
+      const imageDataUri = await this.convertImageToDataUri(imageFile);
+      console.log('✅ Image converted to data URI');
+      
+      // Create image-to-3D task
+      const taskId = await this.createImageTo3DTask(imageDataUri, options);
+      console.log('✅ Image-to-3D task created:', taskId);
+      
+      // Poll for completion using image-specific polling
+      const response = await this.waitForImageTaskCompletion(taskId);
+      console.log('✅ Image-to-3D generation completed:', response);
+      
+      if (response.status === 'SUCCEEDED' && response.model_url) {
+        return response.model_url;
+      }
+      
+      throw new Error('Image-to-3D generation failed: No model URL returned');
+    } catch (error) {
+      console.error('❌ Error in image-to-3D generation:', error);
+      throw new Error('Failed to generate model from image');
+    }
+  }
+
+  async generateAndStoreModelFromImage(imageFile: File, userId: string, options: Partial<ImageGenerationParams> = {}): Promise<any> {
+    console.log('Starting image-to-3D model generation with file:', imageFile.name);
+    try {
+      const glbUrl = await this.generateModelFromImage(imageFile, options);
+      
+      // Generate other format URLs based on GLB URL pattern
+      const objUrl = glbUrl.replace('.glb', '.obj');
+      const stlUrl = glbUrl.replace('.glb', '.stl');
+      
+      // Store in Supabase with correct schema
+      const modelData = {
+        name: `Image: ${imageFile.name}`,
+        prompt: `Image: ${imageFile.name}`,
+        style: 'image-to-3d',
+        obj_url: objUrl,
+        stl_url: stlUrl,
+        glb_url: glbUrl,
+        thumbnail_url: '',
+        user_id: userId,
+        status: 'completed' as const
+      };
+      
+      console.log('Storing image-to-3D model in Supabase:', modelData);
+      const createdModel = await modelService.createModel(modelData);
+      console.log('✅ Image-to-3D model stored successfully:', createdModel);
+      
+      // Return the model data with URLs for UI display
+      return {
+        ...createdModel,
+        urls: {
+          glb: glbUrl,
+          obj: objUrl,
+          stl: stlUrl
+        }
+      };
+      
+    } catch (error) {
+      console.error('Error in image-to-3D generate and store flow:', error);
+      throw error;
+    }
+  }
+
+  // Image-specific polling method
+  private async waitForImageTaskCompletion(taskId: string, maxAttempts = 200): Promise<MeshyResponse> {
+    let attempts = 0;
+    let lastProgress = 0;
+    let stuckCount = 0;
+    let lastProgressTime = Date.now();
+
+    while (attempts < maxAttempts) {
+      try {
+        const { data: response } = await this.checkImageTaskStatus(taskId);
+        const { status, progress } = response;
+        const currentProgress = progress || 0;
+        const now = Date.now();
+
+        if (status === 'FAILED') {
+          console.error('❌ Image task failed:', response);
+          throw new Error('Image task failed: ' + (response.task_error || 'Unknown error'));
+        }
+
+        if (status === 'SUCCEEDED') {
+          console.log('✅ Image task completed successfully!');
+          return response;
+        }
+
+        // Check if progress is stuck
+        if (currentProgress === lastProgress) {
+          stuckCount++;
+          const timeSinceProgress = now - lastProgressTime;
+          
+          if (stuckCount > 10 && timeSinceProgress > 120000) { // 2 minutes stuck
+            console.warn(`⚠️ Progress stuck at ${currentProgress}% for ${Math.round(timeSinceProgress/1000)}s`);
+          }
+        } else {
+          // Progress changed, reset stuck counter
+          stuckCount = 0;
+          lastProgressTime = now;
+          console.log(`📈 Progress increased: ${lastProgress}% → ${currentProgress}%`);
+          lastProgress = currentProgress;
+        }
+
+        // Adaptive wait times based on progress and stuck status
+        let waitTime;
+        if (currentProgress >= 99) {
+          waitTime = 8000; // 8 seconds for final processing
+        } else if (currentProgress >= 90) {
+          waitTime = 5000; // 5 seconds for high progress
+        } else if (stuckCount > 5) {
+          waitTime = 6000; // 6 seconds if stuck
+        } else {
+          waitTime = 3000; // 3 seconds normal
+        }
+        
+        console.log(`🔄 Image task status: ${status}, Progress: ${currentProgress}%, Attempt: ${attempts + 1}/${maxAttempts}, Wait: ${waitTime/1000}s`);
+        
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`❌ Error checking image task status (attempt ${attempts + 1}):`, errorMessage);
+        attempts++;
+        
+        // If it's a network error, wait longer before retrying
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // Don't throw on network errors, just continue trying
+        if (attempts >= maxAttempts) {
+          throw new Error(`Image task polling failed after ${maxAttempts} attempts. Last error: ${errorMessage}`);
+        }
+      }
+    }
+
+    throw new Error(`Image task timed out after ${maxAttempts} attempts (${Math.round(maxAttempts * 4 / 60)} minutes). Last progress: ${lastProgress}%`);
+  }
 
   async checkGenerationStatus(taskId: string): Promise<MeshyResponse> {
     try {

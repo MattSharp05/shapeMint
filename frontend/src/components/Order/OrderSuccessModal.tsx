@@ -23,6 +23,12 @@ interface OrderSuccessModalProps {
       state: string;
       zip: string;
     };
+    // Add tracking support
+    trackingInfo?: {
+      status: string;
+      trackingNumbers: string[];
+    };
+    labelDownloadUrl?: string; // Add this
   };
 }
 
@@ -97,6 +103,72 @@ export function OrderSuccessModal({ isOpen, onClose, orderData }: OrderSuccessMo
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+        
+        {/* Tracking Information */}
+        <div className={`rounded-lg p-4 mb-6 text-left ${
+          orderData.trackingInfo?.trackingNumbers?.length > 0 
+            ? 'bg-green-50' 
+            : 'bg-yellow-50'
+        }`}>
+          <h4 className={`font-semibold mb-2 ${
+            orderData.trackingInfo?.trackingNumbers?.length > 0 
+              ? 'text-green-900' 
+              : 'text-yellow-900'
+          }`}>
+            Shipping & Tracking
+          </h4>
+          
+          <div className={`text-sm space-y-2 ${
+            orderData.trackingInfo?.trackingNumbers?.length > 0 
+              ? 'text-green-800' 
+              : 'text-yellow-800'
+          }`}>
+            <div>
+              <strong>Status:</strong> {orderData.trackingInfo?.status || 'Processing'}
+            </div>
+            
+            {orderData.trackingInfo?.trackingNumbers?.length > 0 ? (
+              <div>
+                <strong>Tracking Numbers:</strong>
+                <div className="mt-1 space-y-1">
+                  {orderData.trackingInfo.trackingNumbers.map((trackingNumber, index) => (
+                    <div key={index} className="flex items-center space-x-2">
+                      <code className="bg-white px-2 py-1 rounded text-xs border">
+                        {trackingNumber}
+                      </code>
+                      <a 
+                        href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingNumber}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 text-xs underline"
+                      >
+                        Track with USPS
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p>🚚 Your order is being prepared for shipment.</p>
+                <p>Tracking numbers will be emailed to you once shipped.</p>
+              </div>
+            )}
+            
+            {orderData.labelDownloadUrl && (
+              <div>
+                <a 
+                  href={orderData.labelDownloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center text-blue-600 hover:text-blue-800 text-xs underline"
+                >
+                  📄 Download Shipping Label
+                </a>
+              </div>
+            )}
           </div>
         </div>
         

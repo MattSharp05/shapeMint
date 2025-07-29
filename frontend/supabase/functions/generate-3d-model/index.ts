@@ -10,18 +10,18 @@ Deno.serve(async (req) => {
     console.log('=== MAIN MODEL GENERATION FUNCTION ===');
     console.log('Method:', req.method);
     console.log('URL:', req.url);
-    
+
     // OLD CORS headers (working version)
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     };
-    
+
     if (req.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
     }
-    
+
     if (req.method !== 'POST') {
       return new Response(JSON.stringify({
         success: false,
@@ -31,12 +31,12 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    
+
     // Get environment variables
     const meshyApiKey = Deno.env.get('MESHY_API_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
+
     if (!meshyApiKey || !supabaseUrl || !supabaseServiceKey) {
       return new Response(JSON.stringify({
         success: false,
@@ -46,14 +46,14 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    
+
     // Create Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
+
     // Parse request
     const contentType = req.headers.get('content-type') || '';
     let prompt, imageData, mode, userId;
-    
+
     if (contentType.includes('multipart/form-data')) {
       const formData = await req.formData();
       prompt = formData.get('prompt')?.toString() || ''; // ✅ NEW: Default to empty string
@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    
+
     if (!prompt && !imageData) {
       return new Response(JSON.stringify({
         success: false,
@@ -88,17 +88,17 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    
+
     console.log('=== STARTING MODEL GENERATION ===');
     console.log('Prompt:', prompt);
     console.log('Image:', !!imageData); // ✅ NEW: Enhanced logging
     console.log('Mode:', mode);
-    
+
     // Generate model with Meshy API
     const authHeader = `Bearer ${meshyApiKey}`;
     let meshyResponse;
     let isImageTo3D = false;
-    
+
     // OLD IMAGE PROCESSING (working version)
     if (imageData && imageData instanceof File) {
       isImageTo3D = true;
@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify(body)
       });
     }
-    
+
     if (!meshyResponse.ok) {
       const errorText = await meshyResponse.text();
       console.error('❌ Meshy API Error:', errorText); // ✅ NEW: Enhanced error logging
@@ -150,10 +150,10 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    
+
     const meshyData = await meshyResponse.json();
     const taskId = meshyData.result || meshyData.task_id || meshyData.id;
-    
+
     if (!taskId) {
       return new Response(JSON.stringify({
         success: false,
@@ -163,34 +163,34 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    
+
     console.log('=== MODEL GENERATION STARTED ===');
     console.log('Task ID:', taskId);
-    
+
     // Poll for completion
     const statusUrl = isImageTo3D ? MESHY_IMAGE_TO_3D_URL : MESHY_TEXT_TO_3D_URL;
     let attempts = 0;
     const maxAttempts = 60;
-    
+
     while (attempts < maxAttempts) {
       console.log(`=== POLLING ATTEMPT ${attempts + 1} ===`);
       
       const statusResponse = await fetch(`${statusUrl}/${taskId}`, {
         headers: { 'Authorization': authHeader }
       });
-      
+
       if (statusResponse.ok) {
         const statusData = await statusResponse.json();
         console.log('Status:', statusData.status);
-        
+
         if (statusData.status === 'SUCCEEDED') {
           console.log('=== MODEL GENERATION COMPLETE ===');
           console.log('Available formats:', Object.keys(statusData.model_urls || {}));
-          
+
           // Get both GLB and OBJ URLs
           const glbUrl = statusData.model_urls?.glb;
           const objUrl = statusData.model_urls?.obj;
-          
+
           if (!glbUrl || !objUrl) {
             return new Response(JSON.stringify({
               success: false,
@@ -204,25 +204,25 @@ Deno.serve(async (req) => {
           
           console.log('GLB URL:', glbUrl);
           console.log('OBJ URL:', objUrl);
-          
+
           // Download both models
           console.log('=== DOWNLOADING MODELS ===');
           const [glbResponse, objResponse] = await Promise.all([
             fetch(glbUrl),
             fetch(objUrl)
           ]);
-          
+
           if (!glbResponse.ok || !objResponse.ok) {
             throw new Error(`Failed to download models - GLB: ${glbResponse.status}, OBJ: ${objResponse.status}`);
           }
-          
+
           const [glbData, objText] = await Promise.all([
             glbResponse.arrayBuffer(),
             objResponse.text() // ✅ OBJ files are text
           ]);
-          
+
           console.log('Downloaded - GLB:', glbData.byteLength, 'bytes, OBJ:', objText.length, 'characters');
-          
+
           // Upload GLB and OBJ to Supabase Storage
           console.log('=== UPLOADING GLB AND OBJ ===');
           const [glbUpload, objUpload] = await Promise.all([
@@ -237,19 +237,19 @@ Deno.serve(async (req) => {
               upsert: true
             })
           ]);
-          
+
           if (glbUpload.error || objUpload.error) {
             throw new Error(`Upload failed: ${glbUpload.error?.message || objUpload.error?.message}`);
           }
-          
+
           // Get public URLs
           const glbPublicUrl = supabase.storage.from('3d-models').getPublicUrl(`models/${taskId}.glb`).data.publicUrl;
           const objPublicUrl = supabase.storage.from('3d-models').getPublicUrl(`models/${taskId}.obj`).data.publicUrl;
-          
+
           console.log('✅ GLB and OBJ uploaded successfully');
           console.log('GLB URL:', glbPublicUrl);
           console.log('OBJ URL:', objPublicUrl);
-          
+
           // Call the OBJ-to-STL converter function
           console.log('=== CALLING STL CONVERTER ===');
           const converterResponse = await fetch(`${supabaseUrl}/functions/v1/obj-to-stl`, {
@@ -264,7 +264,7 @@ Deno.serve(async (req) => {
               fileName: `models/${taskId}.stl`
             })
           });
-          
+
           if (!converterResponse.ok) {
             const converterError = await converterResponse.text();
             console.error('❌ STL conversion failed:', converterError);
@@ -302,9 +302,9 @@ Deno.serve(async (req) => {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
           }
-          
+
           const converterResult = await converterResponse.json();
-          
+
           if (!converterResult.success) {
             console.error('❌ STL conversion failed:', converterResult.error);
             
@@ -326,19 +326,47 @@ Deno.serve(async (req) => {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
           }
-          
+
           console.log('✅ STL conversion successful:', converterResult.data.stlUrl);
-          
+
+          // Download STL from Meshy
+          const stlResponse = await fetch(converterResult.data.stlUrl);
+          if (!stlResponse.ok) {
+            throw new Error(`Failed to download STL from Meshy: ${stlResponse.status}`);
+          }
+          const stlData = await stlResponse.arrayBuffer();
+
+          // Upload STL to Supabase Storage
+          const stlUpload = await supabase.storage.from('3d-models').upload(`models/${taskId}.stl`, stlData, {
+            contentType: 'model/stl',
+            cacheControl: '3600',
+            upsert: true
+          });
+          if (stlUpload.error) {
+            throw new Error(`STL upload failed: ${stlUpload.error.message}`);
+          }
+          // Get public URL for STL
+          const stlPublicUrl = supabase.storage.from('3d-models').getPublicUrl(`models/${taskId}.stl`).data.publicUrl;
+
+          // Update the generated_models table with the new STL URL
+          const { error: updateError } = await supabase
+            .from('generated_models')
+            .update({ stl_url: stlPublicUrl })
+            .eq('id', taskId);
+          if (updateError) {
+            console.error('❌ Failed to update generated_models with STL URL:', updateError);
+          }
+
           // Return all URLs with STL as the download URL
           return new Response(JSON.stringify({
             success: true,
             data: {
               taskId: taskId,
               modelUrl: glbPublicUrl,                    // ✅ GLB for web display
-              downloadUrl: converterResult.data.stlUrl,  // ✅ STL for download
+              downloadUrl: stlPublicUrl,  // ✅ STL for download (from your bucket)
               objUrl: objPublicUrl,                      // OBJ as alternative
-              stlUrl: converterResult.data.stlUrl,       // STL for 3D printing
-              originalUrls: { glb: glbUrl, obj: objUrl },
+              stlUrl: stlPublicUrl,       // STL for 3D printing (from your bucket)
+              originalUrls: { glb: glbUrl, obj: objUrl, stl: converterResult.data.stlUrl },
               fileNames: {
                 glb: `models/${taskId}.glb`,
                 obj: `models/${taskId}.obj`,
@@ -374,17 +402,17 @@ Deno.serve(async (req) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
         }
-        
+
         // Still processing, wait and try again
         console.log('Model still processing, waiting...');
       }
-      
+
       attempts++;
       if (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
-    
+
     return new Response(JSON.stringify({
       success: false,
       error: 'Model generation timeout'

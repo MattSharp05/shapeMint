@@ -16,6 +16,7 @@ import { DesignDetails } from './pages/DesignDetails';
 import { UserProfile } from './pages/UserProfile';
 import { PaymentSuccess } from './pages/PaymentSuccess';
 import { PaymentCancel } from './pages/PaymentCancel';
+import { OrderSuccess } from './pages/OrderSuccess';
 import { AuthProvider } from './hooks/useAuth';
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
               <Route path="/creator/:username" element={<UserProfile />} />
               <Route path="/success" element={<PaymentSuccess />} />
               <Route path="/cancel" element={<PaymentCancel />} />
+              <Route path="/order-success" element={<OrderSuccess />} />
             </Routes>
           </main>
           <Footer />

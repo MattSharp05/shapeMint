@@ -127,6 +127,24 @@ Deno.serve(async (req) => {
     const slantData = await slantResponse.json();
     console.log('✅ Slant3D Order Created:', slantData);
     
+    // Extract tracking information if available
+    let trackingInfo: any = null;
+    if (slantData.trackingNumbers && slantData.trackingNumbers.length > 0) {
+      trackingInfo = {
+        status: slantData.status || 'processing',
+        trackingNumbers: slantData.trackingNumbers
+      };
+      console.log('📦 Tracking info found:', trackingInfo);
+    } else if (slantData.tracking_number) {
+      trackingInfo = {
+        status: slantData.status || 'processing',
+        trackingNumbers: [slantData.tracking_number]
+      };
+      console.log('📦 Single tracking number found:', trackingInfo);
+    } else {
+      console.log('📦 No tracking information available yet');
+    }
+    
     // TODO: Store order in your database
     // You can add database storage logic here
     try {
@@ -179,6 +197,7 @@ Deno.serve(async (req) => {
           state: orderData.ship_to_state,
           zip: orderData.ship_to_zip
         },
+        trackingInfo: trackingInfo,
         message: 'Order created successfully'
       }
     }), {

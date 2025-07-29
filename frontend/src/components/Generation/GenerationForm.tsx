@@ -5,6 +5,7 @@ import { Input } from '../UI/Input';
 import { Card } from '../UI/Card';
 import { useAuth } from '../../hooks/useAuth';
 import { meshyService } from '../../services/meshy';
+import { supabase } from '../../supabaseClient';
 
 interface GenerationFormProps {
   onSuccess?: (model?: any) => void;
@@ -52,7 +53,31 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
 
       // Generate and store the model
       const modelData = await meshyService.generateAndStoreModel(generationData, user.id);
-      
+
+      // TODO: Uncomment when ready to download and convert files
+      // // Call Edge Function to save GLB to Supabase Storage (test)
+      // if (modelData?.urls?.glb && modelData?.id) {
+      //   try {
+      //     const { data: { session } } = await supabase.auth.getSession();
+      //     const accessToken = session?.access_token;
+      //     const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-stl-to-bucket`, {
+      //       method: 'POST',
+      //       headers: {
+      //         'Content-Type': 'application/json',
+      //         'Authorization': `Bearer ${accessToken || import.meta.env.VITE_SUPABASE_ANON_KEY}`
+      //       },
+      //       body: JSON.stringify({
+      //         glbUrl: modelData.urls.glb,
+      //         modelId: modelData.id
+      //       })
+      //     });
+      //     const result = await res.json();
+      //     console.log('Edge Function save-stl-to-bucket result:', result);
+      //   } catch (err) {
+      //     console.error('Error calling save-stl-to-bucket Edge Function:', err);
+      //   }
+      // }
+
       // Clear form
       setPrompt('');
       if (onSuccess) {

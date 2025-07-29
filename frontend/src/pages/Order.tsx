@@ -86,6 +86,13 @@ const mapColorToSlantAPI = (color: string): string => {
   return colorMap[color] || 'white'; // Default to white if not found
 };
 
+function truncateStlUrl(url: string): string {
+  if (!url) return '';
+  const idx = url.indexOf('.stl');
+  if (idx === -1) return url;
+  return url.slice(0, idx + 4);
+}
+
 export function Order() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -183,15 +190,16 @@ export function Order() {
       const filename = modelData?.prompt ? 
         `${modelData.prompt.substring(0, 20)}...` : 
         'Generated Model';
+      const cleanStlUrl = truncateStlUrl(stlUrl);
       
       console.log('📦 Setting slantForm with:', {
-        fileURL: stlUrl,
+        fileURL: cleanStlUrl,
         filename
       });
       
       setSlantForm(prev => ({
         ...prev,
-        fileURL: stlUrl,
+        fileURL: cleanStlUrl,
         filename
       }));
     }
@@ -293,10 +301,9 @@ export function Order() {
           shipCity: slantForm.ship_to_city || '',
           shipState: slantForm.ship_to_state || '',
           shipZip: slantForm.ship_to_zip || ''
-        }
+        },
+        successPath: '/order-success'
       });
-
-      console.log('✅ Stripe checkout initiated successfully');
 
     } catch (error: any) {
       console.error('❌ Error initiating checkout:', error);
@@ -733,11 +740,13 @@ export function Order() {
                     disabled={isQuoteLoading || !slantForm.fileURL}
                     onClick={async () => {
                       if (quoteSuccess) {
+                        // Buy Now - Redirect to Stripe checkout
                         console.log('🛒 Buy Now button clicked - redirecting to Stripe');
                         await handlePlaceOrder();
                         return;
                       }
                       
+                      // Get Quote logic (keep existing)
                       console.log('📊 Getting quote from Slant3D...');
                       setIsQuoteLoading(true);
                       setQuoteError('');
@@ -793,7 +802,7 @@ export function Order() {
                       }
                     }}
                   >
-                    {quoteSuccess ? 'Buy Now - Proceed to Stripe' : (isQuoteLoading ? 'Getting Quote...' : 'Get Quote')}
+                    {quoteSuccess ? 'Buy Now with Stripe' : (isQuoteLoading ? 'Getting Quote...' : 'Get Quote')}
                   </button>
                 )}
                 {/* Show validation message if no file URL */}
@@ -915,7 +924,13 @@ export function Order() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label={requiredLabel('File Name')} value={slantForm.filename} onChange={e => setSlantForm(f => ({...f, filename: e.target.value}))} required />
-            <Input label={requiredLabel('File URL')} value={slantForm.fileURL} onChange={e => setSlantForm(f => ({...f, fileURL: e.target.value}))} required />
+            <Input 
+              label={requiredLabel('File URL')} 
+              value={slantForm.fileURL} 
+              onChange={e => setSlantForm(f => ({...f, fileURL: e.target.value}))}
+              required 
+              // Auto-populated from navigation state (Marketplace/Generate) but editable
+            />
             <Input label={requiredLabel('Quantity')} value={slantForm.quantity} onChange={e => setSlantForm(f => ({...f, quantity: e.target.value}))} required />
             <Input label={requiredLabel('Color')} value={slantForm.color} onChange={e => setSlantForm(f => ({...f, color: e.target.value}))} required />
             <Input label="Profile" value={slantForm.profile} onChange={e => setSlantForm(f => ({...f, profile: e.target.value}))} />

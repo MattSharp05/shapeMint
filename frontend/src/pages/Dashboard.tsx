@@ -1,10 +1,35 @@
-import React, { useState } from 'react';
-import { Upload, Download, DollarSign, Eye, Settings, Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Upload, Download, DollarSign, Eye, Settings, Trash2, Package, Truck, ExternalLink } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
+import { Modal } from '../components/UI/Modal';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../supabaseClient';
 import type { GeneratedModel } from '../types/model';
+
+interface Order {
+  id: string;
+  slant_order_id: string;
+  order_number: string;
+  customer_name: string;
+  customer_email: string;
+  filename: string;
+  quantity: number;
+  color: string;
+  profile: string;
+  status: string;
+  tracking_numbers: string[];
+  shipping_status: string;
+  label_download_url?: string;
+  shipping_address: {
+    name: string;
+    street1: string;
+    city: string;
+    state: string;
+    zip: string;
+  };
+  created_at: string;
+}
 
 const mockUserDesigns = [
   {
@@ -55,19 +80,26 @@ const mockOrders = [
 export function Dashboard() {
   const [activeTab, setActiveTab] = useState('designs');
 
-  const tabs = [
-    { id: 'designs', label: 'My Designs', count: mockUserDesigns.length },
-    { id: 'purchases', label: 'Purchases', count: mockPurchases.length },
-    { id: 'orders', label: 'Orders', count: mockOrders.length }
-    //{ id: 'analytics', label: 'Analytics' },
-    //{ id: 'settings', label: 'Settings' }
-  ];
-
   // Fetch current user
   const { user } = useAuth();
   const [generatedModels, setGeneratedModels] = useState<GeneratedModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  
+  // Order state
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+
+  const tabs = [
+    { id: 'designs', label: 'My Designs', count: mockUserDesigns.length },
+    { id: 'purchases', label: 'Purchases', count: mockPurchases.length },
+    { id: 'orders', label: 'Orders', count: orders.length }
+    //{ id: 'analytics', label: 'Analytics' },
+    //{ id: 'settings', label: 'Settings' }
+  ];
 
   React.useEffect(() => {
     if (!user) return;
@@ -86,6 +118,29 @@ export function Dashboard() {
           setGeneratedModels(data as GeneratedModel[]);
         }
         setLoadingModels(false);
+      });
+  }, [user]);
+
+  // Fetch user's orders
+  useEffect(() => {
+    if (!user) return;
+    
+    setLoadingOrders(true);
+    setOrdersError(null);
+    
+    supabase
+      .from('orders')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          setOrdersError(error.message);
+          setOrders([]);
+        } else {
+          setOrders(data as Order[]);
+        }
+        setLoadingOrders(false);
       });
   }, [user]);
 
@@ -327,36 +382,80 @@ export function Dashboard() {
           <div className="space-y-6">
             <h2 className="text-xl font-semibold text-gray-900">Manufacturing Orders</h2>
             
-            <div className="space-y-4">
-              {mockOrders.map((order) => (
-                <Card key={order.id} className="p-6">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                        {order.design}
-                      </h3>
-                      <div className="space-y-1 text-sm text-gray-600">
-                        <div>Vendor: {order.vendor}</div>
-                        <div>Order Date: {order.orderedAt}</div>
-                        <div>Estimated Delivery: {order.estimatedDelivery}</div>
+            {loadingOrders ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                <p className="text-gray-500">Loading your orders...</p>
+              </div>
+            ) : ordersError ? (
+              <Card className="p-6">
+                <div className="text-center text-red-600">
+                  Error loading orders: {ordersError}
+                </div>
+              </Card>
+            ) : orders.length === 0 ? (
+              <Card className="p-6">
+                <div className="text-center py-8">
+                  <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No orders yet</h3>
+                  <p className="text-gray-500">Your manufacturing orders will appear here</p>
+                </div>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {orders.map((order) => (
+                  <Card 
+                    key={order.id} 
+                    className="p-6 cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => {
+                      setSelectedOrder(order);
+                      setIsOrderModalOpen(true);
+                    }}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                          {order.filename}
+                        </h3>
+                        <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                          <div>
+                            <div>Vendor: Slant3D</div>
+                            <div>Order Date: {new Date(order.created_at).toLocaleDateString()}</div>
+                            <div>Quantity: {order.quantity}</div>
+                          </div>
+                          <div>
+                            <div>Material: {order.profile}</div>
+                            <div>Color: {order.color}</div>
+                            {order.tracking_numbers.length > 0 && (
+                              <div className="flex items-center space-x-1">
+                                <Truck className="h-3 w-3" />
+                                <span>Tracking Available</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                          order.shipping_status === 'shipped' || order.tracking_numbers.length > 0
+                            ? 'bg-green-100 text-green-800'
+                            : order.shipping_status === 'awaiting_shipment'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {order.shipping_status === 'shipped' || order.tracking_numbers.length > 0 ? 'Shipped' :
+                           order.shipping_status === 'awaiting_shipment' ? 'Processing' : 
+                           order.status}
+                        </span>
+                        <div className="text-lg font-bold text-gray-900 mt-2">
+                          Order #{order.slant_order_id}
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                        order.status === 'manufacturing' 
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-green-100 text-green-800'
-                      }`}>
-                        {order.status}
-                      </span>
-                      <div className="text-lg font-bold text-gray-900 mt-2">
-                        ${order.total}
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {/* Analytics Tab Contents
@@ -384,6 +483,117 @@ export function Dashboard() {
           </div>
         )}
         */}
+
+        {/* Order Detail Modal */}
+        {selectedOrder && (
+          <Modal 
+            isOpen={isOrderModalOpen} 
+            onClose={() => setIsOrderModalOpen(false)} 
+            title={`Order #${selectedOrder.slant_order_id}`}
+          >
+            <div className="space-y-6">
+              {/* Order Info */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Order Details</h3>
+                <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Item:</span>
+                    <span className="font-medium">{selectedOrder.filename}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Quantity:</span>
+                    <span className="font-medium">{selectedOrder.quantity}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Material:</span>
+                    <span className="font-medium">{selectedOrder.profile}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Color:</span>
+                    <span className="font-medium">{selectedOrder.color}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Order Date:</span>
+                    <span className="font-medium">{new Date(selectedOrder.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Shipping Info */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Shipping Address</h3>
+                <div className="bg-gray-50 rounded-lg p-4 text-sm">
+                  <div>{selectedOrder.shipping_address.name}</div>
+                  <div>{selectedOrder.shipping_address.street1}</div>
+                  <div>
+                    {selectedOrder.shipping_address.city}, {selectedOrder.shipping_address.state} {selectedOrder.shipping_address.zip}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tracking Info */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Tracking & Status</h3>
+                <div className={`rounded-lg p-4 ${
+                  selectedOrder.tracking_numbers.length > 0 ? 'bg-green-50' : 'bg-yellow-50'
+                }`}>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Truck className="h-4 w-4" />
+                    <span className="font-medium">
+                      Shipping Status
+                    </span>
+                  </div>
+                  
+                  {selectedOrder.tracking_numbers.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-sm text-gray-600">Tracking Numbers:</div>
+                      {selectedOrder.tracking_numbers.map((trackingNumber, index) => (
+                        <div key={index} className="flex items-center justify-between bg-white p-2 rounded border">
+                          <code className="text-sm">{trackingNumber}</code>
+                          <a 
+                            href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingNumber}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-sm"
+                          >
+                            <span>Track with USPS</span>
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-600">
+                      Your order is being prepared for shipment. Tracking information will be available once shipped.
+                    </p>
+                  )}
+
+
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex space-x-3">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsOrderModalOpen(false)}
+                  className="flex-1"
+                >
+                  Close
+                </Button>
+                {selectedOrder.tracking_numbers.length > 0 && (
+                  <Button 
+                    onClick={() => window.open(`https://tools.usps.com/go/TrackConfirmAction?tLabels=${selectedOrder.tracking_numbers[0]}`, '_blank')}
+                    className="flex-1"
+                  >
+                    <Truck className="h-4 w-4 mr-2" />
+                    Track Package
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Modal>
+        )}
       </div>
     </div>
   );

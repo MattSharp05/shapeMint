@@ -19,7 +19,8 @@ const mockDesigns = [
     likes: 89,
     userName: 'DesignPro',
     featured: true,
-    modelUrl: 'mock-model-url-1'
+    modelUrl: 'mock-model-url-1',
+    stl_url: ''
   },
   {
     id: '2',
@@ -31,7 +32,8 @@ const mockDesigns = [
     downloads: 189,
     likes: 142,
     userName: 'ArtisticMind',
-    modelUrl: 'mock-model-url-2'
+    modelUrl: 'mock-model-url-2',
+    stl_url: ''
   },
   {
     id: '3',
@@ -43,7 +45,8 @@ const mockDesigns = [
     downloads: 512,
     likes: 203,
     userName: 'TechCreator',
-    modelUrl: 'mock-model-url-3'
+    modelUrl: 'mock-model-url-3',
+    stl_url: ''
   },
   {
     id: '4',
@@ -55,7 +58,8 @@ const mockDesigns = [
     downloads: 78,
     likes: 56,
     userName: 'LightDesigns',
-    modelUrl: 'mock-model-url-4'
+    modelUrl: 'mock-model-url-4',
+    stl_url: ''
   },
   {
     id: '5',
@@ -67,7 +71,8 @@ const mockDesigns = [
     downloads: 167,
     likes: 94,
     userName: 'GreenThumb',
-    modelUrl: 'mock-model-url-5'
+    modelUrl: 'mock-model-url-5',
+    stl_url: ''
   },
   {
     id: '6',
@@ -79,7 +84,8 @@ const mockDesigns = [
     downloads: 298,
     likes: 127,
     userName: 'OrganizeIT',
-    modelUrl: 'mock-model-url-6'
+    modelUrl: 'mock-model-url-6',
+    stl_url: ''
   }
 ];
 
@@ -113,6 +119,7 @@ export function Marketplace() {
     userName: model.user_id.slice(0, 8), // Placeholder, ideally fetch user name
     featured: false, // Placeholder
     modelUrl: model.glb_url || model.obj_url || model.stl_url || '',
+    stl_url: model.stl_url || '', // <-- Add STL URL explicitly
   }));
 
   // Combine real models and mock data (real models first)
@@ -143,7 +150,8 @@ export function Marketplace() {
           designDescription: design.description,
           creator: design.userName
         },
-        modelUrl: design.modelUrl
+        modelUrl: design.modelUrl,
+        stlUrl: design.stl_url // <-- Pass STL URL explicitly
       }
     });
   };

@@ -1,16 +1,24 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { GenerationForm } from '../components/Generation/GenerationForm';
 import { GenerationProgress } from '../components/Generation/GenerationProgress';
 import { ModelViewer } from '../components/3D/ModelViewer';
+import { ThumbnailSelector } from '../components/UI/ThumbnailSelector';
 import { Button } from '../components/UI/Button';
 import { Card } from '../components/UI/Card';
 import { Download, Share2, ShoppingCart } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 export function Generate() {
   const [status, setStatus] = useState<'pending' | 'generating' | 'completed' | 'failed'>('pending');
   const [generatedModel, setGeneratedModel] = useState<any>(null);
+  const [showThumbnailSelector, setShowThumbnailSelector] = useState(false);
+  const [thumbnailData, setThumbnailData] = useState<{
+    angles: { [angle: string]: string };
+    selectedAngle: string;
+    isCustom: boolean;
+  } | null>(null);
 
   const navigate = useNavigate();
 
@@ -21,7 +29,47 @@ export function Generate() {
     console.log('GLB URL:', modelData?.urls?.glb);
     setStatus('completed');
     setGeneratedModel(modelData);
+    
+    // Check if thumbnails are ready
+    checkThumbnailStatus(modelData.id);
   };
+
+  const checkThumbnailStatus = async (modelId: string) => {
+    try {
+      const { data: model, error } = await supabase
+        .from('generated_models')
+        .select('thumbnail_status, thumbnail_angles, thumbnail_selected, thumbnail_custom')
+        .eq('id', modelId)
+        .single();
+      
+      if (error) {
+        console.error('Error checking thumbnail status:', error);
+        return;
+      }
+      
+      if (model.thumbnail_status === 'completed' && model.thumbnail_angles) {
+        setThumbnailData({
+          angles: model.thumbnail_angles,
+          selectedAngle: model.thumbnail_selected?.toString() || '0',
+          isCustom: model.thumbnail_custom || false
+        });
+        setShowThumbnailSelector(true);
+      }
+    } catch (error) {
+      console.error('Error checking thumbnail status:', error);
+    }
+  };
+
+  // Poll for thumbnail completion
+  useEffect(() => {
+    if (generatedModel?.id && status === 'completed') {
+      const interval = setInterval(() => {
+        checkThumbnailStatus(generatedModel.id);
+      }, 5000); // Check every 5 seconds
+      
+      return () => clearInterval(interval);
+    }
+  }, [generatedModel?.id, status]);
 
   const handleBuyNow = () => {
     navigate('/order');
@@ -125,6 +173,27 @@ export function Generate() {
           </div>
         </div>
       </div>
+
+      {/* Thumbnail Selector Modal */}
+      {thumbnailData && (
+        <ThumbnailSelector
+          modelId={generatedModel?.id}
+          angles={thumbnailData.angles}
+          selectedAngle={thumbnailData.selectedAngle}
+          onSelect={(angle) => {
+            setThumbnailData(prev => prev ? { ...prev, selectedAngle: angle, isCustom: false } : null);
+          }}
+          onUpload={(file) => {
+            setThumbnailData(prev => prev ? { ...prev, isCustom: true } : null);
+          }}
+          onRemove={() => {
+            setThumbnailData(prev => prev ? { ...prev, isCustom: false } : null);
+          }}
+          isOpen={showThumbnailSelector}
+          onClose={() => setShowThumbnailSelector(false)}
+          isCustom={thumbnailData.isCustom}
+        />
+      )}
     </div>
   );
 }

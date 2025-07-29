@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { modelService } from './model';
 import { MeshyResponse, CreateModelInput } from '../types/model';
+import { supabase } from '../lib/supabase';
 
 const MESHY_API_BASE = '/api/meshy';
 
@@ -259,12 +260,16 @@ export class MeshyService {
         obj_url: objUrl,
         stl_url: stlUrl,
         glb_url: glbUrl,
-        status: 'completed'
+        status: 'completed',
+        thumbnail_status: 'pending'
       };
 
       console.log('Storing model with direct URLs:', modelInput);
       const createdModel = await modelService.createModel(modelInput);
       console.log('Model stored successfully in Supabase');
+      
+      // Queue thumbnail generation
+      await this.queueThumbnailGeneration(createdModel.id, glbUrl);
       
       // Return the model data with URLs for UI display
       return {
@@ -279,6 +284,25 @@ export class MeshyService {
     } catch (error) {
       console.error('Error in generate and store flow:', error);
       throw error;
+    }
+  }
+
+  private async queueThumbnailGeneration(modelId: string, glbUrl: string) {
+    try {
+      const { error } = await supabase
+        .from('thumbnail_processing_queue')
+        .insert({
+          model_id: modelId,
+          priority: 1 // High priority for new models
+        });
+      
+      if (error) {
+        console.error('Failed to queue thumbnail generation:', error);
+      } else {
+        console.log('✅ Thumbnail generation queued for model:', modelId);
+      }
+    } catch (error) {
+      console.error('Error queuing thumbnail generation:', error);
     }
   }
 

@@ -81,9 +81,9 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
       
       if (onSuccess) {
         onSuccess({
+          ...modelData,
           prompt: mode === 'text' ? prompt.trim() : `Image: ${image?.name}`,
-          style: settings.style,
-          urls: modelData // This will contain the model URLs
+          style: settings.style
         });
       }
     } catch (err) {

@@ -1,14 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { useThumbnailGenerator } from '../hooks/useThumbnailGenerator';
 import { GenerationForm } from '../components/Generation/GenerationForm';
 import { GenerationProgress } from '../components/Generation/GenerationProgress';
 import { ModelViewer } from '../components/3D/ModelViewer';
 import { ThumbnailSelector } from '../components/UI/ThumbnailSelector';
 import { Button } from '../components/UI/Button';
 import { Card } from '../components/UI/Card';
-import { Download, Share2, ShoppingCart } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { Download, Share2, ShoppingCart, Camera } from 'lucide-react';
 
 export function Generate() {
   const [status, setStatus] = useState<'pending' | 'generating' | 'completed' | 'failed'>('pending');
@@ -22,54 +21,39 @@ export function Generate() {
 
   const navigate = useNavigate();
 
-  const handleGenerationSuccess = (modelData: any) => {
+  // Client-side thumbnail generation
+  const {
+    isGenerating: isGeneratingThumbnails,
+    generateThumbnails
+  } = useThumbnailGenerator({ 
+    uploadToStorage: false // Use data URLs for MVP speed
+  });
+
+  const handleGenerationSuccess = async (modelData: any) => {
     setStatus('completed');
     setGeneratedModel(modelData);
     
-    // Check if thumbnails are ready
-    checkThumbnailStatus(modelData.id);
-  };
-
-  const checkThumbnailStatus = async (modelId: string) => {
-    if (!modelId) {
-      return;
-    }
-    
-    try {
-      const { data: model, error } = await supabase
-        .from('generated_models')
-        .select('thumbnail_status, thumbnail_angles, thumbnail_selected, thumbnail_custom')
-        .eq('id', modelId)
-        .single();
-      
-      if (error) {
-        console.error('Error checking thumbnail status:', error);
-        return;
-      }
-      
-      if (model.thumbnail_status === 'completed' && model.thumbnail_angles) {
+    // Start client-side thumbnail generation immediately
+    if (modelData.urls?.glb) {
+      console.log('🎨 Starting client-side thumbnail generation...');
+      try {
+        const generatedThumbnails = await generateThumbnails(
+          modelData.urls.glb,
+          modelData.id
+        );
+        
         setThumbnailData({
-          angles: model.thumbnail_angles,
-          selectedAngle: model.thumbnail_selected?.toString() || '0',
-          isCustom: model.thumbnail_custom || false
+          angles: generatedThumbnails,
+          selectedAngle: Object.keys(generatedThumbnails)[0] || 'front',
+          isCustom: false
         });
         setShowThumbnailSelector(true);
+      } catch (error) {
+        console.error('Failed to generate thumbnails:', error);
+        // Continue without thumbnails - not a blocking error
       }
-    } catch (error) {
-      console.error('Error checking thumbnail status:', error);
     }
   };
-
-  // Poll for thumbnail completion
-  useEffect(() => {
-    if (generatedModel?.urls?.id && status === 'completed') {
-      const interval = setInterval(() => {
-        checkThumbnailStatus(generatedModel.urls.id);
-      }, 5000); // Check every 5 seconds
-      
-      return () => clearInterval(interval);
-    }
-  }, [generatedModel?.urls?.id, status]);
 
   const handleBuyNow = () => {
     navigate('/order');
@@ -118,6 +102,17 @@ export function Generate() {
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
                   Your Model is Ready!
                 </h3>
+                
+                {/* Thumbnail Generation Status */}
+                {isGeneratingThumbnails && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center">
+                      <Camera className="h-4 w-4 text-blue-600 mr-2 animate-pulse" />
+                      <span className="text-sm text-blue-700">Generating thumbnails...</span>
+                    </div>
+                  </div>
+                )}
+                
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Button icon={Download} className="w-full">
@@ -183,7 +178,7 @@ export function Generate() {
           onSelect={(angle) => {
             setThumbnailData(prev => prev ? { ...prev, selectedAngle: angle, isCustom: false } : null);
           }}
-          onUpload={(file) => {
+          onUpload={(_file) => {
             setThumbnailData(prev => prev ? { ...prev, isCustom: true } : null);
           }}
           onRemove={() => {

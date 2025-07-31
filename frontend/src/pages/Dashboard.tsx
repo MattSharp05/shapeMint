@@ -461,6 +461,7 @@ export function Dashboard() {
             )}
           </div>
         )}
+
         {/* Analytics Tab Contents
         {activeTab === 'analytics' && (
           <div className="space-y-6">

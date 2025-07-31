@@ -30,6 +30,7 @@ export function Generate() {
   });
 
   const handleGenerationSuccess = async (modelData: any) => {
+    console.log('🎯 Model generation successful, received data:', modelData);
     setStatus('completed');
     setGeneratedModel(modelData);
     
@@ -92,7 +93,7 @@ export function Generate() {
                 3D Preview
               </h3>
               <ModelViewer 
-                modelUrl={generatedModel?.urls?.urls?.glb}
+                modelUrl={generatedModel?.urls?.glb}
                 className="h-80 w-full"
               />
             </Card>

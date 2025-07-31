@@ -47,7 +47,7 @@ export function ThumbnailSelector({
       }
       
       // Upload custom thumbnail
-      const { data, error } = await supabase.storage
+      const { data: uploadData, error } = await supabase.storage
         .from('thumbnails')
         .upload(`${modelId}/custom.jpg`, file, {
           contentType: file.type,
@@ -57,12 +57,17 @@ export function ThumbnailSelector({
       if (error) {
         throw new Error(`Upload failed: ${error.message}`);
       }
+      // get a public URL we can render immediately
+      const { data: pub } = supabase.storage
+        .from('thumbnails')
+        .getPublicUrl(uploadData.path);
+      const publicUrl = pub.publicUrl;
       
       // Update model with custom thumbnail
       const { error: updateError } = await supabase
         .from('generated_models')
         .update({
-          thumbnail_url: data.path,
+          thumbnail_url: publicUrl,
           thumbnail_custom: true
         })
         .eq('id', modelId);
@@ -167,7 +172,9 @@ export function ThumbnailSelector({
             Auto-generated Views
           </h4>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {Object.entries(angles).map(([angle, url]) => (
+            {Object.entries(angles).map(([angle, url]) => {
+              console.log('thumb', angle, url.slice(0,50));
+              return (
               <div
                 key={angle}
                 className={`relative cursor-pointer border-2 rounded-lg overflow-hidden transition-all ${
@@ -178,7 +185,7 @@ export function ThumbnailSelector({
                 onClick={() => handleAngleSelect(angle)}
               >
                 <img 
-                  src={url} 
+                  src={typeof url === 'string' ? url : url} 
                   alt={`${angleLabels[angle] || `Angle ${angle}`}`} 
                   className="w-full h-32 object-cover"
                 />
@@ -193,7 +200,8 @@ export function ThumbnailSelector({
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

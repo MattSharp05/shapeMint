@@ -268,8 +268,8 @@ export class MeshyService {
       const createdModel = await modelService.createModel(modelInput);
       console.log('Model stored successfully in Supabase');
       
-      // Queue thumbnail generation
-      await this.queueThumbnailGeneration(createdModel.id, glbUrl);
+      // Queue thumbnail generation and immediately invoke processing
+      await this.queueThumbnailGeneration(createdModel.id);
       
       // Return the model data with URLs for UI display
       return {
@@ -287,7 +287,7 @@ export class MeshyService {
     }
   }
 
-  private async queueThumbnailGeneration(modelId: string, glbUrl: string) {
+  private async queueThumbnailGeneration(modelId: string) {
     try {
       const { error } = await supabase
         .from('thumbnail_processing_queue')
@@ -296,15 +296,29 @@ export class MeshyService {
           priority: 1 // High priority for new models
         });
       
-      if (error) {
-        console.error('Failed to queue thumbnail generation:', error);
-      } else {
-        console.log('✅ Thumbnail generation queued for model:', modelId);
+            if (error) {
+          console.error('Failed to queue thumbnail generation:', error);
+        } else {
+          console.log('✅ Thumbnail generation queued for model:', modelId);
+
+          // Immediately invoke the processing function to generate thumbnails
+          try {
+            const { data, error: invokeError } = await supabase.functions.invoke('process-thumbnail-queue', {
+              body: {},
+            }) as { data: any; error: any };
+            if (invokeError) {
+              console.error('Error invoking process-thumbnail-queue:', invokeError);
+            } else {
+              console.log('process-thumbnail-queue invoked successfully:', data);
+            }
+          } catch (invokeErr) {
+            console.error('Failed to invoke process-thumbnail-queue:', invokeErr);
+          }
+        }
+      } catch (error) {
+        console.error('Error queuing thumbnail generation:', error);
       }
-    } catch (error) {
-      console.error('Error queuing thumbnail generation:', error);
     }
-  }
 
 
 

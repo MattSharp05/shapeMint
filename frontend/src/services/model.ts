@@ -7,6 +7,10 @@ const MODELS_BUCKET = 'model-files';
 export class ModelService {
   // Create a new model entry
   async createModel(input: CreateModelInput): Promise<GeneratedModel> {
+    // Log to verify RLS match
+    const { data: { user: sessionUser } } = await supabase.auth.getUser();
+    console.log('[createModel] input.user_id:', input.user_id, ' session uid:', sessionUser?.id);
+
     const { data, error } = await supabase
       .from(MODELS_TABLE)
       .insert(input)

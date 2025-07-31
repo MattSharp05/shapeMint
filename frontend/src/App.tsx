@@ -17,6 +17,7 @@ import { UserProfile } from './pages/UserProfile';
 import { PaymentSuccess } from './pages/PaymentSuccess';
 import { PaymentCancel } from './pages/PaymentCancel';
 import { OrderSuccess } from './pages/OrderSuccess';
+import { ThumbnailTest } from './pages/ThumbnailTest';
 import { AuthProvider } from './hooks/useAuth';
 
 function App() {
@@ -42,6 +43,7 @@ function App() {
               <Route path="/success" element={<PaymentSuccess />} />
               <Route path="/cancel" element={<PaymentCancel />} />
               <Route path="/order-success" element={<OrderSuccess />} />
+              <Route path="/thumbnail-test" element={<ThumbnailTest />} />
             </Routes>
           </main>
           <Footer />

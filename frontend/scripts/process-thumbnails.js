@@ -5,8 +5,10 @@
  * Run this script to generate thumbnails for all existing models
  */
 
-const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config();
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -108,16 +110,14 @@ async function processExistingModels() {
 }
 
 // Run the script
-if (require.main === module) {
-  processExistingModels()
-    .then(() => {
-      console.log('\n🎉 Script completed successfully');
-      process.exit(0);
-    })
-    .catch((error) => {
-      console.error('\n💥 Script failed:', error.message);
-      process.exit(1);
-    });
-}
+processExistingModels()
+  .then(() => {
+    console.log('\n🎉 Script completed successfully');
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error('\n💥 Script failed:', error.message);
+    process.exit(1);
+  });
 
-module.exports = { processExistingModels }; 
+export { processExistingModels }; 

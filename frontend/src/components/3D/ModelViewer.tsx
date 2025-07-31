@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, useGLTF } from '@react-three/drei';
 
@@ -10,9 +10,9 @@ interface ModelViewerProps {
 function Model({ url }: { url: string }) {
   // Use proxy endpoint to avoid CORS issues
   const proxiedUrl = `/api/meshy/glb?url=${encodeURIComponent(url)}`;
-  console.log('Loading GLB via proxy:', proxiedUrl);
+  console.log('🎮 Loading GLB via proxy:', proxiedUrl);
   const { scene } = useGLTF(proxiedUrl);
-  return <primitive object={scene} />;
+  return <primitive object={scene} key={proxiedUrl} />;
 }
 
 function Scene({ modelUrl }: { modelUrl?: string }) {
@@ -39,11 +39,13 @@ function Scene({ modelUrl }: { modelUrl?: string }) {
 }
 
 export function ModelViewer({ modelUrl, className = '' }: ModelViewerProps) {
+  console.log('🎬 ModelViewer rendering with URL:', modelUrl);
+  
   return (
     <div className={`bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg ${className}`}>
       <Canvas>
         <Suspense fallback={null}>
-          <Scene modelUrl={modelUrl} />
+          <Scene modelUrl={modelUrl} key={modelUrl} />
         </Suspense>
       </Canvas>
     </div>

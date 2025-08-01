@@ -7,7 +7,7 @@ import { ModelViewer } from '../components/3D/ModelViewer';
 import { ThumbnailSelector } from '../components/UI/ThumbnailSelector';
 import { Button } from '../components/UI/Button';
 import { Card } from '../components/UI/Card';
-import { Download, Share2, ShoppingCart, Camera } from 'lucide-react';
+import { Download, Share2, ShoppingCart, Camera, Store } from 'lucide-react';
 
 export function Generate() {
   const [status, setStatus] = useState<'pending' | 'generating' | 'completed' | 'failed'>('pending');
@@ -58,6 +58,15 @@ export function Generate() {
 
   const handleBuyNow = () => {
     navigate('/order');
+  };
+
+  const handlePublishToMarketplace = () => {
+    navigate('/marketplace-upload', {
+      state: {
+        modelData: generatedModel,
+        modelUrl: generatedModel?.urls?.glb
+      }
+    });
   };
 
   return (
@@ -131,7 +140,7 @@ export function Generate() {
                       className="w-full"
                       onClick={() => navigate('/manufacturing')}
                     >
-                      Get Quote
+                      Print
                     </Button>
                     <Button 
                       icon={ShoppingCart} 
@@ -139,6 +148,17 @@ export function Generate() {
                       onClick={handleBuyNow}
                     >
                       Buy Now
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    <Button 
+                      variant="outline" 
+                      icon={Store} 
+                      className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
+                      onClick={handlePublishToMarketplace}
+                    >
+                      Publish to Marketplace
                     </Button>
                   </div>
                   

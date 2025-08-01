@@ -47,7 +47,7 @@ export class AutoThumbnailService {
         console.log(`🔍 Model ${model.id}:`, {
           name: model.name,
           thumbnail_status: model.thumbnail_status,
-          thumbnail_url: model.thumbnail_url?.substring(0, 50) + '...',
+          thumbnail_url: model.thumbnail_url ? model.thumbnail_url.substring(0, 50) + '...' : null,
           has_glb: !!model.glb_url
         });
       });

@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Download, DollarSign, Eye, Settings, Trash2, Package, Truck, ExternalLink } from 'lucide-react';
+import { Upload, Download, DollarSign, Eye, Settings, Package, Truck, ExternalLink } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
 import { Modal } from '../components/UI/Modal';
+import { AutoThumbnailProgress } from '../components/UI/AutoThumbnailProgress';
 import { useAuth } from '../hooks/useAuth';
+import { useAutoThumbnail } from '../hooks/useAutoThumbnail';
 import { supabase } from '../supabaseClient';
+import { autoThumbnailService } from '../services/autoThumbnailService';
 import type { GeneratedModel } from '../types/model';
 
 interface Order {
@@ -65,23 +68,53 @@ const mockPurchases = [
   }
 ];
 
-const mockOrders = [
-  {
-    id: '1',
-    design: 'Phone Stand',
-    vendor: 'PrintCraft Pro',
-    status: 'manufacturing',
-    total: 34.38,
-    orderedAt: '2025-01-13',
-    estimatedDelivery: '2025-01-18'
-  }
-];
+// const mockOrders = [
+//   {
+//     id: '1',
+//     design: 'Phone Stand',
+//     vendor: 'PrintCraft Pro',
+//     status: 'manufacturing',
+//     total: 34.38,
+//     orderedAt: '2025-01-13',
+//     estimatedDelivery: '2025-01-18'
+//   }
+// ];
 
 export function Dashboard() {
   const [activeTab, setActiveTab] = useState('designs');
 
   // Fetch current user
   const { user } = useAuth();
+  
+  // Auto-thumbnail generation
+  const {
+    progress: autoThumbnailProgress,
+    triggerAutoGeneration,
+    stopGeneration
+  } = useAutoThumbnail({ 
+    triggerOnMount: true  // Automatically start when dashboard loads
+  });
+
+  // Debug function to manually trigger thumbnail generation
+  const handleManualThumbnailGeneration = async () => {
+    console.log('🔧 [Dashboard] Manual thumbnail generation triggered');
+    console.log('🔧 [Dashboard] Current user:', user);
+    console.log('🔧 [Dashboard] Auto-thumbnail progress:', autoThumbnailProgress);
+    
+    if (!user) {
+      console.log('❌ [Dashboard] No user found for manual generation');
+      return;
+    }
+
+    try {
+      // Use the hook's trigger function
+      await triggerAutoGeneration();
+      console.log('✅ [Dashboard] Manual generation completed');
+    } catch (error) {
+      console.error('❌ [Dashboard] Manual generation failed:', error);
+    }
+  };
+  
   const [generatedModels, setGeneratedModels] = useState<GeneratedModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -148,12 +181,33 @@ export function Dashboard() {
     <div className="pt-16 min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Dashboard
-          </h1>
-          <p className="text-xl text-gray-600">
-            Manage your designs, purchases, and manufacturing orders
-          </p>
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h1 className="text-4xl font-bold text-gray-900 mb-2">
+                Dashboard
+              </h1>
+              <p className="text-xl text-gray-600">
+                Manage your designs, purchases, and manufacturing orders
+              </p>
+            </div>
+            
+            {/* Debug: Manual Thumbnail Generation */}
+            <div className="flex flex-col items-end space-y-2">
+              <Button 
+                onClick={handleManualThumbnailGeneration}
+                disabled={autoThumbnailProgress.isGenerating}
+                variant="outline"
+                className="text-sm"
+              >
+                {autoThumbnailProgress.isGenerating ? 'Generating...' : 'Generate Thumbnails'}
+              </Button>
+              {autoThumbnailProgress.total > 0 && (
+                <span className="text-xs text-gray-500">
+                  {autoThumbnailProgress.processed}/{autoThumbnailProgress.total} processed
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -598,6 +652,13 @@ export function Dashboard() {
             </div>
           </Modal>
         )}
+        
+        {/* Auto-Thumbnail Progress */}
+        <AutoThumbnailProgress
+          progress={autoThumbnailProgress}
+          onStop={stopGeneration}
+          onRetry={triggerAutoGeneration}
+        />
       </div>
     </div>
   );

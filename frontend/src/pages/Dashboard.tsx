@@ -68,17 +68,7 @@ const mockPurchases = [
   }
 ];
 
-// const mockOrders = [
-//   {
-//     id: '1',
-//     design: 'Phone Stand',
-//     vendor: 'PrintCraft Pro',
-//     status: 'manufacturing',
-//     total: 34.38,
-//     orderedAt: '2025-01-13',
-//     estimatedDelivery: '2025-01-18'
-//   }
-// ];
+// (Removed commented-out code block)
 
 export function Dashboard() {
   const [activeTab, setActiveTab] = useState('designs');

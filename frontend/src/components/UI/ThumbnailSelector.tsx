@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { X, Upload, Trash2, Check } from 'lucide-react';
 import { Button } from './Button';
 import { Modal } from './Modal';
@@ -138,11 +138,17 @@ export function ThumbnailSelector({
   };
 
   const angleLabels: { [key: string]: string } = {
+    'front': 'Front View',
+    'back': 'Back View',
+    'isometric': 'Isometric View',
+    'side': 'Side View',
+    'top': 'Top View',
+    'diagonal': 'Diagonal View',
+    // Legacy angle numbers for backward compatibility
     '0': 'Front View',
     '45': 'Diagonal View',
     '90': 'Side View',
-    '135': 'Back Diagonal',
-    'isometric': 'Isometric View'
+    '135': 'Back Diagonal'
   };
 
   return (

@@ -18,31 +18,37 @@ export interface CameraAngle {
 export const DEFAULT_CAMERA_ANGLES: CameraAngle[] = [
   {
     name: 'front',
-    position: [0, 0, 5],
+    position: [0, 0, 3.5], // Moved closer from 5 to 3.5
     target: [0, 0, 0],
     label: 'Front View'
   },
   {
+    name: 'back',
+    position: [0, 0, -3.5], // Back view - opposite of front
+    target: [0, 0, 0],
+    label: 'Back View'
+  },
+  {
     name: 'isometric',
-    position: [3, 3, 3],
+    position: [2.5, 2.5, 2.5], // Moved closer from [3, 3, 3] to [2.5, 2.5, 2.5]
     target: [0, 0, 0],
     label: 'Isometric View'
   },
   {
     name: 'side',
-    position: [5, 0, 0],
+    position: [3.5, 0, 0], // Moved closer from 5 to 3.5
     target: [0, 0, 0],
     label: 'Side View'
   },
   {
     name: 'top',
-    position: [0, 5, 0],
+    position: [0, 3.5, 0], // Moved closer from 5 to 3.5
     target: [0, 0, 0],
     label: 'Top View'
   },
   {
     name: 'diagonal',
-    position: [3, 2, 4],
+    position: [2.5, 1.8, 3], // Moved closer from [3, 2, 4] to [2.5, 1.8, 3]
     target: [0, 0, 0],
     label: 'Diagonal View'
   }
@@ -143,9 +149,9 @@ export class ThumbnailGenerator {
     // Center the model
     model.position.sub(center);
 
-    // Scale to fit in view (target size of ~2 units)
+    // Scale to fit in view (slightly reduced from 3.5 for better framing)
     const maxDimension = Math.max(size.x, size.y, size.z);
-    const scale = 2 / maxDimension;
+    const scale = 3.2 / maxDimension; // Reduced from 3.5 to 3.2 for better balance
     model.scale.setScalar(scale);
 
     // Add to scene

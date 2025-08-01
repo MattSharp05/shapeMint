@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Search, Filter, Grid, List, Heart, Download } from 'lucide-react';
+import { Search, Grid, List, Heart, Download, Printer } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
-import { Input } from '../components/UI/Input';
 import { modelService } from '../services/modelService';
 import { MarketplaceModel } from '../types';
 
@@ -318,23 +317,26 @@ export function Marketplace() {
                       </div>
                     </div>
                     
-                    {/* Action Buttons */}
+                    {/* Action Buttons - Prioritizing Print */}
                     <div className="space-y-2">
                       <Button 
                         size="sm" 
-                        className="w-full"
-                        onClick={() => handleDownloadOnly(design)}
+                        className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
+                        onClick={() => handleBuyNow(design)}
                       >
-                        <Download className="h-3 w-3 mr-1" />
-                        Buy Digital Files
+                        <Printer className="h-4 w-4 mr-2" />
+                        Get it Printed
+                        <span className="ml-auto text-xs opacity-90">Starting $20</span>
                       </Button>
                       <Button 
                         size="sm" 
                         variant="outline" 
-                        className="w-full"
-                        onClick={() => handleBuyNow(design)}
+                        className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 text-sm"
+                        onClick={() => handleDownloadOnly(design)}
                       >
-                        Order Physical Print
+                        <Download className="h-3 w-3 mr-1" />
+                        Download Files Only
+                        <span className="ml-auto text-xs text-gray-500">${design.price}</span>
                       </Button>
                     </div>
                   </div>
@@ -390,17 +392,20 @@ export function Marketplace() {
                         <div className="space-y-2">
                           <Button 
                             size="sm"
-                            onClick={() => handleDownloadOnly(design)}
+                            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold min-w-[140px] shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
+                            onClick={() => handleBuyNow(design)}
                           >
-                            <Download className="h-3 w-3 mr-1" />
-                            Buy Digital
+                            <Printer className="h-4 w-4 mr-2" />
+                            Get it Printed
                           </Button>
                           <Button 
                             size="sm" 
                             variant="outline"
-                            onClick={() => handleBuyNow(design)}
+                            className="border-gray-300 text-gray-700 hover:bg-gray-50 min-w-[140px]"
+                            onClick={() => handleDownloadOnly(design)}
                           >
-                            Order Print
+                            <Download className="h-3 w-3 mr-1" />
+                            Files Only ${design.price}
                           </Button>
                         </div>
                       </div>

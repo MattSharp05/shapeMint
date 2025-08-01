@@ -8,6 +8,7 @@ import { ThumbnailSelector } from '../components/UI/ThumbnailSelector';
 import { Button } from '../components/UI/Button';
 import { Card } from '../components/UI/Card';
 import { Download, Share2, ShoppingCart, Camera, Store } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 
 export function Generate() {
   const [status, setStatus] = useState<'pending' | 'generating' | 'completed' | 'failed'>('pending');
@@ -18,6 +19,7 @@ export function Generate() {
     selectedAngle: string;
     isCustom: boolean;
   } | null>(null);
+  const [stlConversionInProgress, setStlConversionInProgress] = useState(false);
 
   const navigate = useNavigate();
 
@@ -29,10 +31,56 @@ export function Generate() {
     uploadToStorage: false // Use data URLs for MVP speed
   });
 
+  const convertToSTL = async (glbUrl: string, modelId: string) => {
+    try {
+      console.log('🔧 Starting background GLB to STL conversion...');
+      setStlConversionInProgress(true);
+      
+      const { data, error } = await supabase.functions.invoke('glb-to-stl', {
+        body: { 
+          glbUrl,
+          modelId,
+          targetSize: 50 // 50mm max dimension
+        }
+      });
+
+      if (error) {
+        console.error('❌ STL conversion failed:', error);
+        return null;
+      }
+
+      if (!data.success) {
+        console.error('❌ STL conversion API error:', data.error);
+        return null;
+      }
+
+      console.log('✅ STL conversion completed:', {
+        fileSize: data.data.fileSize,
+        meshCount: data.data.meshCount,
+        finalSize: data.data.scalingInfo.finalMaxDimension + 'mm'
+      });
+      
+      return data.data.stlUrl;
+      
+    } catch (err) {
+      console.error('❌ STL conversion error:', err);
+      return null;
+    } finally {
+      setStlConversionInProgress(false);
+    }
+  };
+
   const handleGenerationSuccess = async (modelData: any) => {
     console.log('🎯 Model generation successful, received data:', modelData);
     setStatus('completed');
     setGeneratedModel(modelData);
+    
+    // Start background STL conversion if GLB URL is available
+    if (modelData.urls?.glb) {
+      console.log('🔧 Starting background STL conversion from GLB...');
+      convertToSTL(modelData.urls.glb, modelData.id);
+      // Note: We don't await this - it runs in background
+    }
     
     // Start client-side thumbnail generation immediately
     if (modelData.urls?.glb) {

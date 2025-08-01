@@ -31,6 +31,11 @@ export interface GeneratedModel {
   stl_url: string;
   glb_url: string;
   thumbnail_url?: string;
+  thumbnail_angles?: any[];
+  thumbnail_selected?: number;
+  thumbnail_custom?: boolean;
+  thumbnail_status?: 'pending' | 'processing' | 'completed' | 'failed';
+  thumbnail_error?: string;
   status: 'processing' | 'completed' | 'failed';
   created_at: string;
   updated_at: string;

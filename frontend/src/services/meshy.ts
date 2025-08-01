@@ -268,6 +268,29 @@ export class MeshyService {
       const createdModel = await modelService.createModel(modelInput);
       console.log('Model stored successfully in Supabase');
       
+      // Call Edge Function to download GLB and convert to STL
+      if (glbUrl && createdModel.id) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const accessToken = session?.access_token;
+          const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-stl-to-bucket`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken || import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({
+              glbUrl: glbUrl,
+              modelId: createdModel.id
+            })
+          });
+          const result = await res.json();
+          console.log('Edge Function save-stl-to-bucket result:', result);
+        } catch (err) {
+          console.error('Error calling save-stl-to-bucket Edge Function:', err);
+        }
+      }
+      
       // Queue thumbnail generation and immediately invoke processing
       await this.queueThumbnailGeneration(createdModel.id);
       

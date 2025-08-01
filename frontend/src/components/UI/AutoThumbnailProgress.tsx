@@ -66,6 +66,7 @@ export function AutoThumbnailProgress({
               className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
               title={isMinimized ? 'Expand' : 'Minimize'}
               aria-label={isMinimized ? 'Expand' : 'Minimize'}
+            >
               {isMinimized ? (
                 <Play className="h-4 w-4" aria-hidden="true" />
               ) : (

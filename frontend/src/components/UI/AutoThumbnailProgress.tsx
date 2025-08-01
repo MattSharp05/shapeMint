@@ -65,10 +65,12 @@ export function AutoThumbnailProgress({
               onClick={() => setIsMinimized(!isMinimized)}
               className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
               title={isMinimized ? 'Expand' : 'Minimize'}
-            >
-              <div className={`transform transition-transform ${isMinimized ? 'rotate-180' : ''}`}>
-                ↕
-              </div>
+              aria-label={isMinimized ? 'Expand' : 'Minimize'}
+              {isMinimized ? (
+                <Play className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Square className="h-4 w-4" aria-hidden="true" />
+              )}
             </button>
             
             {isGenerating && onStop && (

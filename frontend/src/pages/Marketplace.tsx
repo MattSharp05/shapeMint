@@ -91,6 +91,11 @@ const mockDesigns = [
 
 const categories = ['All', 'Home & Garden', 'Art & Decor', 'Accessories', 'Lighting', 'Office'];
 
+// Helper function to capitalize first letter of each word
+const capitalizeWords = (str: string): string => {
+  return str.replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
 export function Marketplace() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -108,8 +113,8 @@ export function Marketplace() {
 
   const realDesigns = marketplaceModels.map((model) => ({
     id: model.id,
-    title: model.name || 'Untitled Model',
-    description: model.prompt || '',
+    title: capitalizeWords(model.prompt || 'Untitled Model'), // Capitalize first letter of each word
+    description: '', // Remove generic "Model model" description
     // Use actual thumbnail if available, otherwise fallback to placeholder
     thumbnail: model.thumbnail_url || DEFAULT_MODEL_THUMBNAIL,
     price: 9.99, // Placeholder price, can be replaced with real pricing logic

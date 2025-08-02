@@ -7,7 +7,7 @@ import { ModelViewer } from '../components/3D/ModelViewer';
 import { ThumbnailSelector } from '../components/UI/ThumbnailSelector';
 import { Button } from '../components/UI/Button';
 import { Card } from '../components/UI/Card';
-import { Download, Share2, ShoppingCart, Camera, Store } from 'lucide-react';
+import { Share2, ShoppingCart, Camera, Store, Printer } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export function Generate() {
@@ -19,7 +19,6 @@ export function Generate() {
     selectedAngle: string;
     isCustom: boolean;
   } | null>(null);
-  const [stlConversionInProgress, setStlConversionInProgress] = useState(false);
 
   const navigate = useNavigate();
 
@@ -34,7 +33,6 @@ export function Generate() {
   const convertToSTL = async (glbUrl: string, modelId: string) => {
     try {
       console.log('🔧 Starting background GLB to STL conversion...');
-      setStlConversionInProgress(true);
       
       const { data, error } = await supabase.functions.invoke('glb-to-stl', {
         body: { 
@@ -65,8 +63,6 @@ export function Generate() {
     } catch (err) {
       console.error('❌ STL conversion error:', err);
       return null;
-    } finally {
-      setStlConversionInProgress(false);
     }
   };
 
@@ -105,7 +101,14 @@ export function Generate() {
   };
 
   const handleBuyNow = () => {
-    navigate('/order');
+    navigate('/download-checkout', {
+      state: {
+        modelData: generatedModel,
+        modelUrl: generatedModel?.urls?.glb,
+        price: 12.99, // Standard price for generated models
+        isGenerated: true
+      }
+    });
   };
 
   const handlePublishToMarketplace = () => {
@@ -171,64 +174,70 @@ export function Generate() {
                   </div>
                 )}
                 
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Button icon={Download} className="w-full">
-                      Download
-                    </Button>
-                    <Button variant="outline" icon={Share2} className="w-full">
-                      Share
-                    </Button>
-                  </div>
+                <div className="space-y-3">
+                  {/* Primary Action - Print This Design */}
+                  <Button 
+                    icon={Printer} 
+                    className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-lg py-4"
+                    onClick={() => navigate('/order', {
+                      state: {
+                        modelData: generatedModel,
+                        modelUrl: generatedModel?.urls?.glb,
+                        stlUrl: generatedModel?.urls?.stl
+                      }
+                    })}
+                    size="lg"
+                  >
+                    Print
+                  </Button>
                   
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Button 
-                      variant="outline" 
-                      icon={ShoppingCart} 
-                      className="w-full"
-                      onClick={() => navigate('/manufacturing')}
-                    >
-                      Print
-                    </Button>
-                    <Button 
-                      icon={ShoppingCart} 
-                      className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
-                      onClick={handleBuyNow}
-                    >
-                      Buy Now
-                    </Button>
-                  </div>
+                  {/* Secondary Action - Buy Now */}
+                  <Button 
+                    icon={ShoppingCart} 
+                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                    onClick={handleBuyNow}
+                  >
+                    Download
+                  </Button>
 
-                  <div className="grid grid-cols-1 gap-3">
-                    <Button 
-                      variant="outline" 
-                      icon={Store} 
-                      className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
-                      onClick={handlePublishToMarketplace}
-                    >
-                      Publish to Marketplace
-                    </Button>
-                  </div>
+                  {/* Tertiary Action - Publish to Marketplace */}
+                  <Button 
+                    variant="outline" 
+                    icon={Store} 
+                    className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
+                    onClick={handlePublishToMarketplace}
+                  >
+                    Publish to Marketplace
+                  </Button>
                   
-                  <div className="pt-4 border-t border-gray-200">
-                    <h4 className="font-medium text-gray-900 mb-2">Model Details</h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-500">Format:</span>
-                        <span className="ml-2 font-medium">STL, OBJ</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Size:</span>
-                        <span className="ml-2 font-medium">Medium</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Polygons:</span>
-                        <span className="ml-2 font-medium">12,480</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">File Size:</span>
-                        <span className="ml-2 font-medium">2.4 MB</span>
-                      </div>
+                  {/* Bottom Action - Share */}
+                  <Button 
+                    variant="outline" 
+                    icon={Share2} 
+                    className="w-full"
+                  >
+                    Share
+                  </Button>
+                </div>
+                
+                <div className="pt-4 border-t border-gray-200">
+                  <h4 className="font-medium text-gray-900 mb-2">Model Details</h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-500">Format:</span>
+                      <span className="ml-2 font-medium">STL, OBJ</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Size:</span>
+                      <span className="ml-2 font-medium">Medium</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Polygons:</span>
+                      <span className="ml-2 font-medium">12,480</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">File Size:</span>
+                      <span className="ml-2 font-medium">2.4 MB</span>
                     </div>
                   </div>
                 </div>

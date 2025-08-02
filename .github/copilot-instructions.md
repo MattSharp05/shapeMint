@@ -7,6 +7,18 @@ ShapeMint is an AI-powered 3D model generation and manufacturing platform. Users
 
 ## Architecture & Key Components
 
+### MCP Tools & Knowledge Management
+- **Memory MCP Server**: Persistent knowledge graph for retaining project context, decisions, and learnings across sessions
+  - Use `mcp_memory_*` tools to create entities, relations, and observations
+  - Store important architectural decisions, bug fixes, and user preferences
+  - Maintain context about recurring issues and their solutions
+- **GitHub MCP Server**: Direct GitHub integration for repository management
+  - Access issues, PRs, commits, and repository content via `mcp_github_*` tools
+  - Search code, get file contents, and track project activity
+- **Supabase MCP Server**: Direct Supabase project management
+  - Database operations, migrations, and Edge Functions via `mcp_supabase_*` tools
+  - Monitor logs, advisors, and project health
+
 ### Dual-Server Development Setup
 - **Proxy Server** (`localhost:3001`): Handles CORS for Meshy asset loading and API requests
 - **Dev Server** (`localhost:5175`): React app with Vite
@@ -93,6 +105,32 @@ navigate('/order', {
 - **Components**: Organized by domain (`3D/`, `Generation/`, `Payment/`)
 - **Services**: External API wrappers in `src/services/`
 - **Types**: TypeScript definitions in `src/types/`
+
+## MCP Tool Usage Guidelines
+
+### Session Initialization Protocol
+**CRITICAL**: At the start of EVERY new chat session, automatically execute these steps:
+1. **Load Project Context**: `mcp_memory_search_nodes` with query "ShapeMint project"
+2. **Check Project Health**: `mcp_supabase_get_advisors` for security and performance
+4. **Update Knowledge**: Store any new learnings from the session using memory tools
+
+### Memory Management
+- At the start of significant sessions, use `mcp_memory_search_nodes` to retrieve relevant context
+- Create entities for new features, bugs, or architectural decisions using `mcp_memory_create_entities`
+- Establish relations between related concepts with `mcp_memory_create_relations`
+- Add observations for implementation details, lessons learned, and troubleshooting notes
+- Use `mcp_memory_read_graph` to understand the full project knowledge structure
+
+### GitHub Integration
+- Search for relevant code patterns with `mcp_github_search_code` before implementing new features
+- Track project activity and issues with `mcp_github_list_issues` and `mcp_github_list_pull_requests`
+- Get file contents and repository structure with `mcp_github_get_file_contents`
+
+### Supabase Operations
+- Monitor project health with `mcp_supabase_get_advisors` for security and performance issues
+- Use `mcp_supabase_list_tables` and `mcp_supabase_list_migrations` to understand database structure
+- Check logs with `mcp_supabase_get_logs` when debugging Edge Functions or database issues
+- Generate TypeScript types with `mcp_supabase_generate_typescript_types` after schema changes
 
 ## Environment Requirements
 ```env

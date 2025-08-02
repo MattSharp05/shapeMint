@@ -324,7 +324,8 @@ CREATE TABLE IF NOT EXISTS "public"."orders" (
     "shipped_at" timestamp with time zone,
     "delivered_at" timestamp with time zone,
     "order_data" "jsonb",
-    "user_id" "uuid"
+    "user_id" "uuid",
+    "slant_response" "jsonb"
 );
 
 
@@ -590,7 +591,15 @@ CREATE INDEX "idx_orders_status" ON "public"."orders" USING "btree" ("status");
 
 
 
+CREATE INDEX "idx_orders_tracking" ON "public"."orders" USING "gin" ("tracking_numbers");
+
+
+
 CREATE INDEX "idx_orders_tracking_numbers" ON "public"."orders" USING "gin" ("tracking_numbers");
+
+
+
+CREATE INDEX "idx_orders_user_id" ON "public"."orders" USING "btree" ("user_id");
 
 
 

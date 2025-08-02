@@ -129,8 +129,8 @@ export class ThumbnailGenerator {
           
           resolve(model);
         },
-        (progress) => {
-          console.log('Loading progress:', progress);
+        (_progress) => {
+          // Loading progress - silent in production
         },
         (error) => {
           console.error('Error loading model:', error);
@@ -186,8 +186,6 @@ export class ThumbnailGenerator {
 
       // Generate thumbnail for each angle
       for (const angle of angles) {
-        console.log(`📸 Generating thumbnail for ${angle.label}...`);
-        
         const dataUrl = this.generateThumbnail(angle);
         thumbnails[angle.name] = dataUrl;
         
@@ -195,8 +193,6 @@ export class ThumbnailGenerator {
         if (onProgress) {
           onProgress(angle.name, dataUrl);
         }
-        
-        console.log(`✅ Generated ${angle.label} thumbnail`);
       }
 
       console.log('🎉 All thumbnails generated successfully!');
@@ -223,9 +219,9 @@ export class ThumbnailGenerator {
         const blob = await response.blob();
 
         // Upload to Supabase Storage
-        const fileName = `${modelId}/${angleName}.jpg`;
+        const fileName = `thumbnails/${modelId}/${angleName}.jpg`;
         const { data, error } = await supabase.storage
-          .from('thumbnails')
+          .from('model-files')
           .upload(fileName, blob, {
             contentType: 'image/jpeg',
             upsert: true
@@ -238,7 +234,7 @@ export class ThumbnailGenerator {
         } else {
           // Get public URL
           const { data: publicData } = supabase.storage
-            .from('thumbnails')
+            .from('model-files')
             .getPublicUrl(data.path);
           
           uploadedUrls[angleName] = publicData.publicUrl;

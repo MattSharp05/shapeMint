@@ -74,6 +74,35 @@ export class StorageService {
       throw error;
     }
   }
+
+  /**
+   * Upload custom thumbnail for marketplace listing
+   */
+  async uploadCustomThumbnail(listingId: string, file: File): Promise<string> {
+    const fileExtension = file.name.split('.').pop() || 'jpg';
+    const fileName = `marketplace_thumbnails/${listingId}/custom.${fileExtension}`;
+    
+    console.log(`Uploading custom thumbnail to ${this.BUCKET_NAME}/${fileName}`);
+    
+    const { error: uploadError } = await supabase.storage
+      .from(this.BUCKET_NAME)
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error('Error uploading custom thumbnail:', uploadError);
+      throw uploadError;
+    }
+
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from(this.BUCKET_NAME)
+      .getPublicUrl(fileName);
+
+    return publicUrl;
+  }
 }
 
 export const storageService = StorageService.getInstance();

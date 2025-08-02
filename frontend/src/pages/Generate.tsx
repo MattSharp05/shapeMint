@@ -1,44 +1,27 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useThumbnailGenerator } from '../hooks/useThumbnailGenerator';
 import { GenerationForm } from '../components/Generation/GenerationForm';
 import { GenerationProgress } from '../components/Generation/GenerationProgress';
 import { ModelViewer } from '../components/3D/ModelViewer';
-import { ThumbnailSelector } from '../components/UI/ThumbnailSelector';
 import { Button } from '../components/UI/Button';
 import { Card } from '../components/UI/Card';
-import { Share2, ShoppingCart, Camera, Store, Printer } from 'lucide-react';
+import { Share2, ShoppingCart, Store, Printer } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export function Generate() {
   const [status, setStatus] = useState<'pending' | 'generating' | 'completed' | 'failed'>('pending');
   const [generatedModel, setGeneratedModel] = useState<any>(null);
-  const [showThumbnailSelector, setShowThumbnailSelector] = useState(false);
-  const [thumbnailData, setThumbnailData] = useState<{
-    angles: { [angle: string]: string };
-    selectedAngle: string;
-    isCustom: boolean;
-  } | null>(null);
 
   const navigate = useNavigate();
-
-  // Client-side thumbnail generation
-  const {
-    isGenerating: isGeneratingThumbnails,
-    generateThumbnails
-  } = useThumbnailGenerator({ 
-    uploadToStorage: false // Use data URLs for MVP speed
-  });
 
   const convertToSTL = async (glbUrl: string, modelId: string) => {
     try {
       console.log('🔧 Starting background GLB to STL conversion...');
       
-      const { data, error } = await supabase.functions.invoke('glb-to-stl', {
+      const { data, error } = await supabase.functions.invoke('save-stl-to-bucket', {
         body: { 
           glbUrl,
-          modelId,
-          targetSize: 50 // 50mm max dimension
+          modelId
         }
       });
 
@@ -76,27 +59,6 @@ export function Generate() {
       console.log('🔧 Starting background STL conversion from GLB...');
       convertToSTL(modelData.urls.glb, modelData.id);
       // Note: We don't await this - it runs in background
-    }
-    
-    // Start client-side thumbnail generation immediately
-    if (modelData.urls?.glb) {
-      console.log('🎨 Starting client-side thumbnail generation...');
-      try {
-        const generatedThumbnails = await generateThumbnails(
-          modelData.urls.glb,
-          modelData.id
-        );
-        
-        setThumbnailData({
-          angles: generatedThumbnails,
-          selectedAngle: Object.keys(generatedThumbnails)[0] || 'front',
-          isCustom: false
-        });
-        setShowThumbnailSelector(true);
-      } catch (error) {
-        console.error('Failed to generate thumbnails:', error);
-        // Continue without thumbnails - not a blocking error
-      }
     }
   };
 
@@ -163,16 +125,6 @@ export function Generate() {
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
                   Your Model is Ready!
                 </h3>
-                
-                {/* Thumbnail Generation Status */}
-                {isGeneratingThumbnails && (
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-center">
-                      <Camera className="h-4 w-4 text-blue-600 mr-2 animate-pulse" />
-                      <span className="text-sm text-blue-700">Generating thumbnails...</span>
-                    </div>
-                  </div>
-                )}
                 
                 <div className="space-y-3">
                   {/* Primary Action - Print This Design */}
@@ -246,27 +198,6 @@ export function Generate() {
           </div>
         </div>
       </div>
-
-      {/* Thumbnail Selector Modal */}
-      {thumbnailData && (
-        <ThumbnailSelector
-          modelId={generatedModel?.id}
-          angles={thumbnailData.angles}
-          selectedAngle={thumbnailData.selectedAngle}
-          onSelect={(angle) => {
-            setThumbnailData(prev => prev ? { ...prev, selectedAngle: angle, isCustom: false } : null);
-          }}
-          onUpload={(_file) => {
-            setThumbnailData(prev => prev ? { ...prev, isCustom: true } : null);
-          }}
-          onRemove={() => {
-            setThumbnailData(prev => prev ? { ...prev, isCustom: false } : null);
-          }}
-          isOpen={showThumbnailSelector}
-          onClose={() => setShowThumbnailSelector(false)}
-          isCustom={thumbnailData.isCustom}
-        />
-      )}
     </div>
   );
 }

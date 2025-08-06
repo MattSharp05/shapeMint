@@ -251,6 +251,74 @@ CREATE TABLE IF NOT EXISTS "public"."generation_tasks" (
 ALTER TABLE "public"."generation_tasks" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."hy_generated_jobs" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "prompt_id" "text" NOT NULL,
+    "status" "text" DEFAULT 'pending'::"text" NOT NULL,
+    "progress" integer DEFAULT 0,
+    "prompt" "text",
+    "image_filename" "text",
+    "workflow_type" "text" DEFAULT 'hy3d'::"text",
+    "workflow_nodes" integer,
+    "comfyui_server" "text",
+    "output_files" "jsonb",
+    "primary_model_url" "text",
+    "primary_preview_url" "text",
+    "execution_time" "text",
+    "error_message" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."hy_generated_jobs" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."hy_generated_models" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "name" "text" NOT NULL,
+    "prompt" "text" NOT NULL,
+    "style" "text",
+    "obj_url" "text" NOT NULL,
+    "stl_url" "text" NOT NULL,
+    "glb_url" "text" NOT NULL,
+    "thumbnail_url" "text",
+    "status" "text" DEFAULT 'processing'::"text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "job_id" "uuid"
+);
+
+
+ALTER TABLE "public"."hy_generated_models" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."hy_generation_jobs" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "prompt_id" "text" NOT NULL,
+    "status" "text" DEFAULT 'queued'::"text" NOT NULL,
+    "progress" integer DEFAULT 0,
+    "prompt" "text",
+    "image_filename" "text",
+    "workflow_type" "text" DEFAULT 'hy3d'::"text",
+    "output_files" "jsonb" DEFAULT '[]'::"jsonb",
+    "primary_model_url" "text",
+    "primary_preview_url" "text",
+    "error_message" "text",
+    "execution_time" "text",
+    "workflow_nodes" integer,
+    "comfyui_server" "text" DEFAULT 'http://comfy.tunell.live'::"text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."hy_generation_jobs" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."manufacturing_quotes" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "model_id" "uuid" NOT NULL,
@@ -456,6 +524,21 @@ ALTER TABLE ONLY "public"."generation_tasks"
 
 
 
+ALTER TABLE ONLY "public"."hy_generated_jobs"
+    ADD CONSTRAINT "hy_generated_jobs_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."hy_generated_models"
+    ADD CONSTRAINT "hy_generated_models_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."hy_generation_jobs"
+    ADD CONSTRAINT "hy_generation_jobs_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."manufacturing_quotes"
     ADD CONSTRAINT "manufacturing_quotes_pkey" PRIMARY KEY ("id");
 
@@ -547,6 +630,18 @@ CREATE INDEX "idx_generated_models_user_id" ON "public"."generated_models" USING
 
 
 
+CREATE INDEX "idx_generation_jobs_prompt_id" ON "public"."hy_generation_jobs" USING "btree" ("prompt_id");
+
+
+
+CREATE INDEX "idx_generation_jobs_status" ON "public"."hy_generation_jobs" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_generation_jobs_user_id" ON "public"."hy_generation_jobs" USING "btree" ("user_id");
+
+
+
 CREATE INDEX "idx_generation_tasks_created_at" ON "public"."generation_tasks" USING "btree" ("created_at");
 
 
@@ -560,6 +655,22 @@ CREATE INDEX "idx_generation_tasks_task_id" ON "public"."generation_tasks" USING
 
 
 CREATE INDEX "idx_generation_tasks_user_id" ON "public"."generation_tasks" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_hy_generated_jobs_created_at" ON "public"."hy_generated_jobs" USING "btree" ("created_at");
+
+
+
+CREATE INDEX "idx_hy_generated_jobs_prompt_id" ON "public"."hy_generated_jobs" USING "btree" ("prompt_id");
+
+
+
+CREATE INDEX "idx_hy_generated_jobs_status" ON "public"."hy_generated_jobs" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_hy_generated_jobs_user_id" ON "public"."hy_generated_jobs" USING "btree" ("user_id");
 
 
 
@@ -649,6 +760,26 @@ ALTER TABLE ONLY "public"."generation_tasks"
 
 
 
+ALTER TABLE ONLY "public"."hy_generated_jobs"
+    ADD CONSTRAINT "hy_generated_jobs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."hy_generated_models"
+    ADD CONSTRAINT "hy_generated_models_job_id_fkey" FOREIGN KEY ("job_id") REFERENCES "public"."hy_generated_jobs"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."hy_generated_models"
+    ADD CONSTRAINT "hy_generated_models_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."hy_generation_jobs"
+    ADD CONSTRAINT "hy_generation_jobs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."manufacturing_quotes"
     ADD CONSTRAINT "manufacturing_quotes_model_id_fkey" FOREIGN KEY ("model_id") REFERENCES "public"."models"("id");
 
@@ -730,6 +861,18 @@ CREATE POLICY "Users can create their own models" ON "public"."generated_models"
 
 
 
+CREATE POLICY "Users can insert own generation jobs" ON "public"."hy_generation_jobs" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can insert own models" ON "public"."hy_generated_models" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can insert their own jobs" ON "public"."hy_generated_jobs" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
 CREATE POLICY "Users can insert their own profile." ON "public"."profiles" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
 
 
@@ -746,7 +889,15 @@ CREATE POLICY "Users can manage their own models" ON "public"."models" USING (("
 
 
 
+CREATE POLICY "Users can update own generation jobs" ON "public"."hy_generation_jobs" FOR UPDATE USING (("auth"."uid"() = "user_id"));
+
+
+
 CREATE POLICY "Users can update their own data" ON "public"."users" FOR UPDATE USING (("auth"."uid"() = "id"));
+
+
+
+CREATE POLICY "Users can update their own jobs" ON "public"."hy_generated_jobs" FOR UPDATE USING (("auth"."uid"() = "user_id"));
 
 
 
@@ -757,6 +908,14 @@ CREATE POLICY "Users can update their own profile." ON "public"."profiles" FOR U
 CREATE POLICY "Users can view likes on public models" ON "public"."model_likes" FOR SELECT USING ((EXISTS ( SELECT 1
    FROM "public"."models"
   WHERE (("models"."id" = "model_likes"."model_id") AND (("models"."is_public" = true) OR ("models"."user_id" = "auth"."uid"()))))));
+
+
+
+CREATE POLICY "Users can view own generation jobs" ON "public"."hy_generation_jobs" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can view own models" ON "public"."hy_generated_models" FOR SELECT USING (("auth"."uid"() = "user_id"));
 
 
 
@@ -775,6 +934,10 @@ CREATE POLICY "Users can view their own data" ON "public"."user_profile" FOR SEL
 
 
 CREATE POLICY "Users can view their own data" ON "public"."users" FOR SELECT USING (("auth"."uid"() = "id"));
+
+
+
+CREATE POLICY "Users can view their own jobs" ON "public"."hy_generated_jobs" FOR SELECT USING (("auth"."uid"() = "user_id"));
 
 
 
@@ -800,6 +963,15 @@ ALTER TABLE "public"."generated_models" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."generation_tasks" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."hy_generated_jobs" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."hy_generated_models" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."hy_generation_jobs" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."manufacturing_quotes" ENABLE ROW LEVEL SECURITY;
@@ -1052,6 +1224,24 @@ GRANT ALL ON TABLE "public"."generated_models" TO "service_role";
 GRANT ALL ON TABLE "public"."generation_tasks" TO "anon";
 GRANT ALL ON TABLE "public"."generation_tasks" TO "authenticated";
 GRANT ALL ON TABLE "public"."generation_tasks" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."hy_generated_jobs" TO "anon";
+GRANT ALL ON TABLE "public"."hy_generated_jobs" TO "authenticated";
+GRANT ALL ON TABLE "public"."hy_generated_jobs" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."hy_generated_models" TO "anon";
+GRANT ALL ON TABLE "public"."hy_generated_models" TO "authenticated";
+GRANT ALL ON TABLE "public"."hy_generated_models" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."hy_generation_jobs" TO "anon";
+GRANT ALL ON TABLE "public"."hy_generation_jobs" TO "authenticated";
+GRANT ALL ON TABLE "public"."hy_generation_jobs" TO "service_role";
 
 
 

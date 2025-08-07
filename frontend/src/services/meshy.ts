@@ -95,9 +95,10 @@ export class MeshyService {
   private constructor() {
     const apiKey = import.meta.env.VITE_MESHY_API_KEY;
     if (!apiKey) {
-      throw new Error('VITE_MESHY_API_KEY is not set');
+      console.warn('VITE_MESHY_API_KEY is not set. Meshy service will not work properly.');
+      console.warn('Please add VITE_MESHY_API_KEY to your .env file');
     }
-    this.headers = { Authorization: `Bearer ${apiKey}` };
+    this.headers = { Authorization: `Bearer ${apiKey || 'placeholder-key'}` };
   }
 
   public static getInstance(): MeshyService {

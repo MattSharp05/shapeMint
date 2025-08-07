@@ -81,16 +81,33 @@ app.get('/api/meshy/glb', async (req, res) => {
 
     console.log('Proxying GLB request for:', url);
 
+    // Determine if this is a Supabase storage URL or Meshy URL
+    const isSupabaseUrl = url.includes('supabase.co');
+    
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': '*/*',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive'
+    };
+
+    // Only add Meshy API key if it's a Meshy URL
+    if (!isSupabaseUrl && process.env.VITE_MESHY_API_KEY) {
+      headers['Authorization'] = `Bearer ${process.env.VITE_MESHY_API_KEY}`;
+    }
+
+    console.log('Making request with headers:', Object.keys(headers));
+    console.log('Is Supabase URL:', isSupabaseUrl);
+
     const response = await axios.get(url, {
-      headers: {
-        'Authorization': `Bearer ${process.env.VITE_MESHY_API_KEY}`,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': '*/*',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive'
-      },
-      responseType: 'arraybuffer'
+      headers,
+      responseType: 'arraybuffer',
+      timeout: 30000 // 30 second timeout
     });
+
+    console.log('GLB response status:', response.status);
+    console.log('GLB response size:', response.data.length, 'bytes');
+    console.log('GLB response headers:', response.headers);
 
     // Set appropriate headers for GLB file
     res.set({
@@ -107,7 +124,83 @@ app.get('/api/meshy/glb', async (req, res) => {
     
   } catch (error) {
     console.error('GLB proxy error:', error.message);
-    res.status(500).json({ error: 'Failed to load GLB file' });
+    console.error('GLB proxy error details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      headers: error.response?.headers,
+      data: error.response?.data
+    });
+    
+    res.status(500).json({ 
+      error: 'Failed to load GLB file',
+      details: error.message,
+      status: error.response?.status
+    });
+  }
+});
+
+// Add dedicated Supabase storage proxy endpoint
+app.get('/api/supabase/storage', async (req, res) => {
+  try {
+    const { url } = req.query;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'URL parameter is required' });
+    }
+
+    console.log('Proxying Supabase storage request for:', url);
+
+    // Validate that this is a Supabase storage URL
+    if (!url.includes('supabase.co')) {
+      return res.status(400).json({ error: 'Invalid Supabase storage URL' });
+    }
+
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': '*/*',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive'
+    };
+
+    console.log('Making Supabase storage request with headers:', Object.keys(headers));
+
+    const response = await axios.get(url, {
+      headers,
+      responseType: 'arraybuffer',
+      timeout: 30000 // 30 second timeout
+    });
+
+    console.log('Supabase storage response status:', response.status);
+    console.log('Supabase storage response size:', response.data.length, 'bytes');
+    console.log('Supabase storage response headers:', response.headers);
+
+    // Set appropriate headers for the file
+    res.set({
+      'Content-Type': response.headers['content-type'] || 'application/octet-stream',
+      'Content-Length': response.data.length,
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Cache-Control': 'public, max-age=3600' // Cache for 1 hour
+    });
+
+    // Send the file data
+    res.send(Buffer.from(response.data));
+    
+  } catch (error) {
+    console.error('Supabase storage proxy error:', error.message);
+    console.error('Supabase storage proxy error details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      headers: error.response?.headers,
+      data: error.response?.data
+    });
+    
+    res.status(500).json({ 
+      error: 'Failed to load file from Supabase storage',
+      details: error.message,
+      status: error.response?.status
+    });
   }
 });
 

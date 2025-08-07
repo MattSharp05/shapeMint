@@ -15,10 +15,18 @@ export function Generate() {
   const navigate = useNavigate();
 
   const handleGenerationSuccess = (modelData: any) => {
-    console.log('Generation completed, model data:', modelData);
-    console.log('Model data structure:', JSON.stringify(modelData, null, 2));
-    console.log('URLs in model data:', modelData?.urls);
-    console.log('GLB URL:', modelData?.urls?.glb);
+    console.log('🎯 Generate.tsx: Generation completed, model data:', modelData);
+    console.log('📊 Generate.tsx: Model data structure:', JSON.stringify(modelData, null, 2));
+    console.log('🏷️ Generate.tsx: Generation type:', modelData?.type);
+    console.log('🔗 Generate.tsx: URLs in model data:', modelData?.urls);
+    console.log('📦 Generate.tsx: GLB URL:', modelData?.urls?.glb);
+    console.log('🆔 Generate.tsx: Task ID:', modelData?.taskId);
+    
+    // Additional logging for debugging
+    console.log('🔍 Generate.tsx: modelData.urls?.glb type:', typeof modelData?.urls?.glb);
+    console.log('🔍 Generate.tsx: modelData.urls?.glb length:', modelData?.urls?.glb?.length);
+    console.log('🔍 Generate.tsx: modelData.urls?.glb starts with http:', modelData?.urls?.glb?.startsWith('http'));
+    
     setStatus('completed');
     setGeneratedModel(modelData);
   };
@@ -26,6 +34,10 @@ export function Generate() {
   const handleBuyNow = () => {
     navigate('/order');
   };
+
+  // Log when component renders with model data
+  console.log('🔄 Generate.tsx: Rendering with generatedModel:', generatedModel);
+  console.log('🔄 Generate.tsx: GLB URL being passed to ModelViewer:', generatedModel?.urls?.glb);
 
   return (
     <div className="pt-16 min-h-screen bg-gray-50">
@@ -60,7 +72,7 @@ export function Generate() {
                 3D Preview
               </h3>
               <ModelViewer 
-                modelUrl={generatedModel?.urls?.urls?.glb}
+                modelUrl={generatedModel?.urls?.glb}
                 className="h-80 w-full"
               />
             </Card>

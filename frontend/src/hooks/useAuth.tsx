@@ -92,28 +92,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Logout function
   const logout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-    setUser(null);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setUser(null);
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still set user to null even if logout fails
+      setUser(null);
+    }
   };
 
   // Listen for auth state changes
   useEffect(() => {
     const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email || '',
-          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '',
-          createdAt: session.user.created_at || new Date().toISOString(),
-        });
-      }
-      setLoading(false);
-    };
-    getSession();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           setUser({
             id: session.user.id,
@@ -121,12 +115,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '',
             createdAt: session.user.created_at || new Date().toISOString(),
           });
-        } else {
-          setUser(null);
         }
+      } catch (error) {
+        console.error('Error getting session:', error);
+        // Continue without user if there's an error
+      } finally {
         setLoading(false);
       }
+    };
+    
+    getSession();
+    
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        try {
+          if (session?.user) {
+            setUser({
+              id: session.user.id,
+              email: session.user.email || '',
+              name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '',
+              createdAt: session.user.created_at || new Date().toISOString(),
+            });
+          } else {
+            setUser(null);
+          }
+        } catch (error) {
+          console.error('Error in auth state change:', error);
+          setUser(null);
+        } finally {
+          setLoading(false);
+        }
+      }
     );
+    
     return () => {
       subscription.unsubscribe();
     };

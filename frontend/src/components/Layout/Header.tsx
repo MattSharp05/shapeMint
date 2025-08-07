@@ -39,12 +39,20 @@ export function Header() {
               Marketplace
             </Link>
             {user && (
-              <Link
-                to="/dashboard"
-                className="text-gray-700 hover:text-purple-600 font-medium transition-colors"
-              >
-                My Account
-              </Link>
+              <>
+                <Link
+                  to="/dashboard"
+                  className="text-gray-700 hover:text-purple-600 font-medium transition-colors"
+                >
+                  My Account
+                </Link>
+                <Link
+                  to="/test-comfyui"
+                  className="text-gray-700 hover:text-purple-600 font-medium transition-colors"
+                >
+                  Test ComfyUI
+                </Link>
+              </>
             )}
           </nav>
 

@@ -4,7 +4,7 @@ import { Button } from '../UI/Button';
 import { Input } from '../UI/Input';
 import { Card } from '../UI/Card';
 import { useAuth } from '../../hooks/useAuth';
-import { meshyService } from '../../services/meshy';
+import { modelService } from '../../services/modelService';
 
 interface GenerationFormProps {
   onSuccess?: (model?: any) => void;
@@ -16,6 +16,7 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
   const [mode, setMode] = useState<'text' | 'image'>('text');
   const [prompt, setPrompt] = useState('');
   const [image, setImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
   const [loading, setLoading] = useState(initialLoading);
   const [error, setError] = useState<string>();
   const [settings, setSettings] = useState({
@@ -31,8 +32,15 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
       return;
     }
 
-    if (!prompt.trim()) {
+    // For image mode, prompt is optional. For text mode, prompt is required.
+    if (mode === 'text' && !prompt.trim()) {
       setError('Please enter a prompt');
+      return;
+    }
+
+    // For image mode, we need an image (prompt is optional)
+    if (mode === 'image' && !image) {
+      setError('Please upload an image');
       return;
     }
 
@@ -40,39 +48,57 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
     setError(undefined);
     
     try {
-      // Convert form data to Meshy API format
-      const generationData = {
+      console.log('Starting model generation with params:', { prompt: prompt.trim(), hasImage: !!image });
+
+      // Use the new unified modelService (handles routing to ComfyUI or MeshyAI)
+      const result = await modelService.generate3DModel({
         prompt: prompt.trim(),
-        style: settings.style,
-        negative_prompt: '',
-        seed: Math.floor(Math.random() * 1000000)
-      };
+        image: image || undefined
+      });
 
-      console.log('Starting model generation with params:', generationData);
-
-      // Generate and store the model
-      const modelData = await meshyService.generateAndStoreModel(generationData, user.id);
+      if (!result.success) {
+        setError(result.error || 'Failed to generate model');
+        return;
+      }
       
       // Clear form
       setPrompt('');
+      setImage(null);
+      setImagePreview('');
+      
       if (onSuccess) {
-        onSuccess({
-          prompt: generationData.prompt,
-          style: generationData.style,
-          urls: modelData // This will contain the model URLs
-        });
+        // Transform response to match expected structure
+        const transformedData = {
+          prompt: prompt.trim(),
+          style: settings.style,
+          urls: {
+            glb: result.data?.modelUrl || result.data?.model_url,
+            obj: result.data?.objUrl,
+            stl: result.data?.stlUrl || result.data?.downloadUrl
+          },
+          modelDetails: result.data,
+          type: result.data?.type || 'unknown',
+          taskId: result.data?.taskId || result.data?.task_id
+        };
+        
+        console.log('🔄 GenerationForm: Transforming response for parent');
+        console.log('📦 GenerationForm: Original result.data:', result.data);
+        console.log('🎯 GenerationForm: Transformed data:', transformedData);
+        console.log('🔗 GenerationForm: GLB URL in transformed data:', transformedData.urls.glb);
+        
+        onSuccess(transformedData);
       }
     } catch (err) {
       console.error('Error generating model:', err);
       if (err instanceof Error) {
-        if (err.message.includes('preview') || err.message.includes('Preview')) {
-          setError('Failed to create preview. Please try a different prompt or try again later.');
-        } else if (err.message.includes('refine') || err.message.includes('Refine')) {
-          setError('Failed to refine model. Please try again.');
-        } else if (err.message.includes('download')) {
-          setError('Failed to download model files. Please try again.');
-        } else if (err.message.includes('storage') || err.message.includes('database')) {
-          setError('Failed to save model. Please try again.');
+        if (err.message.includes('ComfyUI')) {
+          setError(`ComfyUI generation failed: ${err.message}. Please try again or check your image.`);
+        } else if (err.message.includes('MeshyAI')) {
+          setError(`MeshyAI generation failed: ${err.message}. Please try a different prompt.`);
+        } else if (err.message.includes('Network') || err.message.includes('network')) {
+          setError('Network error. Please check your connection and try again.');
+        } else if (err.message.includes('timeout')) {
+          setError('Generation timeout. Please try again - this may take 5-15 minutes.');
         } else {
           setError(err.message);
         }
@@ -91,6 +117,13 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
     const file = e.target.files?.[0];
     if (file) {
       setImage(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -153,7 +186,6 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
                   accept="image/*"
                   className="hidden"
                   id="image-upload"
-                  required
                 />
                 <label htmlFor="image-upload" className="cursor-pointer">
                   <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
@@ -163,6 +195,17 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
                   <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 10MB</p>
                 </label>
               </div>
+              
+              {/* Image Preview */}
+              {imagePreview && (
+                <div className="mt-4">
+                  <img
+                    src={imagePreview}
+                    alt="Preview"
+                    className="w-full h-48 object-contain rounded-lg border"
+                  />
+                </div>
+              )}
             </div>
           )}
 

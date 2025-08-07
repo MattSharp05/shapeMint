@@ -1,6 +1,7 @@
 // src/services/modelService.ts
 import { supabase } from '../../supabaseClient';
 import { MarketplaceModel } from '../types';
+import { comfyUIService } from './comfyUIService';
 interface Generate3DModelParams {
   prompt: string;
   image?: File;
@@ -16,7 +17,6 @@ interface ModelResponse {
 export const modelService = {
   async generate3DModel({ prompt, image }: Generate3DModelParams): Promise<ModelResponse> {
     try {
-      const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-3d-model`;
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) {
         return {
@@ -28,53 +28,126 @@ export const modelService = {
 
       const userId = session.user.id;
 
-      let body: FormData | string;
-      let headers: Record<string, string> = {};
-
+      // ROUTING LOGIC: Route based on input type
       if (image) {
-        // ✅ Validate image file
-        if (!image.type.startsWith('image/')) {
-          return {
-            success: false,
-            data: null,
-            error: 'Invalid file type. Please upload an image file.',
-          };
-        }
-
-        // ✅ Check file size (Meshy has limits)
-        const maxSize = 10 * 1024 * 1024; // 10MB limit
-        if (image.size > maxSize) {
-          return {
-            success: false,
-            data: null,
-            error: 'Image file too large. Please use an image smaller than 10MB.',
-          };
-        }
-
-        console.log('📤 Sending image to Edge Function:', {
-          fileName: image.name,
-          fileType: image.type,
-          fileSize: image.size,
-          promptLength: prompt.length
-        });
-
-        const formData = new FormData();
-        formData.append('prompt', prompt); // This can be empty string for texture prompt
-        formData.append('image', image);
-        formData.append('mode', 'preview'); // ✅ Add mode parameter
-        if (userId) formData.append('user_id', userId);
-        body = formData;
-        
-        // ✅ Don't set Content-Type for FormData - let browser set it with boundary
+        console.log('🔀 Routing to ComfyUI (Image-to-3D)');
+        return await this.generateWithComfyUI({ prompt, image, userId });
       } else {
-        // Text-to-3D request
-        body = JSON.stringify({ 
-          prompt, 
-          mode: "preview",
-          user_id: userId || null
-        });
-        headers['Content-Type'] = 'application/json';
+        console.log('🔀 Routing to MeshyAI (Text-to-3D)');
+        return await this.generateWithMeshy({ prompt, userId, session });
       }
+    } catch (error) {
+      console.error('❌ Error in generate3DModel routing:', error);
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : 'Failed to generate 3D model',
+      };
+    }
+  },
+
+  /**
+   * Generate using ComfyUI (Image-to-3D)
+   */
+  async generateWithComfyUI({ prompt, image, userId }: { prompt: string; image: File; userId: string }): Promise<ModelResponse> {
+    try {
+      console.log('🖼️ Starting ComfyUI Image-to-3D generation');
+
+      // Use the ComfyUI service for image-to-3D
+      const comfyResult = await comfyUIService.generate({ prompt, image, userId });
+
+      if (!comfyResult.success) {
+        return {
+          success: false,
+          data: null,
+          error: comfyResult.error || 'ComfyUI generation failed'
+        };
+      }
+
+      console.log('📦 ComfyUI result data:', comfyResult.data);
+      console.log('📁 ComfyUI allFiles:', comfyResult.data?.allFiles);
+
+      // Find the GLB URL from allFiles
+      let glbUrl = comfyResult.data?.primaryModelUrl;
+      
+      if (comfyResult.data?.allFiles && comfyResult.data.allFiles.length > 0) {
+        // Look for GLB files in allFiles
+        const glbFiles = comfyResult.data.allFiles.filter(file => 
+          file.fileExtension === 'glb' && file.publicUrl
+        );
+        
+        console.log('🔍 Found GLB files:', glbFiles);
+        
+        if (glbFiles.length > 0) {
+          // Use the first GLB file's public URL
+          glbUrl = glbFiles[0].publicUrl;
+          console.log('✅ Using GLB URL from allFiles:', glbUrl);
+        } else {
+          console.log('⚠️ No GLB files found in allFiles, using primaryModelUrl:', glbUrl);
+        }
+      } else {
+        console.log('⚠️ No allFiles array, using primaryModelUrl:', glbUrl);
+      }
+
+      if (!glbUrl) {
+        console.error('❌ No GLB URL found in ComfyUI response');
+        return {
+          success: false,
+          data: null,
+          error: 'No GLB model URL found in ComfyUI response'
+        };
+      }
+
+      console.log('🎯 Final GLB URL for ModelViewer:', glbUrl);
+
+      return {
+        success: true,
+        data: {
+          taskId: comfyResult.data?.jobId || comfyResult.data?.promptId,
+          modelUrl: glbUrl, // Use the extracted GLB URL
+          downloadUrl: glbUrl,
+          status: comfyResult.data?.status || 'completed',
+          progress: comfyResult.data?.progress || 100,
+          type: 'comfyui',
+          allFiles: comfyResult.data?.allFiles || [],
+          primaryModelUrl: glbUrl,
+          executionTime: comfyResult.data?.executionTime,
+          workflowNodes: comfyResult.data?.workflowNodes,
+          comfyuiServer: comfyResult.data?.comfyuiServer,
+          message: comfyResult.data?.message,
+          totalFiles: comfyResult.data?.totalFiles
+        }
+      };
+    } catch (error) {
+      console.error('❌ Error in generateWithComfyUI:', error);
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : 'ComfyUI generation failed'
+      };
+    }
+  },
+
+  /**
+   * Generate using MeshyAI (Text-to-3D) - existing logic
+   */
+  async generateWithMeshy({ prompt, userId, session }: { prompt: string; userId: string; session: any }): Promise<ModelResponse> {
+    try {
+      console.log('📝 Starting MeshyAI Text-to-3D generation');
+      
+      // Use the v2 edge function (which will route to MeshyAI for text-only)
+      const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-3d-model-v2`;
+
+      // Text-to-3D request (no image)
+      const body = JSON.stringify({ 
+        prompt, 
+        mode: "preview",
+        user_id: userId || null
+      });
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
 
       // Always set the Authorization header
       if (session?.access_token) {
@@ -83,9 +156,8 @@ export const modelService = {
         headers['Authorization'] = `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`;
       }
 
-      console.log('📤 Making request to Edge Function:', {
+      console.log('📤 Making MeshyAI request to Edge Function:', {
         url: edgeFunctionUrl,
-        hasImage: !!image,
         promptLength: prompt.length,
         headers: Object.keys(headers)
       });
@@ -98,14 +170,9 @@ export const modelService = {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('❌ Edge Function error:', errorData);
+        console.error('❌ MeshyAI Edge Function error:', errorData);
         
-        // ✅ More specific error messages
         let errorMessage = errorData.error || `HTTP ${response.status}: ${response.statusText}`;
-        
-        if (image && response.status === 400) {
-          errorMessage = 'Image processing failed. Please try with a different image or check the image format.';
-        }
         
         return {
           success: false,
@@ -117,7 +184,7 @@ export const modelService = {
 
       const data = await response.json();
       
-      console.log('✅ Edge Function response:', {
+      console.log('✅ MeshyAI Edge Function response:', {
         success: data.success,
         hasModelUrl: !!data.data?.modelUrl,
         taskId: data.data?.taskId
@@ -128,15 +195,12 @@ export const modelService = {
         data: data.data,
       };
     } catch (error) {
-      console.error('❌ Error generating 3D model:', error);
+      console.error('❌ Error in MeshyAI generation:', error);
       
-      // ✅ More specific error handling
-      let errorMessage = 'Failed to generate 3D model';
+      let errorMessage = 'Failed to generate 3D model with MeshyAI';
       
       if (error instanceof TypeError && error.message.includes('fetch')) {
         errorMessage = 'Network error. Please check your connection and try again.';
-      } else if (image && error instanceof Error) {
-        errorMessage = `Image processing error: ${error.message}`;
       }
       
       return {

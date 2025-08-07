@@ -3,8 +3,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Search, Grid, List, Heart, Download, Printer } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
-import { modelService } from '../services/modelService';
-import { MarketplaceModel } from '../types';
+import { marketplaceService } from '../services/marketplaceService';
+import { MarketplaceListing } from '../types/marketplace';
 
 const mockDesigns = [
   {
@@ -90,40 +90,43 @@ const mockDesigns = [
 
 const categories = ['All', 'Home & Garden', 'Art & Decor', 'Accessories', 'Lighting', 'Office'];
 
-// Helper function to capitalize first letter of each word
-const capitalizeWords = (str: string): string => {
-  return str.replace(/\b\w/g, (char) => char.toUpperCase());
-};
-
 export function Marketplace() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState('popular');
-  const [marketplaceModels, setMarketplaceModels] = useState<MarketplaceModel[]>([]);
+  const [marketplaceListings, setMarketplaceListings] = useState<MarketplaceListing[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Fetch real models from Supabase
-    modelService.fetchMarketplaceModels().then(setMarketplaceModels);
+    // Fetch published marketplace listings
+    marketplaceService.fetchPublishedListings().then((result) => {
+      if (result.success && result.data) {
+        setMarketplaceListings(result.data);
+      } else {
+        console.error('Failed to fetch marketplace listings:', result.error);
+        setMarketplaceListings([]);
+      }
+    });
   }, []);
 
   const DEFAULT_MODEL_THUMBNAIL = 'https://placehold.co/400x300?text=3D+Model';
 
-  const realDesigns = marketplaceModels.map((model) => ({
-    id: model.id,
-    title: capitalizeWords(model.prompt || 'Untitled Model'), // Capitalize first letter of each word
-    description: '', // Remove generic "Model model" description
-    // Use actual thumbnail if available, otherwise fallback to placeholder
-    thumbnail: model.thumbnail_url || DEFAULT_MODEL_THUMBNAIL,
-    price: 9.99, // Placeholder price, can be replaced with real pricing logic
-    category: model.style || 'Other',
-    downloads: 0, // Placeholder
-    likes: 0, // Placeholder
-    userName: model.user_id.slice(0, 8), // Placeholder, ideally fetch user name
-    featured: false, // Placeholder
-    modelUrl: model.glb_url || model.obj_url || model.stl_url || '',
-    stl_url: model.stl_url || '', // <-- Add STL URL explicitly
+  // Transform marketplace listings to display format
+  const realDesigns = marketplaceListings.map((listing) => ({
+    id: listing.id,
+    title: listing.title,
+    description: listing.description || '', 
+    // Use selected thumbnail if available, otherwise fallback to placeholder
+    thumbnail: listing.selected_thumbnail_url || DEFAULT_MODEL_THUMBNAIL,
+    price: listing.price,
+    category: listing.category,
+    downloads: listing.downloads_count,
+    likes: listing.likes_count,
+    userName: listing.user_id.slice(0, 8), // Placeholder, ideally fetch user name
+    featured: false, // Could be determined by listing metadata in future
+    modelUrl: listing.glb_url || listing.obj_url || listing.stl_url || '',
+    stl_url: listing.stl_url || '',
   }));
 
   // Combine real models and mock data (real models first)
@@ -155,7 +158,7 @@ export function Marketplace() {
           creator: design.userName
         },
         modelUrl: design.modelUrl,
-        stlUrl: design.stl_url // <-- Pass STL URL explicitly
+        stlUrl: design.stl_url
       }
     });
   };

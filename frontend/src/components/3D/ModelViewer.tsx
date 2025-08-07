@@ -10,14 +10,11 @@ interface ModelViewerProps {
 function Model({ url }: { url: string }) {
   // Use proxy endpoint to avoid CORS issues
   const proxiedUrl = `/api/meshy/glb?url=${encodeURIComponent(url)}`;
-  console.log('🎮 Loading GLB via proxy:', proxiedUrl);
   const { scene } = useGLTF(proxiedUrl);
   return <primitive object={scene} key={proxiedUrl} />;
 }
 
 function Scene({ modelUrl }: { modelUrl?: string }) {
-  console.log('ModelViewer Scene rendering with modelUrl:', modelUrl);
-  
   return (
     <>
       <PerspectiveCamera makeDefault position={[0, 0, 5]} />
@@ -39,8 +36,6 @@ function Scene({ modelUrl }: { modelUrl?: string }) {
 }
 
 export function ModelViewer({ modelUrl, className = '' }: ModelViewerProps) {
-  console.log('🎬 ModelViewer rendering with URL:', modelUrl);
-  
   return (
     <div className={`bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg ${className}`}>
       <Canvas>

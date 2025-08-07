@@ -1,6 +1,5 @@
 // src/services/modelService.ts
 import { supabase } from '../../supabaseClient';
-import { MarketplaceModel } from '../types';
 interface Generate3DModelParams {
   prompt: string;
   image?: File;
@@ -216,18 +215,10 @@ export const modelService = {
     }
   },
 
-  async fetchMarketplaceModels(): Promise<MarketplaceModel[]> {
-    // Fetch all models with status 'completed' from Supabase table 
-    //...'generated_models'
-    const { data, error } = await supabase
-      .from('generated_models')
-      .select('*')
-      .eq('status', 'completed')
-      .order('created_at', { ascending: false });
-    if (error) {
-      console.error('Error fetching marketplace models:', error);
-      return [];
-    }
-    return data as MarketplaceModel[];
+  // Note: Marketplace functionality has been moved to marketplaceService.ts
+  // This method is deprecated and will be removed in future versions
+  async fetchMarketplaceModels(): Promise<any[]> {
+    console.warn('⚠️ fetchMarketplaceModels is deprecated. Use marketplaceService.fetchPublishedListings() instead');
+    return [];
   },
 };

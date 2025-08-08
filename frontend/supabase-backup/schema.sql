@@ -112,22 +112,6 @@ $$;
 ALTER FUNCTION "public"."handle_new_user"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."sync_display_name_to_users"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    AS $$
-BEGIN
-    UPDATE users
-    SET full_name = NEW.display_name,
-        updated_at = NOW()
-    WHERE id = NEW.user_id;
-    RETURN NEW;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."sync_display_name_to_users"() OWNER TO "postgres";
-
-
 CREATE OR REPLACE FUNCTION "public"."update_auth_user_metadata"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -347,25 +331,6 @@ CREATE TABLE IF NOT EXISTS "public"."model_likes" (
 ALTER TABLE "public"."model_likes" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."models" (
-    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
-    "user_id" "uuid" NOT NULL,
-    "name" "text" NOT NULL,
-    "description" "text",
-    "source_content" "text" NOT NULL,
-    "model_url" "text",
-    "thumbnail_url" "text",
-    "is_public" boolean DEFAULT false,
-    "is_marketplace_listed" boolean DEFAULT false,
-    "price" numeric(10,2),
-    "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL
-);
-
-
-ALTER TABLE "public"."models" OWNER TO "postgres";
-
-
 CREATE TABLE IF NOT EXISTS "public"."orders" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "slant_order_id" "text",
@@ -426,20 +391,6 @@ CREATE OR REPLACE VIEW "public"."order_summary" AS
 ALTER VIEW "public"."order_summary" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."profiles" (
-    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
-    "user_id" "uuid" NOT NULL,
-    "display_name" "text" NOT NULL,
-    "avatar_url" "text",
-    "bio" "text",
-    "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL
-);
-
-
-ALTER TABLE "public"."profiles" OWNER TO "postgres";
-
-
 CREATE TABLE IF NOT EXISTS "public"."stripe_sessions" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "session_id" "text" NOT NULL,
@@ -471,20 +422,6 @@ CREATE TABLE IF NOT EXISTS "public"."thumbnail_processing_queue" (
 ALTER TABLE "public"."thumbnail_processing_queue" OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."user_profile" (
-    "id" "uuid" NOT NULL,
-    "email" "text" NOT NULL,
-    "full_name" "text" NOT NULL,
-    "avatar_url" "text",
-    "stripe_customer_id" "text",
-    "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL
-);
-
-
-ALTER TABLE "public"."user_profile" OWNER TO "postgres";
-
-
 CREATE TABLE IF NOT EXISTS "public"."users" (
     "id" "uuid" NOT NULL,
     "email" "text" NOT NULL,
@@ -492,7 +429,8 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "avatar_url" "text",
     "stripe_customer_id" "text",
     "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL
+    "updated_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
+    "bio" "text"
 );
 
 
@@ -554,11 +492,6 @@ ALTER TABLE ONLY "public"."model_likes"
 
 
 
-ALTER TABLE ONLY "public"."models"
-    ADD CONSTRAINT "models_pkey" PRIMARY KEY ("id");
-
-
-
 ALTER TABLE ONLY "public"."orders"
     ADD CONSTRAINT "orders_pkey" PRIMARY KEY ("id");
 
@@ -566,11 +499,6 @@ ALTER TABLE ONLY "public"."orders"
 
 ALTER TABLE ONLY "public"."orders"
     ADD CONSTRAINT "orders_slant_order_id_key" UNIQUE ("slant_order_id");
-
-
-
-ALTER TABLE ONLY "public"."profiles"
-    ADD CONSTRAINT "profiles_pkey" PRIMARY KEY ("id");
 
 
 
@@ -589,28 +517,8 @@ ALTER TABLE ONLY "public"."thumbnail_processing_queue"
 
 
 
-ALTER TABLE ONLY "public"."profiles"
-    ADD CONSTRAINT "unique_user_id" UNIQUE ("user_id");
-
-
-
-ALTER TABLE ONLY "public"."user_profile"
-    ADD CONSTRAINT "users_email_key" UNIQUE ("email");
-
-
-
-ALTER TABLE ONLY "public"."user_profile"
-    ADD CONSTRAINT "users_pkey" PRIMARY KEY ("id");
-
-
-
 ALTER TABLE ONLY "public"."users"
     ADD CONSTRAINT "users_pkey1" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."user_profile"
-    ADD CONSTRAINT "users_stripe_customer_id_key" UNIQUE ("stripe_customer_id");
 
 
 
@@ -678,14 +586,6 @@ CREATE INDEX "idx_model_likes_user_model" ON "public"."model_likes" USING "btree
 
 
 
-CREATE INDEX "idx_models_user_id" ON "public"."models" USING "btree" ("user_id");
-
-
-
-CREATE INDEX "idx_models_visibility" ON "public"."models" USING "btree" ("is_public", "is_marketplace_listed");
-
-
-
 CREATE INDEX "idx_orders_created_at" ON "public"."orders" USING "btree" ("created_at");
 
 
@@ -722,31 +622,11 @@ CREATE INDEX "idx_thumbnail_queue_status_priority" ON "public"."thumbnail_proces
 
 
 
-CREATE OR REPLACE TRIGGER "sync_profile_display_name_on_insert" AFTER INSERT ON "public"."profiles" FOR EACH ROW EXECUTE FUNCTION "public"."sync_display_name_to_users"();
-
-
-
-CREATE OR REPLACE TRIGGER "sync_profile_display_name_on_update" AFTER UPDATE OF "display_name" ON "public"."profiles" FOR EACH ROW WHEN (("old"."display_name" IS DISTINCT FROM "new"."display_name")) EXECUTE FUNCTION "public"."sync_display_name_to_users"();
-
-
-
-CREATE OR REPLACE TRIGGER "sync_profile_to_auth_metadata" AFTER INSERT OR UPDATE OF "display_name" ON "public"."profiles" FOR EACH ROW EXECUTE FUNCTION "public"."update_auth_user_metadata"();
-
-
-
 CREATE OR REPLACE TRIGGER "update_generation_tasks_updated_at" BEFORE UPDATE ON "public"."generation_tasks" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
 
 
 
-CREATE OR REPLACE TRIGGER "update_models_updated_at" BEFORE UPDATE ON "public"."models" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
-
-
-
 CREATE OR REPLACE TRIGGER "update_orders_updated_at" BEFORE UPDATE ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
-
-
-
-CREATE OR REPLACE TRIGGER "update_users_updated_at" BEFORE UPDATE ON "public"."user_profile" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
 
 
 
@@ -780,43 +660,13 @@ ALTER TABLE ONLY "public"."hy_generation_jobs"
 
 
 
-ALTER TABLE ONLY "public"."manufacturing_quotes"
-    ADD CONSTRAINT "manufacturing_quotes_model_id_fkey" FOREIGN KEY ("model_id") REFERENCES "public"."models"("id");
-
-
-
-ALTER TABLE ONLY "public"."model_likes"
-    ADD CONSTRAINT "model_likes_model_id_fkey" FOREIGN KEY ("model_id") REFERENCES "public"."models"("id");
-
-
-
-ALTER TABLE ONLY "public"."model_likes"
-    ADD CONSTRAINT "model_likes_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."user_profile"("id");
-
-
-
-ALTER TABLE ONLY "public"."models"
-    ADD CONSTRAINT "models_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."user_profile"("id");
-
-
-
 ALTER TABLE ONLY "public"."orders"
     ADD CONSTRAINT "orders_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
 
 
 
-ALTER TABLE ONLY "public"."profiles"
-    ADD CONSTRAINT "profiles_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
-
-
-
 ALTER TABLE ONLY "public"."thumbnail_processing_queue"
     ADD CONSTRAINT "thumbnail_processing_queue_model_id_fkey" FOREIGN KEY ("model_id") REFERENCES "public"."generated_models"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."user_profile"
-    ADD CONSTRAINT "users_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id");
 
 
 
@@ -826,10 +676,6 @@ ALTER TABLE ONLY "public"."users"
 
 
 CREATE POLICY "Allow read of completed models for all" ON "public"."generated_models" FOR SELECT USING (("status" = 'completed'::"text"));
-
-
-
-CREATE POLICY "Public profiles are viewable by everyone." ON "public"."profiles" FOR SELECT USING (true);
 
 
 
@@ -873,19 +719,11 @@ CREATE POLICY "Users can insert their own jobs" ON "public"."hy_generated_jobs" 
 
 
 
-CREATE POLICY "Users can insert their own profile." ON "public"."profiles" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
-
-
-
 CREATE POLICY "Users can insert their own tasks" ON "public"."generation_tasks" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
 
 
 
 CREATE POLICY "Users can manage their own likes" ON "public"."model_likes" USING (("user_id" = "auth"."uid"()));
-
-
-
-CREATE POLICY "Users can manage their own models" ON "public"."models" USING (("user_id" = "auth"."uid"()));
 
 
 
@@ -901,35 +739,11 @@ CREATE POLICY "Users can update their own jobs" ON "public"."hy_generated_jobs" 
 
 
 
-CREATE POLICY "Users can update their own profile." ON "public"."profiles" FOR UPDATE USING (("auth"."uid"() = "user_id"));
-
-
-
-CREATE POLICY "Users can view likes on public models" ON "public"."model_likes" FOR SELECT USING ((EXISTS ( SELECT 1
-   FROM "public"."models"
-  WHERE (("models"."id" = "model_likes"."model_id") AND (("models"."is_public" = true) OR ("models"."user_id" = "auth"."uid"()))))));
-
-
-
 CREATE POLICY "Users can view own generation jobs" ON "public"."hy_generation_jobs" FOR SELECT USING (("auth"."uid"() = "user_id"));
 
 
 
 CREATE POLICY "Users can view own models" ON "public"."hy_generated_models" FOR SELECT USING (("auth"."uid"() = "user_id"));
-
-
-
-CREATE POLICY "Users can view public models" ON "public"."models" FOR SELECT USING ((("is_public" = true) OR ("user_id" = "auth"."uid"())));
-
-
-
-CREATE POLICY "Users can view quotes for their models" ON "public"."manufacturing_quotes" FOR SELECT USING ((EXISTS ( SELECT 1
-   FROM "public"."models"
-  WHERE (("models"."id" = "manufacturing_quotes"."model_id") AND ("models"."user_id" = "auth"."uid"())))));
-
-
-
-CREATE POLICY "Users can view their own data" ON "public"."user_profile" FOR SELECT USING (("auth"."uid"() = "id"));
 
 
 
@@ -980,19 +794,10 @@ ALTER TABLE "public"."manufacturing_quotes" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."model_likes" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."models" ENABLE ROW LEVEL SECURITY;
-
-
 ALTER TABLE "public"."orders" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
-
-
 ALTER TABLE "public"."stripe_sessions" ENABLE ROW LEVEL SECURITY;
-
-
-ALTER TABLE "public"."user_profile" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."users" ENABLE ROW LEVEL SECURITY;
@@ -1170,12 +975,6 @@ GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."sync_display_name_to_users"() TO "anon";
-GRANT ALL ON FUNCTION "public"."sync_display_name_to_users"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."sync_display_name_to_users"() TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."update_auth_user_metadata"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_auth_user_metadata"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_auth_user_metadata"() TO "service_role";
@@ -1257,12 +1056,6 @@ GRANT ALL ON TABLE "public"."model_likes" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."models" TO "anon";
-GRANT ALL ON TABLE "public"."models" TO "authenticated";
-GRANT ALL ON TABLE "public"."models" TO "service_role";
-
-
-
 GRANT ALL ON TABLE "public"."orders" TO "anon";
 GRANT ALL ON TABLE "public"."orders" TO "authenticated";
 GRANT ALL ON TABLE "public"."orders" TO "service_role";
@@ -1275,12 +1068,6 @@ GRANT ALL ON TABLE "public"."order_summary" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."profiles" TO "anon";
-GRANT ALL ON TABLE "public"."profiles" TO "authenticated";
-GRANT ALL ON TABLE "public"."profiles" TO "service_role";
-
-
-
 GRANT ALL ON TABLE "public"."stripe_sessions" TO "anon";
 GRANT ALL ON TABLE "public"."stripe_sessions" TO "authenticated";
 GRANT ALL ON TABLE "public"."stripe_sessions" TO "service_role";
@@ -1290,12 +1077,6 @@ GRANT ALL ON TABLE "public"."stripe_sessions" TO "service_role";
 GRANT ALL ON TABLE "public"."thumbnail_processing_queue" TO "anon";
 GRANT ALL ON TABLE "public"."thumbnail_processing_queue" TO "authenticated";
 GRANT ALL ON TABLE "public"."thumbnail_processing_queue" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."user_profile" TO "anon";
-GRANT ALL ON TABLE "public"."user_profile" TO "authenticated";
-GRANT ALL ON TABLE "public"."user_profile" TO "service_role";
 
 
 

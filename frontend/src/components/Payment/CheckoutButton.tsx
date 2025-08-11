@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { CreditCard } from 'lucide-react';
 import { Button } from '../UI/Button';
-import { stripeService } from '../../services/stripe';  
+// import { stripeService } from '../../services/stripe';  
 import { useAuth } from '../../hooks/useAuth';
 
 interface CheckoutButtonProps {
@@ -33,6 +33,8 @@ export function CheckoutButton({
     setLoading(true);
     
     try {
+      // STRIPE INTEGRATION DISABLED
+      /*
       await stripeService.redirectToCheckout({
         amount,
         paymentType,
@@ -41,9 +43,15 @@ export function CheckoutButton({
           ...metadata
         }
       });
+      */
+      
+      // TODO: Implement alternative payment method
+      console.log('🔄 Checkout - Stripe disabled');
+      alert('Payment processing temporarily unavailable. Please contact support.');
     } catch (error) {
       console.error('Checkout error:', error);
       alert('Failed to start checkout. Please try again.');
+    } finally {
       setLoading(false);
     }
   };

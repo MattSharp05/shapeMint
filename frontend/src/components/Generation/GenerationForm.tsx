@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Upload, Type, Settings, Wand2 } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { Input } from '../UI/Input';
@@ -10,13 +10,19 @@ import { supabase } from '../../supabaseClient';
 interface GenerationFormProps {
   onSuccess?: (model?: any) => void;
   loading?: boolean;
+  prefilledData?: {
+    prefilledPrompt?: string;
+    socialTag?: string;
+    mode?: 'text' | 'image';
+    image?: File;
+  } | null;
 }
 
-export function GenerationForm({ onSuccess, loading: initialLoading }: GenerationFormProps) {
+export function GenerationForm({ onSuccess, loading: initialLoading, prefilledData }: GenerationFormProps) {
   const { user } = useAuth();
-  const [mode, setMode] = useState<'text' | 'image'>('text');
-  const [prompt, setPrompt] = useState('');
-  const [image, setImage] = useState<File | null>(null);
+  const [mode, setMode] = useState<'text' | 'image'>(prefilledData?.mode || 'text');
+  const [prompt, setPrompt] = useState(prefilledData?.prefilledPrompt || '');
+  const [image, setImage] = useState<File | null>(prefilledData?.image || null);
   const [loading, setLoading] = useState(initialLoading);
   const [error, setError] = useState<string>();
   const [settings, setSettings] = useState({
@@ -24,6 +30,21 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
     style: 'realistic' as const,
     quality: 'standard' as const,
   });
+
+  // Update form when prefilledData changes
+  useEffect(() => {
+    if (prefilledData) {
+      if (prefilledData.mode) {
+        setMode(prefilledData.mode);
+      }
+      if (prefilledData.prefilledPrompt) {
+        setPrompt(prefilledData.prefilledPrompt);
+      }
+      if (prefilledData.image) {
+        setImage(prefilledData.image);
+      }
+    }
+  }, [prefilledData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

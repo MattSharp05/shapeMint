@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { CheckCircle, Package, Truck, ExternalLink } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
@@ -31,6 +31,7 @@ interface OrderSuccessData {
 export function OrderSuccess() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   
   const [loading, setLoading] = useState(true);
@@ -38,10 +39,21 @@ export function OrderSuccess() {
   const [orderData, setOrderData] = useState<OrderSuccessData | null>(null);
   
   const sessionId = searchParams.get('session_id');
+  const directOrderData = location.state?.orderData;
+  const isDirectOrder = location.state?.isDirectOrder;
 
   useEffect(() => {
+    // Handle direct order data from navigation state
+    if (isDirectOrder && directOrderData) {
+      console.log('✅ Using direct order data:', directOrderData);
+      setOrderData(directOrderData);
+      setLoading(false);
+      return;
+    }
+
+    // Handle legacy Stripe flow (disabled)
     if (!sessionId) {
-      setError('No session ID found. Please try again.');
+      setError('No order data found. Please try again.');
       setLoading(false);
       return;
     }
@@ -52,100 +64,11 @@ export function OrderSuccess() {
       return;
     }
 
-    // Verify payment and create order
-    const verifyPaymentAndCreateOrder = async () => {
-      try {
-        console.log('🔄 Verifying payment and creating order...');
-        
-        // First, verify the payment with Stripe
-        const { data: paymentData, error: paymentError } = await supabase.functions.invoke('verify-payment', {
-          body: { sessionId }
-        });
-
-        if (paymentError) {
-          console.error('❌ Payment verification failed:', paymentError);
-          setError('Payment verification failed. Please contact support.');
-          setLoading(false);
-          return;
-        }
-
-        if (!paymentData.success) {
-          console.error('❌ Payment verification unsuccessful:', paymentData);
-          setError('Payment verification unsuccessful. Please try again.');
-          setLoading(false);
-          return;
-        }
-
-        console.log('✅ Payment verified successfully:', paymentData);
-
-        // Extract order data from payment metadata
-        const metadata = paymentData.metadata;
-        const orderData = {
-          email: metadata.email,
-          phone: metadata.phone,
-          name: metadata.name,
-          orderNumber: metadata.orderNumber,
-          filename: metadata.filename,
-          fileURL: metadata.fileURL,
-          bill_to_street_1: metadata.billCity, // Simplified for now
-          bill_to_city: metadata.billCity,
-          bill_to_state: metadata.billState,
-          bill_to_zip: metadata.billZip,
-          bill_to_country_as_iso: 'US', // Default
-          bill_to_is_US_residential: 'true', // Default
-          ship_to_name: metadata.name, // Simplified for now
-          ship_to_street_1: metadata.shipCity, // Simplified for now
-          ship_to_city: metadata.shipCity,
-          ship_to_state: metadata.shipState,
-          ship_to_zip: metadata.shipZip,
-          ship_to_country_as_iso: 'US', // Default
-          ship_to_is_US_residential: 'true', // Default
-          order_item_name: metadata.filename,
-          order_quantity: metadata.quantity,
-          order_image_url: '', // Not available from metadata
-          order_sku: '', // Not available from metadata
-          order_item_color: metadata.color,
-          profile: metadata.material
-        };
-
-        // Create the order with Slant3D
-        const { data: orderResponse, error: orderError } = await supabase.functions.invoke('slant3d-order', {
-          body: { 
-            orderData,
-            paymentInfo: {
-              userId: user.id,
-              stripeSessionId: sessionId
-            }
-          }
-        });
-
-        if (orderError) {
-          console.error('❌ Order creation failed:', orderError);
-          setError('Order creation failed. Please contact support.');
-          setLoading(false);
-          return;
-        }
-
-        if (orderResponse.error) {
-          console.error('❌ Order creation unsuccessful:', orderResponse);
-          setError(orderResponse.message || 'Order creation failed. Please try again.');
-          setLoading(false);
-          return;
-        }
-
-        console.log('✅ Order created successfully:', orderResponse);
-        setOrderData(orderResponse.data);
-        setLoading(false);
-
-      } catch (err: any) {
-        console.error('❌ Error in payment verification and order creation:', err);
-        setError('An unexpected error occurred. Please contact support.');
-        setLoading(false);
-      }
-    };
-
-    verifyPaymentAndCreateOrder();
-  }, [sessionId, user]);
+    // LEGACY STRIPE FLOW DISABLED - Using direct Slant3D orders
+    console.log('🔄 Legacy Stripe flow disabled - orders are now created directly');
+    setError('Legacy payment flow is no longer supported. Please create a new order.');
+    setLoading(false);
+  }, [sessionId, user, isDirectOrder, directOrderData]);
 
   if (loading) {
     return (

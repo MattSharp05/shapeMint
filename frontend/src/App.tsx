@@ -4,6 +4,7 @@ import { Header } from './components/Layout/Header';
 import { Footer } from './components/Layout/Footer';
 import { Home } from './pages/Home';
 import { Generate } from './pages/Generate';
+import { Explore } from './pages/Explore';
 import { Marketplace } from './pages/Marketplace';
 import { Manufacturing } from './pages/Manufacturing';
 import { Dashboard } from './pages/Dashboard';
@@ -30,6 +31,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/generate" element={<Generate />} />
+              <Route path="/explore" element={<Explore />} />
               <Route path="/marketplace" element={<Marketplace />} />
               <Route path="/manufacturing" element={<Manufacturing />} />
               <Route path="/dashboard" element={<Dashboard />} />

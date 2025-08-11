@@ -33,6 +33,12 @@ export function Header() {
               Generate
             </Link>
             <Link
+              to="/explore"
+              className="text-gray-700 hover:text-purple-600 font-medium transition-colors"
+            >
+              Explore
+            </Link>
+            <Link
               to="/marketplace"
               className="text-gray-700 hover:text-purple-600 font-medium transition-colors"
             >

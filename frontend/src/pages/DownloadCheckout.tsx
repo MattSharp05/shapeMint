@@ -5,7 +5,7 @@ import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
 import { ModelViewer } from '../components/3D/ModelViewer';
-import { stripeService } from '../services/stripe';
+// import { stripeService } from '../services/stripe';
 import { useAuth } from '../hooks/useAuth';
 
 export function DownloadCheckout() {
@@ -89,6 +89,8 @@ export function DownloadCheckout() {
 
       console.log('✅ All validation checks passed, creating checkout session...');
 
+      // STRIPE INTEGRATION DISABLED
+      /*
       await stripeService.redirectToCheckout({
         amount: total,
         paymentType: 'download',
@@ -101,6 +103,11 @@ export function DownloadCheckout() {
           modelId: modelData.designId || modelData.id || 'unknown'
         }
       });
+      */
+      
+      // TODO: Implement direct download or alternative payment method
+      console.log('🔄 Download checkout - Stripe disabled');
+      alert('Download functionality temporarily disabled. Please contact support.');
     } catch (error: any) {
       console.error('🚨 Checkout error details:', error);
       console.error('🚨 Error type:', typeof error);
@@ -173,11 +180,11 @@ export function DownloadCheckout() {
                 icon={CreditCard}
                 disabled={!paymentInfo.email}
               >
-                {processing ? 'Redirecting to Checkout...' : `Pay $${total.toFixed(2)} with Stripe`}
+                {processing ? 'Processing...' : `Pay $${total.toFixed(2)}`}
               </Button>
 
               <p className="text-xs text-gray-500 mt-3 text-center">
-                You'll be redirected to Stripe's secure checkout page
+                Payment processing temporarily unavailable
               </p>
             </Card>
           </div>

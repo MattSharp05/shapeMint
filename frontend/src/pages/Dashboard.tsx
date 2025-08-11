@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Upload, Download, DollarSign, Eye, Settings, Package, Truck, ExternalLink } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
@@ -12,6 +12,7 @@ import type { GeneratedModel } from '../types/model';
 
 interface Order {
   id: string;
+  user_id?: string;
   slant_order_id: string;
   order_number: string;
   customer_name: string;
@@ -21,7 +22,7 @@ interface Order {
   color: string;
   profile: string;
   status: string;
-  tracking_numbers: string[];
+  tracking_numbers?: string[];
   shipping_status: string;
   label_download_url?: string;
   shipping_address: {
@@ -117,11 +118,11 @@ export function Dashboard() {
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
 
   const tabs = [
-    { id: 'designs', label: 'My Designs', count: mockUserDesigns.length },
-    { id: 'purchases', label: 'Purchases', count: mockPurchases.length },
+    { id: 'designs', label: 'My Designs', count: generatedModels.length },
+    //{ id: 'purchases', label: 'Purchases', count: mockPurchases.length },
     { id: 'orders', label: 'Orders', count: orders.length }
     //{ id: 'analytics', label: 'Analytics' },
-    //{ id: 'settings', label: 'Settings' }
+    //{ id: 'settings' }
   ];
 
   React.useEffect(() => {
@@ -144,28 +145,73 @@ export function Dashboard() {
       });
   }, [user]);
 
-  // Fetch user's orders
-  useEffect(() => {
-    if (!user) return;
+  // Function to fetch orders filtered by user email
+  const fetchOrders = useCallback(async () => {
+    if (!user?.email) return;
     
     setLoadingOrders(true);
     setOrdersError(null);
     
-    supabase
-      .from('orders')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (error) {
-          setOrdersError(error.message);
-          setOrders([]);
-        } else {
-          setOrders(data as Order[]);
-        }
-        setLoadingOrders(false);
-      });
-  }, [user]);
+    console.log('🔍 [Dashboard] Fetching orders for user email:', user.email);
+    
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('customer_email', user.email)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('❌ [Dashboard] Error fetching orders:', error);
+        setOrdersError(error.message);
+        setOrders([]);
+      } else {
+        console.log('✅ [Dashboard] Orders fetched successfully:', {
+          count: data?.length || 0,
+          userEmail: user.email,
+          orders: data?.map(o => ({
+            id: o.id,
+            user_id: o.user_id,
+            slant_order_id: o.slant_order_id,
+            filename: o.filename,
+            customer_email: o.customer_email,
+            created_at: o.created_at,
+            status: o.status
+          }))
+        });
+        setOrders(data as Order[]);
+      }
+    } catch (err) {
+      console.error('❌ [Dashboard] Exception fetching orders:', err);
+      setOrdersError('Failed to fetch orders');
+      setOrders([]);
+    } finally {
+      setLoadingOrders(false);
+    }
+  }, [user?.email]);
+
+  // Fetch orders filtered by email on mount
+  useEffect(() => {
+    console.log('👤 [Dashboard] Current user:', user ? {
+      id: user.id,
+      email: user.email,
+      name: user.name
+    } : 'No user');
+    fetchOrders();
+  }, [user, fetchOrders]);
+
+  // Refresh orders when page comes into focus (e.g., when returning from order creation)
+  useEffect(() => {
+    const handleFocus = () => {
+      console.log('🔄 Dashboard focused - refreshing orders');
+      fetchOrders();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [user, fetchOrders]);
+
+
 
   return (
     <div className="pt-16 min-h-screen bg-gray-50">
@@ -181,27 +227,27 @@ export function Dashboard() {
               </p>
             </div>
             
-            {/* Debug: Manual Thumbnail Generation */}
-            <div className="flex flex-col items-end space-y-2">
-              <Button 
-                onClick={handleManualThumbnailGeneration}
-                disabled={autoThumbnailProgress.isGenerating}
-                variant="outline"
-                className="text-sm"
-              >
-                {autoThumbnailProgress.isGenerating ? 'Generating...' : 'Generate Thumbnails'}
-              </Button>
-              {autoThumbnailProgress.total > 0 && (
-                <span className="text-xs text-gray-500">
-                  {autoThumbnailProgress.processed}/{autoThumbnailProgress.total} processed
-                </span>
-              )}
-            </div>
+                          {/* Debug: Manual Thumbnail Generation */}
+              <div className="flex flex-col items-end space-y-2">
+                <Button 
+                  onClick={handleManualThumbnailGeneration}
+                  disabled={autoThumbnailProgress.isGenerating}
+                  variant="outline"
+                  className="text-sm"
+                >
+                  {autoThumbnailProgress.isGenerating ? 'Generating...' : 'Generate Thumbnails'}
+                </Button>
+                {autoThumbnailProgress.total > 0 && (
+                  <span className="text-xs text-gray-500">
+                    {autoThumbnailProgress.processed}/{autoThumbnailProgress.total} processed
+                  </span>
+                )}
+              </div>
           </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -245,7 +291,7 @@ export function Dashboard() {
               <Eye className="h-8 w-8 text-orange-600" />
             </div>
           </Card>
-        </div>
+        </div> */}
 
         {/* Tabs */}
         <div className="border-b border-gray-200 mb-8">
@@ -274,12 +320,12 @@ export function Dashboard() {
         {/* Tab Content */}
         {activeTab === 'designs' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            {/* <div className="flex justify-between items-center">
               <h2 className="text-xl font-semibold text-gray-900">Published Designs</h2>
-              {/*<Button>Upload New Design</Button>*/}
+              <Button>Upload New Design</Button>
             </div>
             
-            {/* Demo content grid (keep unchanged) */}
+            Demo content grid (keep unchanged)
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {mockUserDesigns.map((design) => (
                 <Card key={design.id} className="overflow-hidden">
@@ -328,7 +374,7 @@ export function Dashboard() {
                   </div>
                 </Card>
               ))}
-            </div>
+            </div> */}
             {/* User's Generated Models Section */}
             <div className="mt-10">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Designs</h3>
@@ -359,7 +405,7 @@ export function Dashboard() {
                       <div className="p-6">
                         <div className="flex justify-between items-start mb-2">
                           <h4 className="text-md font-semibold text-gray-900">
-                            {model.name || 'Untitled Model'}
+                            {model.prompt || model.name || 'Untitled Model'}
                           </h4>
                           <span className={`text-xs px-2 py-1 rounded-full ${
                             model.status === 'completed'
@@ -384,7 +430,7 @@ export function Dashboard() {
           </div>
         )}
 
-        {activeTab === 'purchases' && (
+        {/* {activeTab === 'purchases' && (
           <div className="space-y-6">
             <h2 className="text-xl font-semibold text-gray-900">My Purchases</h2>
             
@@ -423,11 +469,21 @@ export function Dashboard() {
               ))}
             </div>
           </div>
-        )}
+        )} */}
 
         {activeTab === 'orders' && (
           <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Manufacturing Orders</h2>
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-gray-900">Your Manufacturing Orders</h2>
+              <Button 
+                onClick={fetchOrders}
+                disabled={loadingOrders}
+                variant="outline"
+                size="sm"
+              >
+                {loadingOrders ? 'Refreshing...' : 'Refresh Orders'}
+              </Button>
+            </div>
             
             {loadingOrders ? (
               <div className="text-center py-8">
@@ -453,7 +509,7 @@ export function Dashboard() {
                 {orders.map((order) => (
                   <Card 
                     key={order.id} 
-                    className="p-6 cursor-pointer hover:shadow-md transition-shadow"
+                    className="p-6 cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-green-500"
                     onClick={() => {
                       setSelectedOrder(order);
                       setIsOrderModalOpen(true);
@@ -461,19 +517,27 @@ export function Dashboard() {
                   >
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                          {order.filename}
-                        </h3>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {order.filename}
+                          </h3>
+                          {/* User ownership indicator */}
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                            Your Order
+                          </span>
+                        </div>
                         <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
                           <div>
                             <div>Vendor: Slant3D</div>
                             <div>Order Date: {new Date(order.created_at).toLocaleDateString()}</div>
                             <div>Quantity: {order.quantity}</div>
+                            <div>Email: {order.customer_email}</div>
                           </div>
                           <div>
                             <div>Material: {order.profile}</div>
                             <div>Color: {order.color}</div>
-                            {order.tracking_numbers.length > 0 && (
+                            <div>User ID: {order.user_id || 'None'}</div>
+                            {order.tracking_numbers && order.tracking_numbers.length > 0 && (
                               <div className="flex items-center space-x-1">
                                 <Truck className="h-3 w-3" />
                                 <span>Tracking Available</span>
@@ -484,13 +548,13 @@ export function Dashboard() {
                       </div>
                       <div className="text-right">
                         <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                          order.shipping_status === 'shipped' || order.tracking_numbers.length > 0
+                          order.shipping_status === 'shipped' || (order.tracking_numbers && order.tracking_numbers.length > 0)
                             ? 'bg-green-100 text-green-800'
                             : order.shipping_status === 'awaiting_shipment'
                             ? 'bg-yellow-100 text-yellow-800'
                             : 'bg-blue-100 text-blue-800'
                         }`}>
-                          {order.shipping_status === 'shipped' || order.tracking_numbers.length > 0 ? 'Shipped' :
+                          {order.shipping_status === 'shipped' || (order.tracking_numbers && order.tracking_numbers.length > 0) ? 'Shipped' :
                            order.shipping_status === 'awaiting_shipment' ? 'Processing' : 
                            order.status}
                         </span>
@@ -583,7 +647,7 @@ export function Dashboard() {
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-3">Tracking & Status</h3>
                 <div className={`rounded-lg p-4 ${
-                  selectedOrder.tracking_numbers.length > 0 ? 'bg-green-50' : 'bg-yellow-50'
+                  selectedOrder.tracking_numbers && selectedOrder.tracking_numbers.length > 0 ? 'bg-green-50' : 'bg-yellow-50'
                 }`}>
                   <div className="flex items-center space-x-2 mb-2">
                     <Truck className="h-4 w-4" />
@@ -592,7 +656,7 @@ export function Dashboard() {
                     </span>
                   </div>
                   
-                  {selectedOrder.tracking_numbers.length > 0 ? (
+                  {selectedOrder.tracking_numbers && selectedOrder.tracking_numbers.length > 0 ? (
                     <div className="space-y-2">
                       <div className="text-sm text-gray-600">Tracking Numbers:</div>
                       {selectedOrder.tracking_numbers.map((trackingNumber, index) => (
@@ -629,9 +693,9 @@ export function Dashboard() {
                 >
                   Close
                 </Button>
-                {selectedOrder.tracking_numbers.length > 0 && (
+                {selectedOrder.tracking_numbers && selectedOrder.tracking_numbers.length > 0 && (
                   <Button 
-                    onClick={() => window.open(`https://tools.usps.com/go/TrackConfirmAction?tLabels=${selectedOrder.tracking_numbers[0]}`, '_blank')}
+                    onClick={() => window.open(`https://tools.usps.com/go/TrackConfirmAction?tLabels=${selectedOrder.tracking_numbers![0]}`, '_blank')}
                     className="flex-1"
                   >
                     <Truck className="h-4 w-4 mr-2" />

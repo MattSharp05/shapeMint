@@ -3,7 +3,7 @@ export interface User {
   email: string;
   full_name: string;
   avatar_url?: string;
-  stripe_customer_id?: string;
+  // stripe_customer_id?: string; // STRIPE DISABLED
   created_at: string;
   updated_at: string;
 }

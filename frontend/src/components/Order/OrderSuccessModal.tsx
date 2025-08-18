@@ -29,13 +29,14 @@ interface OrderSuccessModalProps {
       trackingNumbers: string[];
     };
     labelDownloadUrl?: string; // Add this
+    message?: string;
   };
 }
 
 export function OrderSuccessModal({ isOpen, onClose, orderData }: OrderSuccessModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="">
-      <div className="text-center">
+      <div className="text-center max-h-[80vh] overflow-y-auto">
         {/* Success Icon */}
         <div className="mx-auto flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-6">
           <CheckCircle className="w-8 h-8 text-green-600" />
@@ -108,12 +109,12 @@ export function OrderSuccessModal({ isOpen, onClose, orderData }: OrderSuccessMo
         
         {/* Tracking Information */}
         <div className={`rounded-lg p-4 mb-6 text-left ${
-          orderData.trackingInfo?.trackingNumbers?.length > 0 
+          orderData.trackingInfo && orderData.trackingInfo.trackingNumbers && orderData.trackingInfo.trackingNumbers.length > 0 
             ? 'bg-green-50' 
             : 'bg-yellow-50'
         }`}>
           <h4 className={`font-semibold mb-2 ${
-            orderData.trackingInfo?.trackingNumbers?.length > 0 
+            orderData.trackingInfo && orderData.trackingInfo.trackingNumbers && orderData.trackingInfo.trackingNumbers.length > 0 
               ? 'text-green-900' 
               : 'text-yellow-900'
           }`}>
@@ -121,7 +122,7 @@ export function OrderSuccessModal({ isOpen, onClose, orderData }: OrderSuccessMo
           </h4>
           
           <div className={`text-sm space-y-2 ${
-            orderData.trackingInfo?.trackingNumbers?.length > 0 
+            orderData.trackingInfo && orderData.trackingInfo.trackingNumbers && orderData.trackingInfo.trackingNumbers.length > 0 
               ? 'text-green-800' 
               : 'text-yellow-800'
           }`}>
@@ -129,7 +130,7 @@ export function OrderSuccessModal({ isOpen, onClose, orderData }: OrderSuccessMo
               <strong>Status:</strong> {orderData.trackingInfo?.status || 'Processing'}
             </div>
             
-            {orderData.trackingInfo?.trackingNumbers?.length > 0 ? (
+            {orderData.trackingInfo && orderData.trackingInfo.trackingNumbers && orderData.trackingInfo.trackingNumbers.length > 0 ? (
               <div>
                 <strong>Tracking Numbers:</strong>
                 <div className="mt-1 space-y-1">
@@ -184,7 +185,7 @@ export function OrderSuccessModal({ isOpen, onClose, orderData }: OrderSuccessMo
         </div>
         
         {/* Action Buttons */}
-        <div className="flex space-x-3">
+        <div className="flex space-x-3 pb-4">
           <Button
             variant="outline"
             onClick={onClose}
@@ -194,8 +195,8 @@ export function OrderSuccessModal({ isOpen, onClose, orderData }: OrderSuccessMo
           </Button>
           <Button
             onClick={() => {
-              // Navigate to dashboard or orders page
-              window.location.href = '/dashboard?tab=orders';
+              // Navigate to dashboard orders tab
+              window.location.href = '/dashboard';
             }}
             className="flex-1"
           >

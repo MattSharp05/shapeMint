@@ -8,7 +8,7 @@ import { ModelViewer } from '../components/3D/ModelViewer';
 import { Modal } from '../components/UI/Modal';
 import { supabase } from '../supabaseClient';
 import { OrderSuccessModal } from '../components/Order/OrderSuccessModal';
-import { stripeService } from '../services/stripe';
+// import { stripeService } from '../services/stripe';
 import { useAuth } from '../hooks/useAuth';
 
 const materials = [
@@ -155,7 +155,7 @@ export function Order() {
     fileURL: '',
     quantity: '1',
     color: 'white',
-    profile: 'PLA Plastic',
+    profile: 'PLA',
     bill_to_street_1: '6101 Jet Port Industrial BLVD',
     bill_to_street_2: 'UOF437-A-2',
     bill_to_street_3: '',
@@ -267,6 +267,8 @@ export function Order() {
         return;
       }
 
+      // STRIPE INTEGRATION DISABLED - Using Slant3D for orders
+      /*
       console.log('🚀 Calling Stripe checkout with:', {
         amount: checkoutAmount,
         paymentType: 'manufacturing',
@@ -304,6 +306,87 @@ export function Order() {
         },
         successPath: '/order-success'
       });
+      */
+      
+      // Create order directly with Slant3D
+      console.log('🔄 Creating order with Slant3D...');
+      
+      try {
+        const orderData = {
+          email: slantForm.email,
+          phone: slantForm.phone,
+          name: slantForm.name,
+          orderNumber: slantForm.orderNumber,
+          filename: slantForm.filename,
+          fileURL: slantForm.fileURL,
+          bill_to_street_1: slantForm.bill_to_street_1,
+          bill_to_street_2: slantForm.bill_to_street_2,
+          bill_to_street_3: slantForm.bill_to_street_3,
+          bill_to_city: slantForm.bill_to_city,
+          bill_to_state: slantForm.bill_to_state,
+          bill_to_zip: slantForm.bill_to_zip,
+          bill_to_country_as_iso: slantForm.bill_to_country_as_iso,
+          bill_to_is_US_residential: slantForm.bill_to_is_US_residential,
+          ship_to_name: slantForm.ship_to_name,
+          ship_to_street_1: slantForm.ship_to_street_1,
+          ship_to_street_2: slantForm.ship_to_street_2,
+          ship_to_street_3: slantForm.ship_to_street_3,
+          ship_to_city: slantForm.ship_to_city,
+          ship_to_state: slantForm.ship_to_state,
+          ship_to_zip: slantForm.ship_to_zip,
+          ship_to_country_as_iso: slantForm.ship_to_country_as_iso,
+          ship_to_is_US_residential: slantForm.ship_to_is_US_residential,
+          order_item_name: slantForm.order_item_name,
+          order_quantity: slantForm.order_quantity,
+          order_image_url: slantForm.order_image_url,
+          order_sku: slantForm.order_sku,
+          order_item_color: 'white', // Force to white for now to ensure compatibility
+          profile: 'PLA' // Force to PLA for now to ensure compatibility
+        };
+
+        console.log('🔄 Order data being sent to Slant3D:', {
+          profile: orderData.profile,
+          order_item_color: orderData.order_item_color,
+          original_color: slantForm.order_item_color,
+          mapped_color: mapColorToSlantAPI(slantForm.order_item_color),
+          note: 'Using forced values: profile=PLA, color=white for compatibility'
+        });
+
+        const { data: orderResponse, error: orderError } = await supabase.functions.invoke('slant3d-order', {
+          body: { 
+            orderData,
+            paymentInfo: {
+              userId: user?.id || '',
+              amount: checkoutAmount
+            }
+          }
+        });
+
+        if (orderError) {
+          console.error('❌ Order creation failed:', orderError);
+          setQuoteError('Order creation failed. Please try again.');
+          setIsQuoteLoading(false);
+          return;
+        }
+
+        if (!orderResponse.success) {
+          console.error('❌ Order creation unsuccessful:', orderResponse);
+          setQuoteError(orderResponse.error || 'Order creation failed. Please try again.');
+          setIsQuoteLoading(false);
+          return;
+        }
+
+        console.log('✅ Order created successfully:', orderResponse);
+        
+        // Show order success modal instead of navigating to a separate page
+        setOrderSuccess(orderResponse.data);
+        setIsSuccessModalOpen(true);
+
+      } catch (error: any) {
+        console.error('❌ Error creating order:', error);
+        setQuoteError(`Order creation failed: ${error?.message || 'Please try again.'}`);
+        setIsQuoteLoading(false);
+      }
 
     } catch (error: any) {
       console.error('❌ Error initiating checkout:', error);
@@ -802,7 +885,7 @@ export function Order() {
                       }
                     }}
                   >
-                    {quoteSuccess ? 'Buy Now with Stripe' : (isQuoteLoading ? 'Getting Quote...' : 'Get Quote')}
+                    {quoteSuccess ? 'Buy Now' : (isQuoteLoading ? 'Getting Quote...' : 'Get Quote')}
                   </button>
                 )}
                 {/* Show validation message if no file URL */}
@@ -981,7 +1064,14 @@ export function Order() {
       {isSuccessModalOpen && orderSuccess && (
         <OrderSuccessModal
           isOpen={isSuccessModalOpen}
-          onClose={() => setIsSuccessModalOpen(false)}
+          onClose={() => {
+            setIsSuccessModalOpen(false);
+            setOrderSuccess(null);
+            // Reset form and go back to step 1
+            setStep(1);
+            // Optionally navigate to dashboard
+            navigate('/dashboard');
+          }}
           orderData={orderSuccess}
         />
       )}

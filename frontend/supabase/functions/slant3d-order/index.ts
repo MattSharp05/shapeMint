@@ -2,6 +2,7 @@
 // Creates an order with Slant3D API
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { corsHeaders } from '../_shared/cors.ts'
 
 const SLANT3D_ORDER_URL = 'https://www.slant3dapi.com/api/order';
 
@@ -10,12 +11,7 @@ Deno.serve(async (req) => {
     console.log('=== SLANT3D ORDER FUNCTION ===');
     console.log('Method:', req.method);
     
-    // CORS headers
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    };
+    // Using shared CORS headers
     
     if (req.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
@@ -94,6 +90,9 @@ Deno.serve(async (req) => {
     console.log('=== CALLING SLANT3D ORDER API ===');
     console.log('API URL:', SLANT3D_ORDER_URL);
     console.log('Order items:', order.length);
+    console.log('Order data being sent:', JSON.stringify(order, null, 2));
+    console.log('Profile:', orderData.profile);
+    console.log('Color:', orderData.order_item_color);
     
     // Make the API call to Slant3D
     const slantResponse = await fetch(SLANT3D_ORDER_URL, {
@@ -152,6 +151,7 @@ Deno.serve(async (req) => {
       const { data: dbOrder, error: dbError } = await supabase
         .from('orders')
         .insert({
+          user_id: paymentInfo.userId, // Add user_id to link order to user
           slant_order_id: slantData.orderId,
           order_number: orderData.orderNumber,
           customer_name: orderData.name,

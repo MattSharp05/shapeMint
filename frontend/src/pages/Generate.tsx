@@ -7,7 +7,7 @@ import { ModelViewer } from '../components/3D/ModelViewer';
 import { ThumbnailSelector } from '../components/UI/ThumbnailSelector';
 import { Button } from '../components/UI/Button';
 import { Card } from '../components/UI/Card';
-import { Share2, ShoppingCart, Camera, Store, Printer } from 'lucide-react';
+import { Download, Share2, ShoppingCart, Camera, Store, Printer } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export function Generate() {
@@ -22,7 +22,7 @@ export function Generate() {
 
   const navigate = useNavigate();
 
-  // Client-side thumbnail generation
+  // Client-side thumbnail generation (like working branch)
   const {
     isGenerating: isGeneratingThumbnails,
     generateThumbnails
@@ -34,7 +34,7 @@ export function Generate() {
     try {
       console.log('🔧 Starting background GLB to STL conversion...');
       
-      const { data, error } = await supabase.functions.invoke('glb-to-stl', {
+      const { data, error } = await supabase.functions.invoke('save-stl-to-bucket', {
         body: { 
           glbUrl,
           modelId,
@@ -67,35 +67,183 @@ export function Generate() {
   };
 
   const handleGenerationSuccess = async (modelData: any) => {
-    console.log('🎯 Model generation successful, received data:', modelData);
+    console.log('🎯 Model generation response:', modelData);
+    
+    // Check if this is a processing response (new immediate-return approach)
+    if (modelData.data?.status === 'processing' && modelData.data?.taskId) {
+      console.log('🔄 Model generation started, beginning polling for completion...');
+      const taskId = modelData.data.taskId;
+      
+      setStatus('generating');
+      
+      // Start polling for completion using Meshy API directly
+      const pollForCompletion = async () => {
+        const maxAttempts = 60; // 10 minutes max
+        let attempts = 0;
+        
+        const apiUrl = modelData.data.type === 'image-to-3d' 
+          ? 'https://api.meshy.ai/openapi/v1/image-to-3d'
+          : 'https://api.meshy.ai/openapi/v2/text-to-3d';
+        
+        while (attempts < maxAttempts) {
+          try {
+            console.log(`🔍 Polling attempt ${attempts + 1}/${maxAttempts} for task ${taskId}`);
+            
+            // Check Meshy API directly for status
+            const statusResponse = await fetch(`${apiUrl}/${taskId}`, {
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_MESHY_API_KEY}`,
+              },
+            });
+            
+            if (statusResponse.ok) {
+              const statusData = await statusResponse.json();
+              console.log(`📊 Status: ${statusData.status}, Progress: ${statusData.progress || 0}%`);
+              
+              if (statusData.status === 'SUCCEEDED') {
+                console.log('✅ Model generation completed!');
+                
+                // Map completed model data
+                const completedModelData = {
+                  id: taskId,
+                  taskId: taskId,
+                  urls: {
+                    glb: statusData.model_urls?.glb,
+                    stl: statusData.model_urls?.glb, // Use GLB as fallback
+                    obj: statusData.model_urls?.obj,
+                    download: statusData.model_urls?.glb
+                  },
+                  modelUrl: statusData.model_urls?.glb,
+                  downloadUrl: statusData.model_urls?.glb,
+                  stlUrl: statusData.model_urls?.glb,
+                  objUrl: statusData.model_urls?.obj,
+                  name: modelData.data.prompt || 'Generated Model',
+                  type: modelData.data.type
+                };
+                
+                setStatus('completed');
+                setGeneratedModel(completedModelData);
+                
+                // Start client-side thumbnail generation immediately (like working branch)
+                if (completedModelData.modelUrl) {
+                  console.log('🎨 Starting client-side thumbnail generation...');
+                  try {
+                    const generatedThumbnails = await generateThumbnails(
+                      completedModelData.modelUrl,
+                      completedModelData.id
+                    );
+                    
+                    setThumbnailData({
+                      angles: generatedThumbnails,
+                      selectedAngle: Object.keys(generatedThumbnails)[0] || 'front',
+                      isCustom: false
+                    });
+                    setShowThumbnailSelector(true);
+                    
+                    console.log('🎨 Thumbnail selector activated with real 3D previews!');
+                    
+                  } catch (error) {
+                    console.error('⚠️ Thumbnail generation failed:', error);
+                    // Continue without thumbnails - not blocking
+                  }
+                }
+                return;
+              } else if (statusData.status === 'FAILED') {
+                console.error('❌ Model generation failed');
+                setStatus('failed');
+                return;
+              }
+            }
+            
+            attempts++;
+            if (attempts < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10s between polls
+            }
+          } catch (error) {
+            console.error('Polling error:', error);
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, 10000));
+          }
+        }
+        
+        console.error('⏰ Polling timeout - model may still be generating');
+        setStatus('failed');
+      };
+      
+      // Start polling in background
+      pollForCompletion();
+      return;
+    }
+    
+    // Handle legacy completed model response (if any)
+    const mappedModelData = {
+      ...modelData.data,
+      id: modelData.data?.taskId,
+      taskId: modelData.data?.taskId,
+      urls: {
+        glb: modelData.data?.modelUrl,
+        stl: modelData.data?.stlUrl,
+        obj: modelData.data?.objUrl,
+        download: modelData.data?.downloadUrl
+      },
+      modelUrl: modelData.data?.modelUrl,
+      downloadUrl: modelData.data?.downloadUrl,
+      stlUrl: modelData.data?.stlUrl,
+      objUrl: modelData.data?.objUrl
+    };
+    
+    console.log('🔄 Mapped model data:', mappedModelData);
+    
     setStatus('completed');
-    setGeneratedModel(modelData);
+    setGeneratedModel(mappedModelData);
     
     // Start background STL conversion if GLB URL is available
-    if (modelData.urls?.glb) {
+    if (mappedModelData.urls?.glb) {
       console.log('🔧 Starting background STL conversion from GLB...');
-      convertToSTL(modelData.urls.glb, modelData.id);
+      convertToSTL(mappedModelData.urls.glb, mappedModelData.id);
       // Note: We don't await this - it runs in background
     }
     
-    // Start client-side thumbnail generation immediately
-    if (modelData.urls?.glb) {
-      console.log('🎨 Starting client-side thumbnail generation...');
+    // Start server-side thumbnail generation via Edge function
+    if (mappedModelData.urls?.glb) {
+      console.log('🎨 Starting server-side thumbnail generation via Edge function...');
+      setIsGeneratingThumbnails(true);
+      
       try {
-        const generatedThumbnails = await generateThumbnails(
-          modelData.urls.glb,
-          modelData.id
-        );
+        // Use client-side thumbnail generation for real 3D model screenshots
+        const { ThumbnailGenerator, DEFAULT_CAMERA_ANGLES } = await import('../services/thumbnailGenerator');
         
-        setThumbnailData({
-          angles: generatedThumbnails,
-          selectedAngle: Object.keys(generatedThumbnails)[0] || 'front',
-          isCustom: false
+        const generator = new ThumbnailGenerator({
+          width: 400,
+          height: 300,
+          backgroundColor: '#f8fafc'
         });
-        setShowThumbnailSelector(true);
+        
+        console.log('🎬 Generating real 3D thumbnails from GLB model...');
+        
+        // Generate thumbnails for multiple angles using original Meshy URL
+        console.log('🎨 Loading model for thumbnails from:', mappedModelData.urls.glb);
+        const thumbnails = await generator.generateAllThumbnails(mappedModelData.urls.glb, DEFAULT_CAMERA_ANGLES);
+        
+        // Clean up Three.js resources
+        generator.dispose();
+        
+        if (thumbnails && Object.keys(thumbnails).length > 0) {
+          setThumbnailData({
+            angles: thumbnails,
+            selectedAngle: Object.keys(thumbnails)[0] || 'front',
+            isCustom: false
+          });
+          setShowThumbnailSelector(true);
+          console.log('✅ Client-side 3D thumbnails generated successfully:', Object.keys(thumbnails));
+        } else {
+          console.log('⚠️ No thumbnails generated');
+        }
       } catch (error) {
-        console.error('Failed to generate thumbnails:', error);
+        console.error('Failed to generate client-side thumbnails:', error);
         // Continue without thumbnails - not a blocking error
+      } finally {
+        setIsGeneratingThumbnails(false);
       }
     }
   };
@@ -235,7 +383,7 @@ export function Generate() {
                       <span className="text-gray-500">Polygons:</span>
                       <span className="ml-2 font-medium">12,480</span>
                     </div>
-                    <div>
+                    <div>ddddddd
                       <span className="text-gray-500">File Size:</span>
                       <span className="ml-2 font-medium">2.4 MB</span>
                     </div>

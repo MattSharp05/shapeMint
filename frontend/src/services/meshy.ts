@@ -239,60 +239,31 @@ export class MeshyService {
     }
   }
 
-  async generateAndStoreModel(params: MeshyGenerationParams, userId: string): Promise<any> {
-    console.log('Starting model generation with params:', params);
+  async generateAndStoreModelFromImage(imageFile: File, userId: string, options: Partial<ImageGenerationParams> = {}): Promise<any> {
+    console.log('Starting image-to-3D model generation with file:', imageFile.name);
     try {
-      const glbUrl = await this.generateModel(params);
+      const glbUrl = await this.generateModelFromImage(imageFile, options);
       
       // Generate other format URLs based on GLB URL pattern
       const objUrl = glbUrl.replace('.glb', '.obj');
       const stlUrl = glbUrl.replace('.glb', '.stl');
       
-      const modelId = glbUrl.split('/').pop()?.split('.')[0] || Date.now().toString();
-      
-      // Store the direct Meshy URLs instead of downloading and re-uploading
-      // This avoids the 403 authentication issues with asset downloads
-      const modelInput: CreateModelInput = {
-        user_id: userId,
-        name: `Model ${modelId.slice(0, 8)}`,
-        prompt: params.prompt,
-        style: params.style || 'base',
+      // Store in Supabase with correct schema
+      const modelData = {
+        name: `Image: ${imageFile.name}`,
+        prompt: `Image: ${imageFile.name}`,
+        style: 'image-to-3d',
         obj_url: objUrl,
         stl_url: stlUrl,
         glb_url: glbUrl,
-        status: 'completed',
-        thumbnail_status: 'pending'
+        thumbnail_url: '',
+        user_id: userId,
+        status: 'completed' as const
       };
-
-      console.log('Storing model with direct URLs:', modelInput);
-      const createdModel = await modelService.createModel(modelInput);
-      console.log('Model stored successfully in Supabase');
       
-      // Call Edge Function to download GLB and convert to STL
-      if (glbUrl && createdModel.id) {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          const accessToken = session?.access_token;
-          const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-stl-to-bucket`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${accessToken || import.meta.env.VITE_SUPABASE_ANON_KEY}`
-            },
-            body: JSON.stringify({
-              glbUrl: glbUrl,
-              modelId: createdModel.id
-            })
-          });
-          const result = await res.json();
-          console.log('Edge Function save-stl-to-bucket result:', result);
-        } catch (err) {
-          console.error('Error calling save-stl-to-bucket Edge Function:', err);
-        }
-      }
-      
-      // Queue thumbnail generation and immediately invoke processing
-      await this.queueThumbnailGeneration(createdModel.id);
+      console.log('Storing image-to-3D model in Supabase:', modelData);
+      const createdModel = await modelService.createModel(modelData);
+      console.log('✅ Image-to-3D model stored successfully:', createdModel);
       
       // Return the model data with URLs for UI display
       return {
@@ -305,7 +276,7 @@ export class MeshyService {
       };
       
     } catch (error) {
-      console.error('Error in generate and store flow:', error);
+      console.error('Error in image-to-3D generate and store flow:', error);
       throw error;
     }
   }

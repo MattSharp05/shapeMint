@@ -1,148 +1,120 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, MapPin, Calendar, Star, Download, Heart, Grid, List, Eye, Award, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Calendar, Star, Download, Heart, Grid, List, Eye, Award, TrendingUp, Edit, Save, X } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
-
-// Mock user data - in a real app, this would come from an API
-const mockUserProfiles = {
-  'DesignPro': {
-    username: 'DesignPro',
-    displayName: 'Alex Chen',
-    avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=200',
-    bio: 'Passionate 3D designer specializing in functional household items and modern aesthetics. I love creating designs that blend form and function seamlessly.',
-    location: 'San Francisco, CA',
-    joinedDate: '2023-05-15',
-    rating: 4.8,
-    totalDesigns: 23,
-    totalDownloads: 5420,
-    totalLikes: 1230,
-    totalViews: 45600,
-    verified: true,
-    specialties: ['Home & Garden', 'Kitchen', 'Modern Design', 'Functional Items'],
-    socialLinks: {
-      website: 'https://alexchen.design',
-      instagram: '@alexchen_3d',
-      twitter: '@alexchen3d'
-    },
-    achievements: [
-      { title: 'Top Seller', description: 'Over 1000 downloads', icon: Award },
-      { title: 'Rising Star', description: 'Fastest growing creator', icon: TrendingUp },
-      { title: 'Community Favorite', description: 'Highly rated designs', icon: Star }
-    ],
-    designs: [
-      {
-        id: '1',
-        title: 'Modern Coffee Mug',
-        thumbnail: 'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=400',
-        price: 12.99,
-        downloads: 245,
-        likes: 89,
-        views: 1234,
-        category: 'Home & Garden',
-        featured: true,
-        createdAt: '2025-01-10'
-      },
-      {
-        id: '7',
-        title: 'Minimalist Desk Lamp',
-        thumbnail: 'https://images.pexels.com/photos/1166643/pexels-photo-1166643.jpeg?auto=compress&cs=tinysrgb&w=400',
-        price: 24.99,
-        downloads: 156,
-        likes: 78,
-        views: 890,
-        category: 'Lighting',
-        featured: false,
-        createdAt: '2025-01-08'
-      },
-      {
-        id: '8',
-        title: 'Kitchen Utensil Holder',
-        thumbnail: 'https://images.pexels.com/photos/1080721/pexels-photo-1080721.jpeg?auto=compress&cs=tinysrgb&w=400',
-        price: 15.50,
-        downloads: 203,
-        likes: 92,
-        views: 1100,
-        category: 'Home & Garden',
-        featured: false,
-        createdAt: '2025-01-05'
-      },
-      {
-        id: '9',
-        title: 'Ergonomic Phone Stand',
-        thumbnail: 'https://images.pexels.com/photos/404280/pexels-photo-404280.jpeg?auto=compress&cs=tinysrgb&w=400',
-        price: 9.99,
-        downloads: 312,
-        likes: 145,
-        views: 1567,
-        category: 'Accessories',
-        featured: false,
-        createdAt: '2025-01-03'
-      }
-    ]
-  },
-  'ArtisticMind': {
-    username: 'ArtisticMind',
-    displayName: 'Maria Rodriguez',
-    avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=200',
-    bio: 'Contemporary artist exploring the intersection of digital art and physical form through 3D printing. My work focuses on geometric patterns and abstract sculptures.',
-    location: 'Barcelona, Spain',
-    joinedDate: '2023-03-22',
-    rating: 4.6,
-    totalDesigns: 18,
-    totalDownloads: 3240,
-    totalLikes: 890,
-    totalViews: 28400,
-    verified: false,
-    specialties: ['Art & Decor', 'Sculptures', 'Geometric', 'Abstract'],
-    socialLinks: {
-      website: 'https://mariarodriguez.art',
-      instagram: '@maria_3d_art'
-    },
-    achievements: [
-      { title: 'Creative Excellence', description: 'Unique artistic designs', icon: Star },
-      { title: 'Community Choice', description: 'Most liked designs', icon: Heart }
-    ],
-    designs: [
-      {
-        id: '2',
-        title: 'Geometric Vase',
-        thumbnail: 'https://images.pexels.com/photos/1094767/pexels-photo-1094767.jpeg?auto=compress&cs=tinysrgb&w=400',
-        price: 18.50,
-        downloads: 189,
-        likes: 142,
-        views: 2100,
-        category: 'Art & Decor',
-        featured: false,
-        createdAt: '2025-01-12'
-      }
-    ]
-  }
-};
+import { useAuth } from '../hooks/useAuth';
+import { userService } from '../services/user';
+import { modelService } from '../services/modelService';
+import type { User } from '../types/user';
+import type { MarketplaceModel } from '../types';
 
 export function UserProfile() {
   const { username } = useParams();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState('newest');
+  const [user, setUser] = useState<User | null>(null);
+  const [userModels, setUserModels] = useState<MarketplaceModel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    full_name: '',
+    bio: '',
+    avatar_url: ''
+  });
+  const [saveLoading, setSaveLoading] = useState(false);
 
-  const user = mockUserProfiles[username as keyof typeof mockUserProfiles];
+  // Check if this is the current user's profile (My Account)
+  const isOwnProfile = !username || username === currentUser?.id;
+  const profileUserId = isOwnProfile ? currentUser?.id : username;
 
-  if (!user) {
-    return (
-      <div className="pt-16 min-h-screen bg-gray-50 flex items-center justify-center">
-        <Card className="p-8 text-center">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">User Not Found</h2>
-          <p className="text-gray-600 mb-6">The user profile you're looking for doesn't exist.</p>
-          <Button onClick={() => navigate('/marketplace')}>
-            Back to Marketplace
-          </Button>
-        </Card>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (!profileUserId) {
+        setLoading(false);
+        return;
+      }
 
-  const sortedDesigns = [...user.designs].sort((a, b) => {
+      try {
+        // Fetch user data
+        const userData = await userService.getUser(profileUserId);
+        if (userData) {
+          setUser(userData);
+          setEditForm({
+            full_name: userData.full_name || '',
+            bio: userData.bio || '',
+            avatar_url: userData.avatar_url || ''
+          });
+        }
+
+        // Fetch user's models
+        const models = await modelService.fetchMarketplaceModels();
+        const userModels = models.filter(model => model.user_id === profileUserId);
+        setUserModels(userModels);
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserData();
+  }, [profileUserId]);
+
+  const handleSave = async () => {
+    if (!user || !isOwnProfile) return;
+    
+    setSaveLoading(true);
+    try {
+      await userService.updateUser(user.id, {
+        full_name: editForm.full_name,
+        bio: editForm.bio,
+        avatar_url: editForm.avatar_url
+      });
+      
+      // Update local user state
+      setUser({
+        ...user,
+        full_name: editForm.full_name,
+        bio: editForm.bio,
+        avatar_url: editForm.avatar_url
+      });
+      
+      setIsEditing(false);
+      console.log('✅ Profile updated successfully');
+    } catch (error) {
+      console.error('❌ Error updating profile:', error);
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditForm({
+      full_name: user?.full_name || '',
+      bio: user?.bio || '',
+      avatar_url: user?.avatar_url || ''
+    });
+    setIsEditing(false);
+  };
+
+  // Convert user models to design format for display
+  const userDesigns = userModels.map(model => ({
+    id: model.id,
+    title: model.name || 'Untitled Model',
+    thumbnail: model.thumbnail_url || 'https://placehold.co/400x300?text=3D+Model',
+    price: 9.99, // Placeholder
+    downloads: 0, // Placeholder
+    likes: 0, // Placeholder
+    views: 0, // Placeholder
+    category: model.style || 'Other',
+    featured: false,
+    createdAt: model.created_at
+  }));
+
+  const sortedDesigns = [...userDesigns].sort((a, b) => {
     switch (sortBy) {
       case 'newest':
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -158,6 +130,32 @@ export function UserProfile() {
         return 0;
     }
   });
+
+  if (loading) {
+    return (
+      <div className="pt-16 min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="p-8 text-center">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Loading Profile...</h2>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="pt-16 min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="p-8 text-center">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">User Not Found</h2>
+          <p className="text-gray-600 mb-6">The user profile you're looking for doesn't exist.</p>
+          <Button onClick={() => navigate('/marketplace')}>
+            Back to Marketplace
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+
 
   return (
     <div className="pt-16 min-h-screen bg-gray-50">
@@ -177,106 +175,96 @@ export function UserProfile() {
           <div className="flex flex-col md:flex-row items-start md:items-center space-y-6 md:space-y-0 md:space-x-8">
             <div className="relative">
               <img
-                src={user.avatar}
-                alt={user.displayName}
+                src={user.avatar_url || 'https://placehold.co/128x128?text=User'}
+                alt={user.full_name}
                 className="w-32 h-32 rounded-full object-cover"
               />
-              {user.verified && (
-                <div className="absolute -bottom-2 -right-2 bg-blue-500 text-white p-2 rounded-full">
-                  <Star className="h-4 w-4 fill-current" />
-                </div>
-              )}
             </div>
             
             <div className="flex-1">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                    {user.displayName}
-                    {user.verified && (
-                      <span className="ml-2 text-blue-500">
-                        <Star className="h-6 w-6 inline fill-current" />
-                      </span>
-                    )}
-                  </h1>
-                  <p className="text-xl text-gray-600">@{user.username}</p>
+                  {isEditing ? (
+                    <div className="space-y-3">
+                      <input
+                        value={editForm.full_name}
+                        onChange={(e) => setEditForm({...editForm, full_name: e.target.value})}
+                        placeholder="Full Name"
+                        className="w-full text-2xl font-bold p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      />
+                      <input
+                        value={editForm.avatar_url}
+                        onChange={(e) => setEditForm({...editForm, avatar_url: e.target.value})}
+                        placeholder="Avatar URL (optional)"
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                        {user.full_name}
+                      </h1>
+                      <p className="text-gray-600 text-lg">{user.email}</p>
+                    </>
+                  )}
                 </div>
                 
-                <div className="flex items-center space-x-4 mt-4 md:mt-0">
-                  <div className="flex items-center space-x-1 text-yellow-500">
-                    <Star className="h-5 w-5 fill-current" />
-                    <span className="font-medium">{user.rating}</span>
+                {isOwnProfile && (
+                  <div className="flex items-center space-x-2 mt-4 md:mt-0">
+                    {isEditing ? (
+                      <>
+                        <Button 
+                          onClick={handleSave} 
+                          disabled={saveLoading}
+                          className="flex items-center space-x-1"
+                        >
+                          <Save className="h-4 w-4" />
+                          <span>{saveLoading ? 'Saving...' : 'Save'}</span>
+                        </Button>
+                        <Button 
+                          onClick={handleCancel} 
+                          variant="outline"
+                          className="flex items-center space-x-1"
+                        >
+                          <X className="h-4 w-4" />
+                          <span>Cancel</span>
+                        </Button>
+                      </>
+                    ) : (
+                      <Button 
+                        onClick={() => setIsEditing(true)}
+                        variant="outline"
+                        className="flex items-center space-x-1"
+                      >
+                        <Edit className="h-4 w-4" />
+                        <span>Edit Profile</span>
+                      </Button>
+                    )}
                   </div>
-                  <Button variant="outline">
-                    Follow
-                  </Button>
-                </div>
+                )}
               </div>
               
-              <p className="text-gray-600 mb-4 max-w-2xl">
-                {user.bio}
-              </p>
+              <div className="mb-6">
+                {isEditing ? (
+                  <textarea
+                    value={editForm.bio}
+                    onChange={(e) => setEditForm({...editForm, bio: e.target.value})}
+                    placeholder="Tell us about yourself..."
+                    rows={3}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  />
+                ) : (
+                  <p className="text-gray-700">
+                    {user.bio || 'No bio provided yet.'}
+                  </p>
+                )}
+              </div>
               
-              <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 mb-4">
-                <div className="flex items-center space-x-1">
-                  <MapPin className="h-4 w-4" />
-                  <span>{user.location}</span>
-                </div>
+              <div className="flex flex-wrap items-center gap-6 text-sm text-gray-600">
                 <div className="flex items-center space-x-1">
                   <Calendar className="h-4 w-4" />
-                  <span>Joined {new Date(user.joinedDate).toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'long' 
-                  })}</span>
+                  <span>Joined {new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
                 </div>
-              </div>
-              
-              {/* Social Links */}
-              {user.socialLinks && (
-                <div className="flex space-x-4 mb-4">
-                  {user.socialLinks.website && (
-                    <a 
-                      href={user.socialLinks.website} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-purple-600 hover:text-purple-700 text-sm"
-                    >
-                      Website
-                    </a>
-                  )}
-                  {user.socialLinks.instagram && (
-                    <a 
-                      href={`https://instagram.com/${user.socialLinks.instagram.replace('@', '')}`}
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-purple-600 hover:text-purple-700 text-sm"
-                    >
-                      {user.socialLinks.instagram}
-                    </a>
-                  )}
-                  {user.socialLinks.twitter && (
-                    <a 
-                      href={`https://twitter.com/${user.socialLinks.twitter.replace('@', '')}`}
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-purple-600 hover:text-purple-700 text-sm"
-                    >
-                      {user.socialLinks.twitter}
-                    </a>
-                  )}
-                </div>
-              )}
-              
-              {/* Specialties */}
-              <div className="flex flex-wrap gap-2">
-                {user.specialties.map((specialty) => (
-                  <span 
-                    key={specialty}
-                    className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm"
-                  >
-                    {specialty}
-                  </span>
-                ))}
               </div>
             </div>
           </div>
@@ -289,49 +277,37 @@ export function UserProfile() {
             <Card className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Stats</h3>
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Designs</span>
-                  <span className="font-bold text-gray-900">{user.totalDesigns}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Downloads</span>
-                  <span className="font-bold text-gray-900">{user.totalDownloads.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Likes</span>
-                  <span className="font-bold text-gray-900">{user.totalLikes.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Views</span>
-                  <span className="font-bold text-gray-900">{user.totalViews.toLocaleString()}</span>
+                {/* Stats Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+                  <Card className="p-6 text-center">
+                    <div className="text-3xl font-bold text-gray-900 mb-2">{userModels.length}</div>
+                    <div className="text-sm text-gray-600">Models Created</div>
+                  </Card>
+                  <Card className="p-6 text-center">
+                    <div className="text-3xl font-bold text-gray-900 mb-2">0</div>
+                    <div className="text-sm text-gray-600">Downloads</div>
+                  </Card>
+                  <Card className="p-6 text-center">
+                    <div className="text-3xl font-bold text-gray-900 mb-2">0</div>
+                    <div className="text-sm text-gray-600">Likes</div>
+                  </Card>
+                  <Card className="p-6 text-center">
+                    <div className="text-3xl font-bold text-gray-900 mb-2">0</div>
+                    <div className="text-sm text-gray-600">Views</div>
+                  </Card>
                 </div>
               </div>
             </Card>
 
             {/* Achievements */}
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Achievements</h3>
-              <div className="space-y-3">
-                {user.achievements.map((achievement, index) => (
-                  <div key={index} className="flex items-start space-x-3">
-                    <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-2 rounded-lg">
-                      <achievement.icon className="h-4 w-4 text-white" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900 text-sm">{achievement.title}</h4>
-                      <p className="text-xs text-gray-500">{achievement.description}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
+            {/* Removed Achievements Section */}
           </div>
 
           {/* Designs */}
           <div className="lg:col-span-3">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-gray-900">
-                Designs ({user.designs.length})
+                Models ({userModels.length})
               </h2>
               
               <div className="flex items-center space-x-4">

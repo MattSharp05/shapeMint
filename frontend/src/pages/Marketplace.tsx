@@ -19,7 +19,8 @@ const mockDesigns = [
     userName: 'DesignPro',
     featured: true,
     modelUrl: 'mock-model-url-1',
-    stl_url: ''
+    stl_url: '',
+    createdAt: '2024-01-15T10:00:00Z'
   },
   {
     id: '2',
@@ -32,7 +33,8 @@ const mockDesigns = [
     likes: 142,
     userName: 'ArtisticMind',
     modelUrl: 'mock-model-url-2',
-    stl_url: ''
+    stl_url: '',
+    createdAt: '2024-01-10T14:30:00Z'
   },
   {
     id: '3',
@@ -45,7 +47,8 @@ const mockDesigns = [
     likes: 203,
     userName: 'TechCreator',
     modelUrl: 'mock-model-url-3',
-    stl_url: ''
+    stl_url: '',
+    createdAt: '2024-01-20T09:15:00Z'
   },
   {
     id: '4',
@@ -58,7 +61,8 @@ const mockDesigns = [
     likes: 56,
     userName: 'LightDesigns',
     modelUrl: 'mock-model-url-4',
-    stl_url: ''
+    stl_url: '',
+    createdAt: '2024-01-05T16:45:00Z'
   },
   {
     id: '5',
@@ -71,7 +75,8 @@ const mockDesigns = [
     likes: 94,
     userName: 'GreenThumb',
     modelUrl: 'mock-model-url-5',
-    stl_url: ''
+    stl_url: '',
+    createdAt: '2024-01-12T11:20:00Z'
   },
   {
     id: '6',
@@ -84,7 +89,8 @@ const mockDesigns = [
     likes: 127,
     userName: 'OrganizeIT',
     modelUrl: 'mock-model-url-6',
-    stl_url: ''
+    stl_url: '',
+    createdAt: '2024-01-08T13:30:00Z'
   }
 ];
 
@@ -112,18 +118,19 @@ export function Marketplace() {
 
   const realDesigns = marketplaceModels.map((model) => ({
     id: model.id,
-    title: capitalizeWords(model.prompt || 'Untitled Model'), // Capitalize first letter of each word
-    description: '', // Remove generic "Model model" description
+    title: model.name || capitalizeWords(model.prompt || 'Untitled Model'), // Use model name first, fallback to prompt
+    description: model.prompt || 'AI-generated 3D model', // Use prompt as description
     // Use actual thumbnail if available, otherwise fallback to placeholder
     thumbnail: model.thumbnail_url || DEFAULT_MODEL_THUMBNAIL,
     price: 9.99, // Placeholder price, can be replaced with real pricing logic
-    category: model.style || 'Other',
+    category: capitalizeWords(model.style || 'Other'),
     downloads: 0, // Placeholder
     likes: 0, // Placeholder
-    userName: model.user_id.slice(0, 8), // Placeholder, ideally fetch user name
+    userName: `Creator-${model.user_id.slice(-4)}`, // Better user display format
     featured: false, // Placeholder
     modelUrl: model.glb_url || model.obj_url || model.stl_url || '',
     stl_url: model.stl_url || '', // <-- Add STL URL explicitly
+    createdAt: model.created_at, // Add creation date for sorting
   }));
 
   // Combine real models and mock data (real models first)
@@ -135,6 +142,25 @@ export function Marketplace() {
                          design.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || design.category === selectedCategory;
     return matchesSearch && matchesCategory;
+  });
+
+  // Apply sorting logic
+  const sortedDesigns = [...filteredDesigns].sort((a, b) => {
+    switch (sortBy) {
+      case 'newest':
+        // Sort by creation date (newest first)
+        const dateA = new Date(a.createdAt || '2024-01-01').getTime();
+        const dateB = new Date(b.createdAt || '2024-01-01').getTime();
+        return dateB - dateA;
+      case 'price-low':
+        return a.price - b.price;
+      case 'price-high':
+        return b.price - a.price;
+      case 'popular':
+      default:
+        // Sort by downloads + likes (most popular first)
+        return (b.downloads + b.likes) - (a.downloads + a.likes);
+    }
   });
 
   const handleBuyNow = (design: typeof mockDesigns[0]) => {
@@ -249,7 +275,7 @@ export function Marketplace() {
         {/* Results */}
         <div className="mb-6">
           <p className="text-gray-600">
-            Showing {filteredDesigns.length} designs
+            Showing {sortedDesigns.length} designs
           </p>
         </div>
 
@@ -259,7 +285,7 @@ export function Marketplace() {
             ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' 
             : 'grid-cols-1'
         }`}>
-          {filteredDesigns.map((design) => (
+          {sortedDesigns.map((design) => (
             <Card key={design.id} className="overflow-hidden hover">
               {viewMode === 'grid' ? (
                 <>

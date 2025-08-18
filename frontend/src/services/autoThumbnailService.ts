@@ -150,9 +150,13 @@ export class AutoThumbnailService {
    * Process all models needing thumbnails for a user
    */
   async autoGenerateThumbnails(
-    userId: string, 
+    userId: string,
     onProgress?: (progress: AutoThumbnailProgress) => void
   ): Promise<void> {
+    // Temporarily disabled to prevent proxy server errors
+    console.log('ℹ️ Auto thumbnail generation temporarily disabled');
+    return;
+
     if (this.isProcessing) {
       console.log('⏳ Auto-thumbnail generation already in progress');
       return;

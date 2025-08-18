@@ -4,7 +4,7 @@ import { Button } from '../UI/Button';
 import { Input } from '../UI/Input';
 import { Card } from '../UI/Card';
 import { useAuth } from '../../hooks/useAuth';
-import { meshyService } from '../../services/meshy';
+import { modelService } from '../../services/modelService';
 import { supabase } from '../../supabaseClient';
 
 interface GenerationFormProps {
@@ -51,25 +51,13 @@ export function GenerationForm({ onSuccess, loading: initialLoading }: Generatio
       
       if (mode === 'text') {
         // Text-to-3D generation
-        const generationData = {
-          prompt: prompt.trim(),
-          style: settings.style,
-          negative_prompt: '',
-          seed: Math.floor(Math.random() * 1000000)
-        };
-
-        console.log('Starting text-to-3D generation with params:', generationData);
-        modelData = await meshyService.generateAndStoreModel(generationData, user.id);
+        console.log('Starting text-to-3D generation with prompt:', prompt.trim());
+        modelData = await modelService.generate3DModel({ prompt: prompt.trim() });
         
       } else {
         // Image-to-3D generation
-        const imageOptions = {
-          style: settings.style,
-          enable_pbr: settings.quality === 'standard' ? false : true
-        };
-
         console.log('Starting image-to-3D generation with file:', image!.name);
-        modelData = await meshyService.generateAndStoreModelFromImage(image!, user.id, imageOptions);
+        modelData = await modelService.generate3DModel({ prompt: prompt.trim(), image: image! });
       }
       
       // Clear form based on mode

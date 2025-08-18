@@ -96,7 +96,14 @@ export function AutoThumbnailProgress({
                   <span>{processed} of {total} completed</span>
                   <span>{percentage}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="w-full bg-gray-200 rounded-full h-2"
+                  role="progressbar"
+                  aria-valuenow={percentage}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Thumbnail generation progress"
+                >
                   <div 
                     className={`h-2 rounded-full transition-all duration-500 ${
                       isComplete ? 'bg-green-500' : 

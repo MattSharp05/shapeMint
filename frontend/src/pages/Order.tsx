@@ -431,7 +431,7 @@ export function Order() {
             <span>Back to {isMarketplaceItem ? 'Marketplace' : 'Generate'}</span>
           </button>
           
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4" aria-label="Order Your 3D Print">
             Order Your 3D Print
           </h1>
           
@@ -463,13 +463,13 @@ export function Order() {
           <div className="lg:col-span-2">
             {step === 1 && (
               <Card className="p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-6" aria-label="Material & Options">
                   Material & Options
                 </h3>
                 
                 <div className="space-y-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                    <label className="block text-sm font-medium text-gray-700 mb-3" aria-label="Select Material">
                       Select Material
                     </label>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -494,7 +494,7 @@ export function Order() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                    <label className="block text-sm font-medium text-gray-700 mb-3" aria-label="Select Color">
                       Select Color
                     </label>
                     <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
@@ -516,7 +516,7 @@ export function Order() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2" aria-label="Quantity">
                       Quantity
                     </label>
                     <input
@@ -737,7 +737,7 @@ export function Order() {
               </Button>
               
               {step < 4 ? (
-                <Button onClick={handleNext}>
+                <Button onClick={handleNext} role="button" aria-label="Next">
                   Next
                 </Button>
               ) : (

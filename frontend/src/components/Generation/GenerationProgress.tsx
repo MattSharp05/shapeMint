@@ -50,7 +50,14 @@ export function GenerationProgress({ progress, status, estimatedTime }: Generati
         </div>
 
         {status === 'generating' && (
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div 
+            className="w-full bg-gray-200 rounded-full h-2"
+            role="progressbar"
+            aria-valuenow={progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Generation progress"
+          >
             <div
               className="bg-gradient-to-r from-purple-600 to-blue-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${progress}%` }}

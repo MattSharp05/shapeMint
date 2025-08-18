@@ -43,8 +43,10 @@ export function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="relative">
+              <label htmlFor="email" className="sr-only">Email address</label>
               <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
+                id="email"
                 type="email"
                 placeholder="Email address"
                 value={email}
@@ -55,8 +57,10 @@ export function Login() {
             </div>
 
             <div className="relative">
+              <label htmlFor="password" className="sr-only">Password</label>
               <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
+                id="password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Password"
                 value={password}
@@ -83,7 +87,7 @@ export function Login() {
               </a>
             </div>
 
-            <Button type="submit" loading={loading} className="w-full" size="lg">
+            <Button type="submit" loading={loading} className="w-full" size="lg" role="button" aria-label="Sign In">
               Sign In
             </Button>
           </form>

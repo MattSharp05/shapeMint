@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useThumbnailGenerator } from '../hooks/useThumbnailGenerator';
 import { GenerationForm } from '../components/Generation/GenerationForm';
 import { GenerationProgress } from '../components/Generation/GenerationProgress';
@@ -19,8 +19,23 @@ export function Generate() {
     selectedAngle: string;
     isCustom: boolean;
   } | null>(null);
+  const [stlConversionInProgress, setStlConversionInProgress] = useState(false);
+  const [prefilledData, setPrefilledData] = useState<{
+    prefilledPrompt?: string;
+    socialTag?: string;
+    mode?: 'text' | 'image';
+    image?: File;
+  } | null>(null);
 
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Extract prefilled data from navigation state
+  useEffect(() => {
+    if (location.state) {
+      setPrefilledData(location.state);
+    }
+  }, [location.state]);
 
   // Client-side thumbnail generation (like working branch)
   const {
@@ -283,7 +298,10 @@ export function Generate() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Generation Form */}
           <div className="space-y-6">
-            <GenerationForm onSuccess={handleGenerationSuccess} />
+            <GenerationForm 
+              onSuccess={handleGenerationSuccess} 
+              prefilledData={prefilledData}
+            />
             
             {status !== 'pending' && (
               <GenerationProgress

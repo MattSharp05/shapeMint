@@ -100,6 +100,14 @@ navigate('/order', {
 2. Stripe processes payment → redirect with `session_id`
 3. Success pages verify payment and create orders via Edge Functions
 
+## Where to find documentation (for agents)
+- Authoritative docs live under the `docs/` directory. Prefer these files over searching the codebase when you need API or Supabase info.
+  - API & external integration docs: `docs/API_information/` (examples: `Shapeways_API_info.md`, `Slant3D_API_info.md`).
+  - Canonical Supabase schema & RLS details: `docs/supabase-backup/` — see `supabase-details.md` (quick reference), and `schema.sql` / `roles.sql` for the canonical SQL.
+  - Project-level guidance: `README.md` and `AUTO_THUMBNAIL_GENERATION.md` provide higher-level flows and developer commands.
+- If a function or Edge Function is referenced in documentation, inspect `frontend/supabase/functions/` and `supabase/functions/` for implementation and runtime specifics.
+- When in doubt, search `docs/` first, then fall back to scanning `frontend/src/services/`, `frontend/src/hooks/`, and `supabase/functions/` for concrete code paths.
+
 ## File Organization Conventions
 - **Pages**: Main route components in `src/pages/`
 - **Components**: Organized by domain (`3D/`, `Generation/`, `Payment/`)

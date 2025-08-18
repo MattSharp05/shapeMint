@@ -1,6 +1,7 @@
 import { useState, useEffect, useContext, createContext } from 'react';
 import { supabase } from '../supabaseClient';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
+import { userService } from '../services/user';
 
 interface AuthUser {
   id: string;
@@ -59,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (email: string, password: string, name: string) => {
     setLoading(true);
     try {
+      // Step 1: Create auth user
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -67,20 +69,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
       if (error) throw error;
+      
       if (data.user) {
         const u = data.user;
-        setUser({
-          id: u.id,
-          email: u.email || '',
-          name: u.user_metadata?.full_name || u.email?.split('@')[0] || '',
-          createdAt: u.created_at || new Date().toISOString(),
-        });
-        return {
+        
+        // Step 2: Create user record in database
+        try {
+          await userService.createUser(u.id, u.email || '', name);
+          console.log('✅ User created successfully');
+        } catch (userError) {
+          console.error('❌ Error creating user:', userError);
+          // Continue with auth user creation even if user record creation fails
+        }
+        
+        const authUser = {
           id: u.id,
           email: u.email || '',
           name: u.user_metadata?.full_name || u.email?.split('@')[0] || '',
           createdAt: u.created_at || new Date().toISOString(),
         };
+        
+        setUser(authUser);
+        return authUser;
       }
     } catch (error) {
       console.error('Registration error:', error);

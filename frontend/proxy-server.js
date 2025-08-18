@@ -174,14 +174,29 @@ app.get('/api/meshy/glb', async (req, res) => {
 
     console.log('Proxying GLB request for:', url);
 
-    const response = await axios.get(url, {
-      headers: {
-        'Authorization': `Bearer ${MESHY_API_KEY}`,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': '*/*',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive'
-      },
+    // Determine if this is a Supabase storage path or direct URL
+    let fetchUrl;
+    let headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': '*/*',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive'
+    };
+
+    if (url.startsWith('http')) {
+      // Direct URL (e.g., from Meshy)
+      fetchUrl = url;
+      headers['Authorization'] = `Bearer ${MESHY_API_KEY}`;
+    } else {
+      // Supabase storage path - construct full URL
+      fetchUrl = `https://xmjynwcvldvacsuhulbc.supabase.co/storage/v1/object/public/3d-models/${url}`;
+      // No authorization needed for public Supabase storage
+    }
+
+    console.log('Fetching from:', fetchUrl);
+
+    const response = await axios.get(fetchUrl, {
+      headers,
       responseType: 'arraybuffer'
     });
 

@@ -94,7 +94,10 @@ async function generateThumbnailForAngle(modelId: string, angle: number | string
   ].join('')
   
   try {
-    const base64 = btoa(svg)
+    // Use proper UTF-8 to base64 encoding instead of btoa() to handle Unicode characters
+    const encoder = new TextEncoder()
+    const data = encoder.encode(svg)
+    const base64 = btoa(String.fromCharCode(...data))
     return `data:image/svg+xml;base64,${base64}`
   } catch (error) {
     console.error('Error encoding SVG to base64:', error)

@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { ModelViewer } from '../components/3D/ModelViewer';
 import { VendorSelection } from '../components/Order/VendorSelection';
 import { MaterialSelection } from '../components/Order/MaterialSelection';
 import { ShippingForm } from '../components/Order/ShippingForm';
-import { VENDORS, SHAPEWAYS_MATERIALS } from '../data/vendors';
+import { useAuth } from '../hooks/useAuth';
+import { VENDORS, SHAPEWAYS_MATERIALS, SHAPEWAYS_COLORS, getColorsForMaterial } from '../data/vendors';
 import { OrderWizardState, ShippingInfo } from '../types/order';
 
 export function Order() {
   const location = useLocation();
   const navigate = useNavigate();
   const { modelData, modelUrl, stlUrl } = location.state || {};
+  const { user } = useAuth();
 
   // Wizard state - step 0: vendor, step 1: material+color, step 2: shipping
   const [currentStep, setCurrentStep] = useState(0);
@@ -50,15 +52,11 @@ export function Order() {
   };
 
   const handleMaterialSelect = (materialId: string) => {
-    setWizardState(prev => ({ ...prev, materialId, colorId: undefined, finishId: undefined }));
+    setWizardState(prev => ({ ...prev, materialId, colorId: undefined }));
   };
 
   const handleColorSelect = (colorId: string) => {
     setWizardState(prev => ({ ...prev, colorId }));
-  };
-
-  const handleFinishSelect = (finishId: string) => {
-    setWizardState(prev => ({ ...prev, finishId }));
   };
 
   const handleShippingInfoChange = (shippingInfo: Partial<ShippingInfo>) => {
@@ -88,6 +86,7 @@ export function Order() {
 
   // Get data for current vendor
   const availableMaterials = wizardState.vendorId === 'shapeways' ? SHAPEWAYS_MATERIALS : [];
+  const availableColors = wizardState.vendorId === 'shapeways' ? SHAPEWAYS_COLORS : [];
 
   // Step titles and progress
   const stepTitles = ['Choose Vendor', 'Select Material & Color', 'Shipping Information'];
@@ -114,7 +113,7 @@ export function Order() {
         {/* Progress bar */}
         <div className="mb-8">
           <div className="flex items-center justify-center space-x-4">
-            {stepTitles.map((_, index) => (
+            {stepTitles.map((title, index) => (
               <div key={index} className="flex items-center">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                   currentStep >= index 
@@ -182,19 +181,7 @@ export function Order() {
                       <div>
                         <span className="text-gray-600">Color:</span>{' '}
                         <span className="font-medium">
-                          {availableMaterials
-                            .find(m => m.id === wizardState.materialId)
-                            ?.colors.find(c => c.id === wizardState.colorId)?.name}
-                        </span>
-                      </div>
-                    )}
-                    {wizardState.finishId && (
-                      <div>
-                        <span className="text-gray-600">Finish:</span>{' '}
-                        <span className="font-medium">
-                          {availableMaterials
-                            .find(m => m.id === wizardState.materialId)
-                            ?.finishes.find(f => f.id === wizardState.finishId)?.name}
+                          {SHAPEWAYS_COLORS.find(c => c.id === wizardState.colorId)?.name}
                         </span>
                       </div>
                     )}
@@ -219,12 +206,11 @@ export function Order() {
               {currentStep === 1 && (
                 <MaterialSelection
                   materials={availableMaterials}
+                  colors={availableColors}
                   selectedMaterialId={wizardState.materialId}
                   selectedColorId={wizardState.colorId}
-                  selectedFinishId={wizardState.finishId}
                   onMaterialSelect={handleMaterialSelect}
                   onColorSelect={handleColorSelect}
-                  onFinishSelect={handleFinishSelect}
                   onNext={handleNext}
                   onBack={handleBack}
                 />

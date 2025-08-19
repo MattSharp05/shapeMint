@@ -41,9 +41,15 @@ export const SHAPEWAYS_COLORS: Color[] = [
 // Finishes - shared across multiple materials with correct swatch URLs
 export const SHAPEWAYS_FINISHES: Finish[] = [
   { 
-    id: 'default', 
+    id: 'default-nylonpa12-sls+fullcolor', 
     name: 'Default', 
     description: 'This finish has a slightly textured surface and a matte finish.',
+    swatchUrl: 'https://www.shapeways.com/rrstatic/img/materials/plastic_wsf_white.jpg'
+  },
+  { 
+    id: 'default-nylonpa12-mjf', 
+    name: 'Default', 
+    description: 'Nylon 12 material with a matte finish and slightly grainy feel.',
     swatchUrl: 'https://www.shapeways.com/rrstatic/img/materials/plastic_wsf_white.jpg'
   },
   { 
@@ -55,32 +61,33 @@ export const SHAPEWAYS_FINISHES: Finish[] = [
   { 
     id: 'natural', 
     name: 'Natural', 
-    description: 'Unpolished natural finish',
+    description: 'Light polishing to achieve a matte, somewhat textured surface.',
     swatchUrl: 'https://www.shapeways.com/files/cms/materials/swatches/Natural.jpg'
   },
   { 
     id: 'polished', 
     name: 'Polished', 
-    description: 'High-shine polished finish',
-    swatchUrl: 'https://www.shapeways.com/rrstatic/img/materials/swatch-polished-brass-20140116.png'
+    description: 'Hand-polished to achieve a smooth, shiny surface.',
   },
   { 
     id: 'vermell', 
     name: 'Vermell', 
-    description: 'Gold-plated silver finish',
-    swatchUrl: 'https://www.shapeways.com/files/cms/materials/swatches/Natural.jpg'
+    description: 'Polished Silver with 2.5 μm 18K Yellow Gold Plating.',
   },
   { 
     id: '14k', 
     name: '14K', 
-    description: '14 karat gold',
-    swatchUrl: 'https://www.shapeways.com/rrstatic/img/materials/swatch-14k-gold-20140702.png'
+    description: 'Smooth and shiny for a professional finish.',
   },
   { 
     id: '18k', 
     name: '18K', 
-    description: '18 karat gold',
-    swatchUrl: 'https://www.shapeways.com/rrstatic/img/materials/swatch-14k-gold-20140702.png'
+    description: 'Smooth and shiny for a professional finish.',
+  },
+  { 
+    id: 'goldplated-brass-layer-thickness', 
+    name: 'Layer Thickness 2.5 μm', 
+    description: 'Thickness of plating on Brass',
   },
 ];
 
@@ -94,7 +101,7 @@ export const SHAPEWAYS_MATERIALS: Material[] = [
     swatchUrl: 'https://www.shapeways.com/rrstatic/img/materials/sandstone_full_color.jpg',
     colors: [], // Full color has no specific color selection
     finishes: [
-      SHAPEWAYS_FINISHES.find(f => f.id === 'default')!,
+      SHAPEWAYS_FINISHES.find(f => f.id === 'default-nylonpa12-sls+fullcolor')!,
       SHAPEWAYS_FINISHES.find(f => f.id === 'vapor-smoothing')!,
     ],
   },
@@ -117,7 +124,7 @@ export const SHAPEWAYS_MATERIALS: Material[] = [
       SHAPEWAYS_COLORS.find(c => c.id === 'purple')!,
     ],
     finishes: [
-      SHAPEWAYS_FINISHES.find(f => f.id === 'default')!,
+      SHAPEWAYS_FINISHES.find(f => f.id === 'default-nylonpa12-sls+fullcolor')!,
       SHAPEWAYS_FINISHES.find(f => f.id === 'vapor-smoothing')!,
     ],
   },
@@ -131,7 +138,7 @@ export const SHAPEWAYS_MATERIALS: Material[] = [
       SHAPEWAYS_COLORS.find(c => c.id === 'black')!,
     ],
     finishes: [
-      SHAPEWAYS_FINISHES.find(f => f.id === 'default')!,
+      SHAPEWAYS_FINISHES.find(f => f.id === 'default-nylonpa12-mjf')!,
     ],
   },
   {
@@ -194,7 +201,7 @@ export const SHAPEWAYS_MATERIALS: Material[] = [
       SHAPEWAYS_COLORS.find(c => c.id === '14k-rose-gold')!,
     ],
     finishes: [
-      SHAPEWAYS_FINISHES.find(f => f.id === 'default')!,
+      SHAPEWAYS_FINISHES.find(f => f.id === 'goldplated-brass-layer-thickness')!,
     ],
   },
   {

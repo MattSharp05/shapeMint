@@ -32,3 +32,4 @@ dist-ssr
 .taskmaster
 Documents and Testing
 mvenv
+venv

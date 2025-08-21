@@ -323,17 +323,33 @@ export const modelService = {
   },
 
   async fetchMarketplaceModels(): Promise<MarketplaceModel[]> {
-    // Fetch all models with status 'completed' from Supabase table 
-    //...'generated_models'
+    console.log('🔍 Fetching marketplace models...');
+    
+    // Fetch completed models that have at least one valid URL
     const { data, error } = await supabase
       .from('generated_models')
       .select('*')
       .eq('status', 'completed')
+      .not('glb_url', 'is', null)
+      .neq('glb_url', '')
       .order('created_at', { ascending: false });
+      
     if (error) {
-      console.error('Error fetching marketplace models:', error);
+      console.error('❌ Error fetching marketplace models:', error);
       return [];
     }
-    return data as MarketplaceModel[];
+    
+    // Filter out models that don't have any valid model URLs
+    const validModels = (data || []).filter(model => {
+      const hasValidGlb = model.glb_url && model.glb_url.trim() !== '';
+      const hasValidObj = model.obj_url && model.obj_url.trim() !== '';
+      const hasValidStl = model.stl_url && model.stl_url.trim() !== '';
+      
+      return hasValidGlb || hasValidObj || hasValidStl;
+    });
+    
+    console.log(`✅ Found ${data?.length || 0} completed models, ${validModels.length} with valid URLs`);
+    
+    return validModels as MarketplaceModel[];
   },
 };

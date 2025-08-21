@@ -222,7 +222,7 @@ export function Generate() {
     // Start server-side thumbnail generation via Edge function
     if (mappedModelData.urls?.glb) {
       console.log('🎨 Starting server-side thumbnail generation via Edge function...');
-      setIsGeneratingThumbnails(true);
+      // setIsGeneratingThumbnails(true); // This line is removed
       
       try {
         // Use client-side thumbnail generation for real 3D model screenshots
@@ -258,7 +258,7 @@ export function Generate() {
         console.error('Failed to generate client-side thumbnails:', error);
         // Continue without thumbnails - not a blocking error
       } finally {
-        setIsGeneratingThumbnails(false);
+        // setIsGeneratingThumbnails(false); // This line is removed
       }
     }
   };
@@ -266,9 +266,18 @@ export function Generate() {
   const handleBuyNow = () => {
     navigate('/download-checkout', {
       state: {
-        modelData: generatedModel,
+        modelData: {
+          ...generatedModel,
+          prompt: generatedModel?.prompt || 'Generated Model',
+          settings: {
+            style: 'realistic',
+            quality: 'high',
+            size: 'medium'
+          }
+        },
         modelUrl: generatedModel?.urls?.glb,
-        price: 12.99, // Standard price for generated models
+        stlUrl: generatedModel?.urls?.stl,
+        price: 0, // Free for generated models
         isGenerated: true
       }
     });
@@ -401,7 +410,7 @@ export function Generate() {
                       <span className="text-gray-500">Polygons:</span>
                       <span className="ml-2 font-medium">12,480</span>
                     </div>
-                    <div>ddddddd
+                    <div>
                       <span className="text-gray-500">File Size:</span>
                       <span className="ml-2 font-medium">2.4 MB</span>
                     </div>

@@ -127,6 +127,18 @@ $$;
 ALTER FUNCTION "public"."update_auth_user_metadata"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."update_quotes_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+	NEW.updated_at = now();
+	RETURN NEW;
+END;$$;
+
+
+ALTER FUNCTION "public"."update_quotes_updated_at"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -191,6 +203,11 @@ CREATE TABLE IF NOT EXISTS "public"."generated_models" (
     "thumbnail_error" "text",
     "type" character varying(50),
     "mode" "text" DEFAULT 'preview'::"text",
+    "category" "text",
+    "price" numeric(10,2),
+    "tags" "text",
+    "notes" "text",
+    "is_marketplace_listed" boolean DEFAULT false,
     CONSTRAINT "generated_models_status_check" CHECK (("status" = ANY (ARRAY['processing'::"text", 'completed'::"text", 'failed'::"text"])))
 );
 
@@ -395,6 +412,57 @@ CREATE OR REPLACE VIEW "public"."order_summary" AS
 ALTER VIEW "public"."order_summary" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."quotes" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid",
+    "vendor" "text" NOT NULL,
+    "model_url" "text" NOT NULL,
+    "file_hash" "text" NOT NULL,
+    "shapeways_model_id" "text",
+    "material_id" "text" NOT NULL,
+    "selections" "jsonb" NOT NULL,
+    "quantity" integer DEFAULT 1 NOT NULL,
+    "shipping_address" "jsonb" NOT NULL,
+    "shipping_zip" "text",
+    "shapeways" "jsonb",
+    "price_total" numeric(12,2),
+    "currency" "text" DEFAULT 'USD'::"text" NOT NULL,
+    "status" "text" DEFAULT 'pending'::"text" NOT NULL,
+    "expires_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "quotes_quantity_check" CHECK ((("quantity" > 0) AND ("quantity" <= 100))),
+    CONSTRAINT "quotes_status_check" CHECK (("status" = ANY (ARRAY['quoted'::"text", 'failed'::"text", 'pending'::"text"]))),
+    CONSTRAINT "quotes_vendor_check" CHECK (("vendor" = 'shapeways'::"text"))
+);
+
+
+ALTER TABLE "public"."quotes" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."quote_summary" AS
+ SELECT "id",
+    "user_id",
+    "vendor",
+    "model_url",
+    "material_id",
+    "quantity",
+    "price_total",
+    "currency",
+    "status",
+    "shipping_zip",
+    ("shipping_address" ->> 'firstName'::"text") AS "first_name",
+    ("shipping_address" ->> 'lastName'::"text") AS "last_name",
+    ("shipping_address" ->> 'phone'::"text") AS "phone",
+    "created_at",
+    "expires_at"
+   FROM "public"."quotes" "q"
+  ORDER BY "created_at" DESC;
+
+
+ALTER VIEW "public"."quote_summary" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."stripe_sessions" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "session_id" "text" NOT NULL,
@@ -407,6 +475,17 @@ CREATE TABLE IF NOT EXISTS "public"."stripe_sessions" (
 
 
 ALTER TABLE "public"."stripe_sessions" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."sw_models_cache" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "file_hash" "text" NOT NULL,
+    "shapeways_model_id" "text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."sw_models_cache" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."thumbnail_processing_queue" (
@@ -506,6 +585,11 @@ ALTER TABLE ONLY "public"."orders"
 
 
 
+ALTER TABLE ONLY "public"."quotes"
+    ADD CONSTRAINT "quotes_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."stripe_sessions"
     ADD CONSTRAINT "stripe_sessions_pkey" PRIMARY KEY ("id");
 
@@ -513,6 +597,16 @@ ALTER TABLE ONLY "public"."stripe_sessions"
 
 ALTER TABLE ONLY "public"."stripe_sessions"
     ADD CONSTRAINT "stripe_sessions_session_id_key" UNIQUE ("session_id");
+
+
+
+ALTER TABLE ONLY "public"."sw_models_cache"
+    ADD CONSTRAINT "sw_models_cache_file_hash_key" UNIQUE ("file_hash");
+
+
+
+ALTER TABLE ONLY "public"."sw_models_cache"
+    ADD CONSTRAINT "sw_models_cache_pkey" PRIMARY KEY ("id");
 
 
 
@@ -626,6 +720,34 @@ CREATE INDEX "idx_thumbnail_queue_status_priority" ON "public"."thumbnail_proces
 
 
 
+CREATE INDEX "quotes_expires_idx" ON "public"."quotes" USING "btree" ("expires_at");
+
+
+
+CREATE INDEX "quotes_file_hash_idx" ON "public"."quotes" USING "btree" ("file_hash");
+
+
+
+CREATE INDEX "quotes_material_idx" ON "public"."quotes" USING "btree" ("material_id");
+
+
+
+CREATE INDEX "quotes_shipping_zip_idx" ON "public"."quotes" USING "btree" ("shipping_zip");
+
+
+
+CREATE INDEX "quotes_status_idx" ON "public"."quotes" USING "btree" ("status");
+
+
+
+CREATE INDEX "quotes_user_created_idx" ON "public"."quotes" USING "btree" ("user_id", "created_at" DESC);
+
+
+
+CREATE OR REPLACE TRIGGER "trg_update_quotes_updated_at" BEFORE UPDATE ON "public"."quotes" FOR EACH ROW EXECUTE FUNCTION "public"."update_quotes_updated_at"();
+
+
+
 CREATE OR REPLACE TRIGGER "update_generation_tasks_updated_at" BEFORE UPDATE ON "public"."generation_tasks" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
 
 
@@ -666,6 +788,11 @@ ALTER TABLE ONLY "public"."hy_generation_jobs"
 
 ALTER TABLE ONLY "public"."orders"
     ADD CONSTRAINT "orders_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+
+
+
+ALTER TABLE ONLY "public"."quotes"
+    ADD CONSTRAINT "quotes_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
 
 
 
@@ -837,7 +964,29 @@ ALTER TABLE "public"."model_likes" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."orders" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."quotes" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "quotes_insert_own" ON "public"."quotes" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "quotes_select_own" ON "public"."quotes" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "quotes_service_all" ON "public"."quotes" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
 ALTER TABLE "public"."stripe_sessions" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."sw_models_cache" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "sw_models_cache_service_all" ON "public"."sw_models_cache" USING (("auth"."role"() = 'service_role'::"text"));
+
 
 
 ALTER TABLE "public"."users" ENABLE ROW LEVEL SECURITY;
@@ -1021,6 +1170,12 @@ GRANT ALL ON FUNCTION "public"."update_auth_user_metadata"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."update_quotes_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_quotes_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_quotes_updated_at"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
@@ -1108,9 +1263,27 @@ GRANT ALL ON TABLE "public"."order_summary" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."quotes" TO "anon";
+GRANT ALL ON TABLE "public"."quotes" TO "authenticated";
+GRANT ALL ON TABLE "public"."quotes" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."quote_summary" TO "anon";
+GRANT ALL ON TABLE "public"."quote_summary" TO "authenticated";
+GRANT ALL ON TABLE "public"."quote_summary" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."stripe_sessions" TO "anon";
 GRANT ALL ON TABLE "public"."stripe_sessions" TO "authenticated";
 GRANT ALL ON TABLE "public"."stripe_sessions" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."sw_models_cache" TO "anon";
+GRANT ALL ON TABLE "public"."sw_models_cache" TO "authenticated";
+GRANT ALL ON TABLE "public"."sw_models_cache" TO "service_role";
 
 
 

@@ -13,6 +13,8 @@ export interface QuoteResponse {
   currency: string;
   expiresAt?: string;
   reused?: boolean;
+  itemTotal?: number;
+  surcharge?: number;
 }
 
 export async function getQuote(params: GetQuoteParams): Promise<QuoteResponse> {

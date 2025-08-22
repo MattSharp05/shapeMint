@@ -120,3 +120,30 @@ export const US_STATES = [
   { code: 'WI', name: 'Wisconsin' },
   { code: 'WY', name: 'Wyoming' }
 ] as const;
+
+export interface OrderRecord {
+  id: string;
+  order_number: string;
+  vendor: 'shapeways';
+  status: 'pending' | 'submitted' | 'in_production' | 'shipped' | 'delivered' | 'failed' | 'cancelled';
+  total_price: number;
+  currency: string;
+  quantity: number;
+  material_id: string;
+  selections: any;
+  shipping_address: any;
+  surcharge_amount: number;
+  item_subtotal: number;
+  shipping_price: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatedOrderResponse {
+  orderId: string;
+  orderNumber: string;
+  vendorOrderId: string;
+  totalPrice: number;
+  currency: string;
+  status: string;
+}

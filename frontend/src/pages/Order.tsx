@@ -8,6 +8,7 @@ import { ShippingForm } from '../components/Order/ShippingForm';
 import { VENDORS, SHAPEWAYS_MATERIALS } from '../data/vendors';
 import { OrderWizardState, ShippingInfo } from '../types/order';
 import { getQuote } from '../services/shapeways';
+import { createOrder } from '../services/shapewaysOrder';
 
 export function Order() {
   const location = useLocation();
@@ -81,7 +82,8 @@ export function Order() {
     }
   };
 
-  const [quoteState, setQuoteState] = useState<{ loading: boolean; error?: string; data?: { quoteId: string; priceTotal: number; currency: string; reused?: boolean; expiresAt?: string } }>({ loading: false });
+  const [quoteState, setQuoteState] = useState<{ loading: boolean; error?: string; data?: { quoteId: string; priceTotal: number; currency: string; reused?: boolean; expiresAt?: string; itemTotal?: number; surcharge?: number } }>({ loading: false });
+  const [orderState, setOrderState] = useState<{ loading: boolean; error?: string; data?: { orderId: string; orderNumber: string; status: string; totalPrice: number } }>({ loading: false });
 
   const handleGetQuote = async () => {
     if (!wizardState.vendorId || wizardState.vendorId !== 'shapeways') return;
@@ -119,6 +121,48 @@ export function Order() {
         setQuoteState({ loading: false, error: 'Full Color Nylon (MJF) is not available for this model (no texture/color data). Please choose a different material.' });
       } else {
         setQuoteState({ loading: false, error: e.message || 'Quote failed' });
+      }
+    }
+  };
+
+  const handlePlaceOrder = async () => {
+    if (!quoteState.data) return;
+    if (!wizardState.vendorId || wizardState.vendorId !== 'shapeways') return;
+    const { shippingInfo } = wizardState;
+    if (!shippingInfo) return;
+    setOrderState({ loading: true });
+    try {
+      const quantity = shippingInfo.quantity && shippingInfo.quantity > 0 ? Math.min(100, Math.floor(shippingInfo.quantity)) : 1;
+      const resp = await createOrder({
+        modelUrl: wizardState.modelUrl!,
+        selections: { baseMaterialId: wizardState.materialId!, colorId: wizardState.colorId, finishId: wizardState.finishId },
+        quantity,
+        shippingAddress: {
+          firstName: shippingInfo.firstName!,
+          lastName: shippingInfo.lastName!,
+          email: shippingInfo.email || 'user@example.com',
+            address1: shippingInfo.address1!,
+            city: shippingInfo.city!,
+            state: shippingInfo.state!,
+            zipCode: shippingInfo.postalCode!,
+            country: 'US',
+            phone: shippingInfo.phone!
+        },
+        priorQuote: quoteState.data.itemTotal != null && quoteState.data.surcharge != null ? {
+          itemTotal: quoteState.data.itemTotal,
+          surcharge: quoteState.data.surcharge,
+          total: quoteState.data.priceTotal
+        } : undefined,
+        quoteId: quoteState.data.quoteId
+      });
+      setOrderState({ loading: false, data: { orderId: resp.orderId, orderNumber: resp.orderNumber, status: resp.status, totalPrice: resp.totalPrice } });
+      // Navigate to success page (direct order flow)
+      navigate('/order-success', { state: { isDirectOrder: true, orderData: { orderId: resp.orderNumber, customerName: `${shippingInfo.firstName} ${shippingInfo.lastName}`, customerEmail: shippingInfo.email || 'user@example.com', filename: wizardState.modelUrl?.split('/').pop() || 'model', quantity: quantity.toString(), color: wizardState.colorId || '', material: wizardState.materialId || '', shippingAddress: { name: `${shippingInfo.firstName} ${shippingInfo.lastName}`, street: shippingInfo.address1!, city: shippingInfo.city!, state: shippingInfo.state!, zip: shippingInfo.postalCode! }, message: 'Order submitted successfully.' } } });
+    } catch (e:any) {
+      if (e.message === 'price_changed') {
+        setOrderState({ loading: false, error: 'Price changed since quote. Please Get Quote again to confirm updated price.' });
+      } else {
+        setOrderState({ loading: false, error: e.message || 'Order failed' });
       }
     }
   };
@@ -284,6 +328,10 @@ export function Order() {
                       <div className="font-medium text-green-800">Quote Ready</div>
                       <div className="text-green-700 mt-1">Price: {quoteState.data.priceTotal.toFixed(2)} {quoteState.data.currency}</div>
                       {quoteState.data.reused && <div className="text-xs text-green-600 mt-1">(Reused recent quote)</div>}
+                      <button onClick={handlePlaceOrder} disabled={orderState.loading} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50">
+                        {orderState.loading ? 'Placing Order...' : 'Place Order'}
+                      </button>
+                      {orderState.error && <div className="mt-2 text-red-600 text-xs">{orderState.error}</div>}
                     </div>
                   )}
                 </>

@@ -190,6 +190,7 @@ CREATE TABLE IF NOT EXISTS "public"."generated_models" (
     "thumbnail_custom" boolean DEFAULT false,
     "thumbnail_error" "text",
     "type" character varying(50),
+    "mode" "text" DEFAULT 'preview'::"text",
     CONSTRAINT "generated_models_status_check" CHECK (("status" = ANY (ARRAY['processing'::"text", 'completed'::"text", 'failed'::"text"])))
 );
 
@@ -678,7 +679,19 @@ ALTER TABLE ONLY "public"."users"
 
 
 
+CREATE POLICY "Allow authenticated users to read stripe sessions" ON "public"."stripe_sessions" FOR SELECT TO "authenticated" USING (true);
+
+
+
 CREATE POLICY "Allow read of completed models for all" ON "public"."generated_models" FOR SELECT USING (("status" = 'completed'::"text"));
+
+
+
+CREATE POLICY "Service role can insert generated models" ON "public"."generated_models" FOR INSERT TO "service_role" WITH CHECK (true);
+
+
+
+CREATE POLICY "Service role can insert stripe sessions" ON "public"."stripe_sessions" FOR INSERT TO "service_role" WITH CHECK (true);
 
 
 
@@ -702,6 +715,18 @@ CREATE POLICY "Service role can manage stripe sessions" ON "public"."stripe_sess
 
 
 
+CREATE POLICY "Service role can read generated models" ON "public"."generated_models" FOR SELECT TO "service_role" USING (true);
+
+
+
+CREATE POLICY "Service role can read stripe sessions" ON "public"."stripe_sessions" FOR SELECT TO "service_role" USING (true);
+
+
+
+CREATE POLICY "Service role can update generated models" ON "public"."generated_models" FOR UPDATE TO "service_role" USING (true);
+
+
+
 CREATE POLICY "Users can access their own models" ON "public"."generated_models" USING (("auth"."uid"() = "user_id"));
 
 
@@ -718,6 +743,10 @@ CREATE POLICY "Users can insert own models" ON "public"."hy_generated_models" FO
 
 
 
+CREATE POLICY "Users can insert their own generated models" ON "public"."generated_models" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
 CREATE POLICY "Users can insert their own jobs" ON "public"."hy_generated_jobs" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
 
 
@@ -730,11 +759,19 @@ CREATE POLICY "Users can manage their own likes" ON "public"."model_likes" USING
 
 
 
+CREATE POLICY "Users can read their own generated models" ON "public"."generated_models" FOR SELECT TO "authenticated" USING (("auth"."uid"() = "user_id"));
+
+
+
 CREATE POLICY "Users can update own generation jobs" ON "public"."hy_generation_jobs" FOR UPDATE USING (("auth"."uid"() = "user_id"));
 
 
 
 CREATE POLICY "Users can update their own data" ON "public"."users" FOR UPDATE USING (("auth"."uid"() = "id"));
+
+
+
+CREATE POLICY "Users can update their own generated models" ON "public"."generated_models" FOR UPDATE TO "authenticated" USING (("auth"."uid"() = "user_id"));
 
 
 

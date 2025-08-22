@@ -120,8 +120,7 @@ export const US_STATES = [
   { code: 'WI', name: 'Wisconsin' },
   { code: 'WY', name: 'Wyoming' }
 ] as const;
-<<<<<<< HEAD
-
+// Order row as returned from Supabase (aligned with orders table schema)
 export interface OrderRecord {
   id: string;
   order_number: string;
@@ -140,6 +139,7 @@ export interface OrderRecord {
   updated_at: string;
 }
 
+// Response from create-order function (normalized subset)
 export interface CreatedOrderResponse {
   orderId: string;
   orderNumber: string;
@@ -148,5 +148,3 @@ export interface CreatedOrderResponse {
   currency: string;
   status: string;
 }
-=======
->>>>>>> fb964decc43c1d79fe7e6b50fcf9db09099b422d

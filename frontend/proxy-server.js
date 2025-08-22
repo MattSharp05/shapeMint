@@ -75,6 +75,11 @@ const meshyAssetsProxy = createProxyMiddleware({
 // Use proxy middleware for /meshy-assets path
 app.use('/meshy-assets', meshyAssetsProxy);
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Meshy API proxy endpoints
 const MESHY_API_KEY = process.env.VITE_MESHY_API_KEY;
 const MESHY_TEXT_TO_3D_BASE = 'https://api.meshy.ai/v2';

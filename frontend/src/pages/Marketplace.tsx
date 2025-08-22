@@ -6,93 +6,7 @@ import { Button } from '../components/UI/Button';
 import { modelService } from '../services/modelService';
 import { MarketplaceModel } from '../types';
 
-const mockDesigns = [
-  {
-    id: '1',
-    title: 'Modern Coffee Mug',
-    description: 'Sleek contemporary coffee mug with ergonomic handle',
-    thumbnail: 'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=400',
-    price: 12.99,
-    category: 'Home & Garden',
-    downloads: 245,
-    likes: 89,
-    userName: 'DesignPro',
-    featured: true,
-    modelUrl: 'mock-model-url-1',
-    stl_url: '',
-    createdAt: '2024-01-15T10:00:00Z'
-  },
-  {
-    id: '2',
-    title: 'Geometric Vase',
-    description: 'Abstract geometric vase perfect for modern interiors',
-    thumbnail: 'https://images.pexels.com/photos/1094767/pexels-photo-1094767.jpeg?auto=compress&cs=tinysrgb&w=400',
-    price: 18.50,
-    category: 'Art & Decor',
-    downloads: 189,
-    likes: 142,
-    userName: 'ArtisticMind',
-    modelUrl: 'mock-model-url-2',
-    stl_url: '',
-    createdAt: '2024-01-10T14:30:00Z'
-  },
-  {
-    id: '3',
-    title: 'Phone Stand',
-    description: 'Adjustable phone stand for desk and bedside use',
-    thumbnail: 'https://images.pexels.com/photos/404280/pexels-photo-404280.jpeg?auto=compress&cs=tinysrgb&w=400',
-    price: 8.99,
-    category: 'Accessories',
-    downloads: 512,
-    likes: 203,
-    userName: 'TechCreator',
-    modelUrl: 'mock-model-url-3',
-    stl_url: '',
-    createdAt: '2024-01-20T09:15:00Z'
-  },
-  {
-    id: '4',
-    title: 'Minimalist Lamp',
-    description: 'Clean minimalist table lamp with modern aesthetics',
-    thumbnail: 'https://images.pexels.com/photos/1166643/pexels-photo-1166643.jpeg?auto=compress&cs=tinysrgb&w=400',
-    price: 24.99,
-    category: 'Lighting',
-    downloads: 78,
-    likes: 56,
-    userName: 'LightDesigns',
-    modelUrl: 'mock-model-url-4',
-    stl_url: '',
-    createdAt: '2024-01-05T16:45:00Z'
-  },
-  {
-    id: '5',
-    title: 'Garden Planter',
-    description: 'Hexagonal planter perfect for succulents and small plants',
-    thumbnail: 'https://images.pexels.com/photos/1647962/pexels-photo-1647962.jpeg?auto=compress&cs=tinysrgb&w=400',
-    price: 15.75,
-    category: 'Home & Garden',
-    downloads: 167,
-    likes: 94,
-    userName: 'GreenThumb',
-    modelUrl: 'mock-model-url-5',
-    stl_url: '',
-    createdAt: '2024-01-12T11:20:00Z'
-  },
-  {
-    id: '6',
-    title: 'Desk Organizer',
-    description: 'Multi-compartment desk organizer for office supplies',
-    thumbnail: 'https://images.pexels.com/photos/159644/art-supplies-brushes-rulers-scissors-159644.jpeg?auto=compress&cs=tinysrgb&w=400',
-    price: 19.95,
-    category: 'Office',
-    downloads: 298,
-    likes: 127,
-    userName: 'OrganizeIT',
-    modelUrl: 'mock-model-url-6',
-    stl_url: '',
-    createdAt: '2024-01-08T13:30:00Z'
-  }
-];
+// Remove all mock designs - keeping only real generated models
 
 const categories = ['All', 'Home & Garden', 'Art & Decor', 'Accessories', 'Lighting', 'Office'];
 
@@ -130,12 +44,13 @@ export function Marketplace() {
     featured: false, // Placeholder
     modelUrl: model.glb_url || model.obj_url || model.stl_url || '',
     stl_url: model.stl_url || '', // <-- Add STL URL explicitly
+    objUrl: model.obj_url || '', // <-- Add OBJ URL explicitly
+    glbUrl: model.glb_url || '', // <-- Add GLB URL explicitly
     createdAt: model.created_at, // Add creation date for sorting
   }));
 
-  // Combine real models and mock data (real models first)
-  // TODO: Remove mockDesigns when real data is sufficient
-  const allDesigns = [...realDesigns, ...mockDesigns];
+  // Use only real models - no more mock data
+  const allDesigns = realDesigns;
 
   const filteredDesigns = allDesigns.filter(design => {
     const matchesSearch = design.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -163,7 +78,7 @@ export function Marketplace() {
     }
   });
 
-  const handleBuyNow = (design: typeof mockDesigns[0]) => {
+  const handleBuyNow = (design: typeof realDesigns[0]) => {
     // Navigate to order page with marketplace design data
     navigate('/order', {
       state: {
@@ -186,7 +101,7 @@ export function Marketplace() {
     });
   };
 
-  const handleDownloadOnly = (design: typeof mockDesigns[0]) => {
+  const handleDownloadOnly = (design: typeof realDesigns[0]) => {
     // Navigate to download checkout page
     navigate('/download-checkout', {
       state: {
@@ -195,9 +110,12 @@ export function Marketplace() {
           designTitle: design.title,
           designDescription: design.description,
           creator: design.userName,
-          isMarketplaceItem: true
+          isMarketplaceItem: true,
+          objUrl: design.objUrl,
+          glbUrl: design.glbUrl
         },
         modelUrl: design.modelUrl,
+        stlUrl: design.stl_url, // Pass STL URL explicitly
         price: design.price,
         isGenerated: false
       }

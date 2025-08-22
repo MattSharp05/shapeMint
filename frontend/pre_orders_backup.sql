@@ -94,6 +94,49 @@ CREATE TYPE "public"."source_type" AS ENUM (
 ALTER TYPE "public"."source_type" OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."generate_order_number"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  seq_val bigint;
+  base36 text;
+begin
+  if new.order_number is not null then
+    return new; -- allow manual override (testing)
+  end if;
+  seq_val := nextval('orders_order_seq');
+  base36 := upper(to_char(seq_val, 'FMXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX')); -- placeholder
+  -- Convert manually to base36 since to_char doesn't support base36 directly
+  -- We'll build the string via repeated mod/div
+  declare
+    n bigint := seq_val;
+    digits text := '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    rev text := '';
+    r int;
+  begin
+    if n = 0 then
+      rev := '0';
+    else
+      while n > 0 loop
+        r := (n % 36)::int;
+        rev := substr(digits, r+1, 1) || rev;
+        n := n / 36;
+      end loop;
+    end if;
+    -- Left pad to 6 chars
+    while length(rev) < 6 loop
+      rev := '0' || rev;
+    end loop;
+    new.order_number := 'SHPW' || rev;
+    return new;
+  end;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."generate_order_number"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -110,6 +153,19 @@ $$;
 
 
 ALTER FUNCTION "public"."handle_new_user"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."set_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."set_updated_at"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."update_auth_user_metadata"() RETURNS "trigger"
@@ -208,6 +264,8 @@ CREATE TABLE IF NOT EXISTS "public"."generated_models" (
     "tags" "text",
     "notes" "text",
     "is_marketplace_listed" boolean DEFAULT false,
+    "fbx_url" "text",
+    "usdz_url" "text",
     CONSTRAINT "generated_models_status_check" CHECK (("status" = ANY (ARRAY['processing'::"text", 'completed'::"text", 'failed'::"text"])))
 );
 
@@ -352,6 +410,34 @@ CREATE TABLE IF NOT EXISTS "public"."model_likes" (
 ALTER TABLE "public"."model_likes" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."order_events" (
+    "id" bigint NOT NULL,
+    "order_id" "uuid" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "evt_type" "text" NOT NULL,
+    "evt_data" "jsonb",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."order_events" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."order_events_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."order_events_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."order_events_id_seq" OWNED BY "public"."order_events"."id";
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."orders" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "slant_order_id" "text",
@@ -379,7 +465,27 @@ CREATE TABLE IF NOT EXISTS "public"."orders" (
     "delivered_at" timestamp with time zone,
     "order_data" "jsonb",
     "user_id" "uuid",
-    "slant_response" "jsonb"
+    "slant_response" "jsonb",
+    "vendor_order_id" "text",
+    "vendor_order_raw" "jsonb",
+    "last_vendor_status" "jsonb",
+    "submitted_at" timestamp with time zone,
+    "cancelled_at" timestamp with time zone,
+    "shipping_option_mode" "text" DEFAULT 'Cheapest'::"text",
+    "shipping_option_id" "text",
+    "item_subtotal" numeric(12,2),
+    "surcharge_amount" numeric(12,2) DEFAULT 0,
+    "shipping_price" numeric(12,2),
+    "total_price" numeric(12,2),
+    "currency" "text" DEFAULT 'USD'::"text",
+    "file_hash" "text",
+    "shapeways_model_id" "text",
+    "selections" "jsonb",
+    "shipping_zip" "text",
+    "vendor" "text",
+    "quote_id" "uuid",
+    CONSTRAINT "orders_status_check" CHECK (("status" = ANY (ARRAY['pending'::"text", 'submitted'::"text", 'in_production'::"text", 'shipped'::"text", 'delivered'::"text", 'failed'::"text", 'cancelled'::"text"]))),
+    CONSTRAINT "orders_vendor_check" CHECK (("vendor" = 'shapeways'::"text"))
 );
 
 
@@ -410,6 +516,17 @@ CREATE OR REPLACE VIEW "public"."order_summary" AS
 
 
 ALTER VIEW "public"."order_summary" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."orders_order_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."orders_order_seq" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."quotes" (
@@ -520,6 +637,10 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
 ALTER TABLE "public"."users" OWNER TO "postgres";
 
 
+ALTER TABLE ONLY "public"."order_events" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."order_events_id_seq"'::"regclass");
+
+
+
 ALTER TABLE ONLY "public"."failed_orders"
     ADD CONSTRAINT "failed_orders_pkey" PRIMARY KEY ("id");
 
@@ -572,6 +693,11 @@ ALTER TABLE ONLY "public"."model_likes"
 
 ALTER TABLE ONLY "public"."model_likes"
     ADD CONSTRAINT "model_likes_user_id_model_id_key" UNIQUE ("user_id", "model_id");
+
+
+
+ALTER TABLE ONLY "public"."order_events"
+    ADD CONSTRAINT "order_events_pkey" PRIMARY KEY ("id");
 
 
 
@@ -684,6 +810,10 @@ CREATE INDEX "idx_model_likes_user_model" ON "public"."model_likes" USING "btree
 
 
 
+CREATE INDEX "idx_order_events_order_id" ON "public"."order_events" USING "btree" ("order_id");
+
+
+
 CREATE INDEX "idx_orders_created_at" ON "public"."orders" USING "btree" ("created_at");
 
 
@@ -709,6 +839,10 @@ CREATE INDEX "idx_orders_tracking_numbers" ON "public"."orders" USING "gin" ("tr
 
 
 CREATE INDEX "idx_orders_user_id" ON "public"."orders" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_orders_vendor_order_id" ON "public"."orders" USING "btree" ("vendor_order_id");
 
 
 
@@ -741,6 +875,14 @@ CREATE INDEX "quotes_status_idx" ON "public"."quotes" USING "btree" ("status");
 
 
 CREATE INDEX "quotes_user_created_idx" ON "public"."quotes" USING "btree" ("user_id", "created_at" DESC);
+
+
+
+CREATE OR REPLACE TRIGGER "trg_generate_order_number" BEFORE INSERT ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."generate_order_number"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_orders_updated_at" BEFORE UPDATE ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."set_updated_at"();
 
 
 
@@ -786,6 +928,21 @@ ALTER TABLE ONLY "public"."hy_generation_jobs"
 
 
 
+ALTER TABLE ONLY "public"."order_events"
+    ADD CONSTRAINT "order_events_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."order_events"
+    ADD CONSTRAINT "order_events_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_quote_id_fkey" FOREIGN KEY ("quote_id") REFERENCES "public"."quotes"("id") ON DELETE SET NULL;
+
+
+
 ALTER TABLE ONLY "public"."orders"
     ADD CONSTRAINT "orders_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
 
@@ -811,6 +968,10 @@ CREATE POLICY "Allow authenticated users to read stripe sessions" ON "public"."s
 
 
 CREATE POLICY "Allow read of completed models for all" ON "public"."generated_models" FOR SELECT USING (("status" = 'completed'::"text"));
+
+
+
+CREATE POLICY "Allow service role to update generated_models" ON "public"."generated_models" FOR UPDATE USING (true) WITH CHECK (true);
 
 
 
@@ -850,7 +1011,15 @@ CREATE POLICY "Service role can read stripe sessions" ON "public"."stripe_sessio
 
 
 
+CREATE POLICY "Service role can select generated_models" ON "public"."generated_models" FOR SELECT TO "service_role" USING (true);
+
+
+
 CREATE POLICY "Service role can update generated models" ON "public"."generated_models" FOR UPDATE TO "service_role" USING (true);
+
+
+
+CREATE POLICY "Service role can update generated_models" ON "public"."generated_models" FOR UPDATE TO "service_role" USING (true) WITH CHECK (true);
 
 
 
@@ -961,7 +1130,34 @@ ALTER TABLE "public"."manufacturing_quotes" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."model_likes" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."order_events" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "order_events_owner_insert" ON "public"."order_events" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "order_events_owner_select" ON "public"."order_events" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
 ALTER TABLE "public"."orders" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "orders_owner_delete" ON "public"."orders" FOR DELETE USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "orders_owner_insert" ON "public"."orders" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "orders_owner_select" ON "public"."orders" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "orders_owner_update" ON "public"."orders" FOR UPDATE USING (("auth"."uid"() = "user_id"));
+
 
 
 ALTER TABLE "public"."quotes" ENABLE ROW LEVEL SECURITY;
@@ -1158,9 +1354,21 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."generate_order_number"() TO "anon";
+GRANT ALL ON FUNCTION "public"."generate_order_number"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."generate_order_number"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "anon";
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."set_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."set_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_updated_at"() TO "service_role";
 
 
 
@@ -1251,6 +1459,18 @@ GRANT ALL ON TABLE "public"."model_likes" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."order_events" TO "anon";
+GRANT ALL ON TABLE "public"."order_events" TO "authenticated";
+GRANT ALL ON TABLE "public"."order_events" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."order_events_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."order_events_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."order_events_id_seq" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."orders" TO "anon";
 GRANT ALL ON TABLE "public"."orders" TO "authenticated";
 GRANT ALL ON TABLE "public"."orders" TO "service_role";
@@ -1260,6 +1480,12 @@ GRANT ALL ON TABLE "public"."orders" TO "service_role";
 GRANT ALL ON TABLE "public"."order_summary" TO "anon";
 GRANT ALL ON TABLE "public"."order_summary" TO "authenticated";
 GRANT ALL ON TABLE "public"."order_summary" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."orders_order_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."orders_order_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."orders_order_seq" TO "service_role";
 
 
 

@@ -245,7 +245,7 @@ Deno.serve(async (req: Request) => {
       // Optional fields
       email: shippingAddress.email
     };
-    try { console.log(JSON.stringify({ evt: 'order_shipping_choice', pickedOptionId: optionId, sendingDescriptor: 'Cheapest' })); } catch {}
+    try { console.log(JSON.stringify({ evt: 'order_shipping_choice', pickedOptionId: optionId, sendingDescriptor: 'Cheapest' })); } catch (err) { console.error('Failed to log order_shipping_choice event:', err); }
 
     const vendorResp = await fetchWithTimeout(`${SHAPEWAYS_API}/orders/v1`, {
       method: 'POST',

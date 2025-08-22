@@ -52,6 +52,8 @@ export interface ShippingInfo {
   postalCode: string;
   country: string; // 'US'
   phone: string;
+  email?: string; // Added for quote requirement
+  quantity?: number; // Number of items to order
 }
 
 export interface OrderWizardState {

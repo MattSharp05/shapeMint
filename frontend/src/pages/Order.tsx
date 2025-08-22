@@ -7,6 +7,7 @@ import { MaterialSelection } from '../components/Order/MaterialSelection';
 import { ShippingForm } from '../components/Order/ShippingForm';
 import { VENDORS, SHAPEWAYS_MATERIALS } from '../data/vendors';
 import { OrderWizardState, ShippingInfo } from '../types/order';
+import { getQuote } from '../services/shapeways';
 
 export function Order() {
   const location = useLocation();
@@ -80,10 +81,46 @@ export function Order() {
     }
   };
 
-  const handleGetQuote = () => {
-    console.log('🔄 Get Quote clicked - Phase 2 implementation needed');
-    console.log('📋 Current wizard state:', wizardState);
-    // Phase 2: Implement vendor API calls here
+  const [quoteState, setQuoteState] = useState<{ loading: boolean; error?: string; data?: { quoteId: string; priceTotal: number; currency: string; reused?: boolean; expiresAt?: string } }>({ loading: false });
+
+  const handleGetQuote = async () => {
+    if (!wizardState.vendorId || wizardState.vendorId !== 'shapeways') return;
+    if (!wizardState.materialId) {
+      setQuoteState({ loading: false, error: 'Select a material first' });
+      return;
+    }
+    const { shippingInfo } = wizardState;
+    if (!shippingInfo?.firstName || !shippingInfo.lastName || !shippingInfo.address1 || !shippingInfo.city || !shippingInfo.state || !shippingInfo.postalCode || !shippingInfo.phone) {
+      setQuoteState({ loading: false, error: 'Complete shipping form' });
+      return;
+    }
+    setQuoteState({ loading: true });
+    try {
+      const quantity = shippingInfo.quantity && shippingInfo.quantity > 0 ? Math.min(100, Math.floor(shippingInfo.quantity)) : 1;
+      const data = await getQuote({
+        modelUrl: wizardState.modelUrl!,
+        selections: { baseMaterialId: wizardState.materialId, colorId: wizardState.colorId, finishId: wizardState.finishId },
+        quantity,
+        shippingAddress: {
+          firstName: shippingInfo.firstName!,
+          lastName: shippingInfo.lastName!,
+          email: shippingInfo.email || 'user@example.com',
+          address1: shippingInfo.address1!,
+          city: shippingInfo.city!,
+          state: shippingInfo.state!,
+          zipCode: shippingInfo.postalCode!,
+          country: 'US',
+          phone: shippingInfo.phone!
+        }
+      });
+      setQuoteState({ loading: false, data });
+    } catch (e:any) {
+      if (e?.code === 'material_not_printable') {
+        setQuoteState({ loading: false, error: 'Full Color Nylon (MJF) is not available for this model (no texture/color data). Please choose a different material.' });
+      } else {
+        setQuoteState({ loading: false, error: e.message || 'Quote failed' });
+      }
+    }
   };
 
   // Get data for current vendor
@@ -231,13 +268,25 @@ export function Order() {
               )}
 
               {currentStep === 2 && (
+                <>
                 <ShippingForm
                   shippingInfo={wizardState.shippingInfo || {}}
                   onShippingInfoChange={handleShippingInfoChange}
                   onBack={handleBack}
                   onGetQuote={handleGetQuote}
-                  isQuoteLoading={false}
-                />
+                  isQuoteLoading={quoteState.loading}
+                  />
+                  {quoteState.error && (
+                    <div className="mt-4 text-sm text-red-600">{quoteState.error}</div>
+                  )}
+                  {quoteState.data && (
+                    <div className="mt-6 p-4 border rounded-lg bg-green-50 text-sm">
+                      <div className="font-medium text-green-800">Quote Ready</div>
+                      <div className="text-green-700 mt-1">Price: {quoteState.data.priceTotal.toFixed(2)} {quoteState.data.currency}</div>
+                      {quoteState.data.reused && <div className="text-xs text-green-600 mt-1">(Reused recent quote)</div>}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

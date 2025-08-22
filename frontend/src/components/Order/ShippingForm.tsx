@@ -34,7 +34,8 @@ export function ShippingForm({
     
     if (!shippingInfo.firstName?.trim()) newErrors.firstName = 'First name is required';
     if (!shippingInfo.lastName?.trim()) newErrors.lastName = 'Last name is required';
-    if (!shippingInfo.address1?.trim()) newErrors.address1 = 'Address is required';
+  if (!shippingInfo.address1?.trim()) newErrors.address1 = 'Address is required';
+  if (!shippingInfo.email?.trim()) newErrors.email = 'Email is required';
     if (!shippingInfo.city?.trim()) newErrors.city = 'City is required';
     if (!shippingInfo.state?.trim()) newErrors.state = 'State is required';
     if (!shippingInfo.postalCode?.trim()) newErrors.postalCode = 'Postal code is required';
@@ -51,8 +52,8 @@ export function ShippingForm({
   };
 
   const isFormValid = () => {
-    return shippingInfo.firstName && shippingInfo.lastName && shippingInfo.address1 && 
-           shippingInfo.city && shippingInfo.state && shippingInfo.postalCode && shippingInfo.phone;
+  return shippingInfo.firstName && shippingInfo.lastName && shippingInfo.address1 && 
+       shippingInfo.city && shippingInfo.state && shippingInfo.postalCode && shippingInfo.phone && shippingInfo.email;
   };
 
   return (
@@ -99,6 +100,26 @@ export function ShippingForm({
               value={shippingInfo.company || ''}
               onChange={(e) => handleInputChange('company', e.target.value)}
               placeholder="Enter company name (optional)"
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <Input
+              label="Email *"
+              value={shippingInfo.email || ''}
+              onChange={(e) => handleInputChange('email' as any, e.target.value)}
+              placeholder="Enter email"
+              error={errors.email}
+            />
+          </div>
+
+          <div>
+            <Input
+              label="Quantity"
+              value={(shippingInfo.quantity || 1).toString()}
+              onChange={(e) => handleInputChange('quantity' as any, e.target.value)}
+              placeholder="Enter quantity"
+              type="number"
             />
           </div>
 
@@ -192,6 +213,10 @@ export function ShippingForm({
           </div>
         </div>
       </Card>
+
+      <div className="mt-3 text-sm text-yellow-700 bg-yellow-50 p-3 rounded">
+        <strong>Note:</strong> A minimum order surcharge applies to items subtotal. If your items subtotal is less than $25.00, a surcharge will be added to bring the items subtotal up to $25.00 (shipping is added after).
+      </div>
 
       <div className="flex justify-between">
         <Button

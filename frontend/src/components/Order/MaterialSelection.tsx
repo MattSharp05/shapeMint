@@ -151,14 +151,23 @@ export function MaterialSelection({
                     <div>
                       <h4 className="text-sm font-medium text-gray-900 mb-3">Materials/Finishes:</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {material.finishes.map((finish) => (
-                          <FinishSwatch
-                            key={finish.id}
-                            finish={finish}
-                            isSelected={selectedFinishId === finish.id}
-                            onSelect={() => onFinishSelect(finish.id)}
-                          />
-                        ))}
+                        {(
+                          // Hide 18K option unless the selected material is gold-casting and the selected color is gold-yellow
+                          material.finishes
+                            .filter((finish) => {
+                              if (finish.id !== '18k') return true;
+                              if (material.id !== 'gold-casting') return true;
+                              return selectedColorId === 'gold-yellow';
+                            })
+                            .map((finish) => (
+                              <FinishSwatch
+                                key={finish.id}
+                                finish={finish}
+                                isSelected={selectedFinishId === finish.id}
+                                onSelect={() => onFinishSelect(finish.id)}
+                              />
+                            ))
+                        )}
                       </div>
                     </div>
                   )}

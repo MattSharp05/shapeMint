@@ -221,19 +221,19 @@ export const SHAPEWAYS_MATERIALS: Material[] = [
 // This is the lookup table for the internal logic mapping
 export const MATERIAL_COMBINATIONS: MaterialCombination[] = [
   // Nylon PA12 (SLS) combinations
-  { materialId: '6', baseMaterialId: 'nylon-pa12-sls', colorId: 'white', finishId: 'default' },
-  { materialId: '25', baseMaterialId: 'nylon-pa12-sls', colorId: 'black', finishId: 'default' },
+  { materialId: '6', baseMaterialId: 'nylon-pa12-sls', colorId: 'white', finishId: 'default-nylonpa12-sls+fullcolor' },
+  { materialId: '25', baseMaterialId: 'nylon-pa12-sls', colorId: 'black', finishId: 'default-nylonpa12-sls+fullcolor' },
   { materialId: '236', baseMaterialId: 'nylon-pa12-sls', colorId: 'blue', finishId: 'vapor-smoothing' },
-  { materialId: '75', baseMaterialId: 'nylon-pa12-sls', colorId: 'purple', finishId: 'default' },
-  { materialId: '76', baseMaterialId: 'nylon-pa12-sls', colorId: 'red', finishId: 'default' },
-  { materialId: '77', baseMaterialId: 'nylon-pa12-sls', colorId: 'orange', finishId: 'default' },
-  { materialId: '78', baseMaterialId: 'nylon-pa12-sls', colorId: 'yellow', finishId: 'default' },
-  { materialId: '79', baseMaterialId: 'nylon-pa12-sls', colorId: 'green', finishId: 'default' },
-  { materialId: '80', baseMaterialId: 'nylon-pa12-sls', colorId: 'blue', finishId: 'default' },
+  { materialId: '75', baseMaterialId: 'nylon-pa12-sls', colorId: 'purple', finishId: 'default-nylonpa12-sls+fullcolor' },
+  { materialId: '76', baseMaterialId: 'nylon-pa12-sls', colorId: 'red', finishId: 'default-nylonpa12-sls+fullcolor' },
+  { materialId: '95', baseMaterialId: 'nylon-pa12-sls', colorId: 'orange', finishId: 'default-nylonpa12-sls+fullcolor' },
+  { materialId: '93', baseMaterialId: 'nylon-pa12-sls', colorId: 'yellow', finishId: 'default-nylonpa12-sls+fullcolor' },
+  { materialId: '94', baseMaterialId: 'nylon-pa12-sls', colorId: 'green', finishId: 'default-nylonpa12-sls+fullcolor' },
+  { materialId: '78', baseMaterialId: 'nylon-pa12-sls', colorId: 'blue', finishId: 'default-nylonpa12-sls+fullcolor' },
   
   // MJF Nylon PA12 combinations
-  { materialId: '320', baseMaterialId: 'nylon-pa12-mjf', colorId: 'black', finishId: 'default' },
-  { materialId: '326', baseMaterialId: 'nylon-pa12-mjf', colorId: 'grey', finishId: 'vapor-smoothing' },
+  { materialId: '131', baseMaterialId: 'nylon-pa12-mjf', colorId: 'black', finishId: 'default-nylonpa12-mjf' },
+  { materialId: '130', baseMaterialId: 'nylon-pa12-mjf', colorId: 'grey', finishId: 'default-nylonpa12-mjf' },
   
   // Silver combinations
   { materialId: '53', baseMaterialId: 'silver-casting', finishId: 'natural' },

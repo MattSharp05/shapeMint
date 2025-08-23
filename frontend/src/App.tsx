@@ -10,6 +10,7 @@ import { Manufacturing } from './pages/Manufacturing';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
+import { ResetPassword } from './pages/ResetPassword';
 import { Order } from './pages/Order';
 import { DownloadCheckout } from './pages/DownloadCheckout';
 import { MarketplaceUpload } from './pages/MarketplaceUpload';
@@ -19,6 +20,8 @@ import { PaymentSuccess } from './pages/PaymentSuccess';
 import { PaymentCancel } from './pages/PaymentCancel';
 import { OrderSuccess } from './pages/OrderSuccess';
 import { ThumbnailTest } from './pages/ThumbnailTest';
+import { About } from './pages/About';
+import { ContactUs } from './pages/ContactUs';
 import { AuthProvider } from './hooks/useAuth';
 
 function App() {
@@ -37,6 +40,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/order" element={<Order />} />
               <Route path="/download-checkout" element={<DownloadCheckout />} />
               <Route path="/marketplace-upload" element={<MarketplaceUpload />} />
@@ -46,6 +50,8 @@ function App() {
               <Route path="/cancel" element={<PaymentCancel />} />
               <Route path="/order-success" element={<OrderSuccess />} />
               <Route path="/thumbnail-test" element={<ThumbnailTest />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/contact" element={<ContactUs />} />
             </Routes>
           </main>
           <Footer />

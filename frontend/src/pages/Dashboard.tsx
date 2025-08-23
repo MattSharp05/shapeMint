@@ -9,6 +9,7 @@ import { useAutoThumbnail } from '../hooks/useAutoThumbnail';
 import { supabase } from '../supabaseClient';
 import { autoThumbnailService } from '../services/autoThumbnailService';
 import type { GeneratedModel } from '../types/model';
+import { ContactSubmissions } from '../components/Admin/ContactSubmissions';
 
 interface Order {
   id: string;
@@ -314,6 +315,19 @@ export function Dashboard() {
                 )}
               </button>
             ))}
+            {/* Contact Submissions Tab - Only show for admin users */}
+            {(user?.email === 'admin@shapemint.com' || user?.email === 'subhan.shaikh.me@gmail.com') && (
+              <button
+                onClick={() => setActiveTab('contact-submissions')}
+                className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'contact-submissions'
+                    ? 'border-purple-500 text-purple-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Contact Submissions
+              </button>
+            )}
           </nav>
         </div>
 
@@ -595,6 +609,13 @@ export function Dashboard() {
           </div>
         )}
         */}
+
+        {/* Contact Submissions Tab Contents */}
+        {activeTab === 'contact-submissions' && (
+          <div className="space-y-6">
+            <ContactSubmissions />
+          </div>
+        )}
 
         {/* Order Detail Modal */}
         {selectedOrder && (

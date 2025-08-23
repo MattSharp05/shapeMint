@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Search, Grid, List, Heart, Download, Printer } from 'lucide-react';
+import { Search, Grid, List, Heart, Download, Printer, Loader2 } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
 import { modelService } from '../services/modelService';
@@ -21,11 +21,26 @@ export function Marketplace() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState('popular');
   const [marketplaceModels, setMarketplaceModels] = useState<MarketplaceModel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Fetch real models from Supabase
-    modelService.fetchMarketplaceModels().then(setMarketplaceModels);
+    const fetchModels = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const models = await modelService.fetchMarketplaceModels();
+        setMarketplaceModels(models);
+      } catch (err) {
+        console.error('Failed to fetch marketplace models:', err);
+        setError('Failed to load marketplace models. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchModels();
   }, []);
 
   const DEFAULT_MODEL_THUMBNAIL = 'https://placehold.co/400x300?text=3D+Model';
@@ -121,6 +136,76 @@ export function Marketplace() {
       }
     });
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="pt-16 min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">
+              3D Design Marketplace
+            </h1>
+            <p className="text-xl text-gray-600">
+              Discover and purchase high-quality 3D models from talented creators
+            </p>
+          </div>
+
+          {/* Loading UI */}
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center">
+              <Loader2 className="h-12 w-12 text-purple-600 animate-spin mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Loading Marketplace...
+              </h3>
+              <p className="text-gray-600">
+                Fetching the latest 3D models for you
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="pt-16 min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">
+              3D Design Marketplace
+            </h1>
+            <p className="text-xl text-gray-600">
+              Discover and purchase high-quality 3D models from talented creators
+            </p>
+          </div>
+
+          {/* Error UI */}
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center max-w-md">
+              <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-red-600 text-2xl">⚠️</span>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Unable to Load Marketplace
+              </h3>
+              <p className="text-gray-600 mb-6">
+                {error}
+              </p>
+              <Button 
+                onClick={() => window.location.reload()} 
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                Try Again
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pt-16 min-h-screen bg-gray-50">

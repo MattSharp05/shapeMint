@@ -1,16 +1,47 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sparkles, User, ShoppingBag, LogOut } from 'lucide-react';
+import { Sparkles, User, ShoppingBag, LogOut, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { Card } from '../UI/Card';
 
 export function Header() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [showLogoutSuccess, setShowLogoutSuccess] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setShowLogoutSuccess(true);
+      setTimeout(() => {
+        setShowLogoutSuccess(false);
+        navigate('/');
+      }, 2000);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
   };
+
+  // Show logout success popup
+  if (showLogoutSuccess) {
+    return (
+      <div className="fixed inset-0 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 flex items-center justify-center z-50">
+        <div className="max-w-md w-full mx-4">
+          <Card className="p-8 text-center">
+            <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle className="h-8 w-8 text-green-600" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              Successfully Signed Out!
+            </h1>
+            <p className="text-gray-600">
+              Redirecting you to the home page...
+            </p>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <header className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-lg border-b border-gray-200 z-50">
@@ -43,6 +74,18 @@ export function Header() {
               className="text-gray-700 hover:text-purple-600 font-medium transition-colors"
             >
               Marketplace
+            </Link>
+            <Link
+              to="/about"
+              className="text-gray-700 hover:text-purple-600 font-medium transition-colors"
+            >
+              About
+            </Link>
+            <Link
+              to="/contact"
+              className="text-gray-700 hover:text-purple-600 font-medium transition-colors"
+            >
+              Contact
             </Link>
             {user && (
               <Link

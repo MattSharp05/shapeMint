@@ -1,15 +1,21 @@
 import { useState, useEffect } from 'react';
-import { Upload, Type, Settings, Wand2 } from 'lucide-react';
+import { Upload, Type, Settings, X, Loader2 } from 'lucide-react';
 import { Button } from '../UI/Button';
-import { Input } from '../UI/Input';
 import { Card } from '../UI/Card';
 import { useAuth } from '../../hooks/useAuth';
 import { modelService } from '../../services/modelService';
-import { supabase } from '../../supabaseClient';
 
 interface GenerationFormProps {
-  onSuccess?: (model?: any) => void;
-  loading?: boolean;
+  onSuccess: (data: any) => void;
+  mode: 'text' | 'image';
+  setMode: (mode: 'text' | 'image') => void;
+  prompt: string;
+  setPrompt: (prompt: string) => void;
+  imageFile: File | null;
+  setImageFile: (file: File | null) => void;
+  imagePreview: string | null;
+  setImagePreview: (preview: string | null) => void;
+  isGenerating: boolean;
   prefilledData?: {
     prefilledPrompt?: string;
     socialTag?: string;
@@ -18,33 +24,41 @@ interface GenerationFormProps {
   } | null;
 }
 
-export function GenerationForm({ onSuccess, loading: initialLoading, prefilledData }: GenerationFormProps) {
+export function GenerationForm({
+  onSuccess,
+  prefilledData,
+  mode,
+  setMode,
+  prompt,
+  setPrompt,
+  imageFile,
+  setImageFile,
+  imagePreview,
+  setImagePreview,
+  isGenerating,
+}: GenerationFormProps) {
   const { user } = useAuth();
-  const [mode, setMode] = useState<'text' | 'image'>(prefilledData?.mode || 'text');
-  const [prompt, setPrompt] = useState(prefilledData?.prefilledPrompt || '');
-  const [image, setImage] = useState<File | null>(prefilledData?.image || null);
-  const [loading, setLoading] = useState(initialLoading);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState({
     size: 'medium' as const,
     style: 'realistic' as const,
     quality: 'standard' as const,
   });
 
-  // Update form when prefilledData changes
   useEffect(() => {
     if (prefilledData) {
-      if (prefilledData.mode) {
-        setMode(prefilledData.mode);
-      }
-      if (prefilledData.prefilledPrompt) {
-        setPrompt(prefilledData.prefilledPrompt);
-      }
+      setMode(prefilledData.mode || 'text');
+      setPrompt(prefilledData.prefilledPrompt || '');
       if (prefilledData.image) {
-        setImage(prefilledData.image);
+        setImageFile(prefilledData.image);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreview(reader.result as string);
+        };
+        reader.readAsDataURL(prefilledData.image);
       }
     }
-  }, [prefilledData]);
+  }, [prefilledData, setMode, setPrompt, setImageFile, setImagePreview]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,71 +73,102 @@ export function GenerationForm({ onSuccess, loading: initialLoading, prefilledDa
       return;
     }
     
-    if (mode === 'image' && !image) {
+    if (mode === 'image' && !imageFile) {
       setError('Please select an image');
       return;
     }
 
-    setLoading(true);
-    setError(undefined);
+    setError(null);
     
     try {
       let modelData;
       
+      // Prepare generation parameters with explicit type
+      const baseParams = {
+        type: mode === 'image' ? ('image-to-3d' as const) : ('text-to-3d' as const),
+        mode: settings.quality as 'preview' | 'refine',
+        enable_pbr: true,
+        topology: 'quad' as const
+      };
+
       if (mode === 'text') {
         // Text-to-3D generation
         console.log('Starting text-to-3D generation with prompt:', prompt.trim());
-        modelData = await modelService.generate3DModel({ prompt: prompt.trim() });
+        modelData = await modelService.generate3DModel({
+          ...baseParams,
+          prompt: `${prompt}${prefilledData?.socialTag ? ` #${prefilledData.socialTag}` : ''}`
+        });
         
       } else {
         // Image-to-3D generation
-        console.log('Starting image-to-3D generation with file:', image!.name);
-        modelData = await modelService.generate3DModel({ prompt: prompt.trim(), image: image! });
+        if (!imagePreview) {
+          throw new Error('No image data available');
+        }
+        console.log('Starting image-to-3D generation with file:', imageFile!.name);
+        modelData = await modelService.generate3DModel({
+          ...baseParams,
+          prompt: imageFile ? imageFile.name : 'Image-to-3D generation', // Use filename or a fallback
+          image: imagePreview // Send data URI for image-to-3D
+        });
       }
       
       // Clear form based on mode
       if (mode === 'text') {
         setPrompt('');
       } else {
-        setImage(null);
+        setImageFile(null);
+        setImagePreview(null);
       }
       
       if (onSuccess) {
         onSuccess({
           ...modelData,
-          prompt: mode === 'text' ? prompt.trim() : `Image: ${image?.name}`,
+          prompt: mode === 'text' ? prompt.trim() : `Image: ${imageFile?.name}`,
           style: settings.style
         });
       }
     } catch (err) {
       console.error('Error generating model:', err);
-      if (err instanceof Error) {
-        if (err.message.includes('preview') || err.message.includes('Preview')) {
-          setError('Failed to create preview. Please try a different prompt or try again later.');
-        } else if (err.message.includes('refine') || err.message.includes('Refine')) {
-          setError('Failed to refine model. Please try again.');
-        } else if (err.message.includes('download')) {
-          setError('Failed to download model files. Please try again.');
-        } else if (err.message.includes('storage') || err.message.includes('database')) {
-          setError('Failed to save model. Please try again.');
-        } else {
-          setError(err.message);
+      // Extract error message with proper type handling
+      const errorMessage = (() => {
+        if (err && typeof err === 'object' && 'message' in err) {
+          return String(err.message);
         }
-      } else if (typeof err === 'string') {
-        setError(err);
+        if (typeof err === 'string') {
+          return err;
+        }
+        return 'Failed to generate model. Please try again.';
+      })();
+      
+      // Friendly error messages for common cases
+      let userMessage: string;
+      if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+        userMessage = 'Generation took too long. Please try again.';
+      } else if (errorMessage.includes('refine') || errorMessage.includes('Refine')) {
+        userMessage = 'Failed to refine model. Please try again.';
+      } else if (errorMessage.includes('download')) {
+        userMessage = 'Failed to download model files. Please try again.';
+      } else if (errorMessage.includes('storage') || errorMessage.includes('database')) {
+        userMessage = 'Failed to save model. Please try again.';
       } else {
-        setError('Failed to generate model. Please try again.');
+        userMessage = errorMessage;
       }
-      console.log('Full error details:', err);
+      
+      setError(userMessage);
     } finally {
-      setLoading(false);
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImage(file);
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setImageFile(file);
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -182,7 +227,7 @@ export function GenerationForm({ onSuccess, loading: initialLoading, prefilledDa
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-purple-400 transition-colors">
                 <input
                   type="file"
-                  onChange={handleImageUpload}
+                  onChange={handleImageChange}
                   accept="image/*"
                   className="hidden"
                   id="image-upload"
@@ -191,10 +236,21 @@ export function GenerationForm({ onSuccess, loading: initialLoading, prefilledDa
                 <label htmlFor="image-upload" className="cursor-pointer">
                   <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                   <p className="text-sm text-gray-600">
-                    {image ? image.name : 'Click to upload or drag and drop'}
+                    {imageFile ? imageFile.name : 'Click to upload or drag and drop'}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 10MB</p>
                 </label>
+                {imagePreview && (
+                  <div className="mt-4 relative">
+                    <img src={imagePreview} alt="Preview" className="w-full h-auto rounded-lg" />
+                    <button 
+                      onClick={() => { setImageFile(null); setImagePreview(null); }} 
+                      className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-75"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -256,13 +312,18 @@ export function GenerationForm({ onSuccess, loading: initialLoading, prefilledDa
 
           <Button
             type="submit"
-            icon={Wand2}
-            loading={loading}
             className="w-full"
+            disabled={isGenerating}
             size="lg"
-            disabled={!user}
           >
-            {loading ? 'Generating...' : 'Generate 3D Model'}
+            {isGenerating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              'Generate'
+            )}
           </Button>
         </form>
       </div>

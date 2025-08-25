@@ -7,8 +7,9 @@ import { ModelViewer } from '../components/3D/ModelViewer';
 import { ThumbnailSelector } from '../components/UI/ThumbnailSelector';
 import { Button } from '../components/UI/Button';
 import { Card } from '../components/UI/Card';
-import { Download, Share2, ShoppingCart, Camera, Store, Printer } from 'lucide-react';
+import { Share2, ShoppingCart, Camera, Store, Printer } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { modelService } from '../services/modelService';
 
 export function Generate() {
   const [status, setStatus] = useState<'pending' | 'generating' | 'completed' | 'failed'>('pending');
@@ -93,8 +94,9 @@ export function Generate() {
       
       // Start polling for completion using Meshy API directly
       const pollForCompletion = async () => {
-        const maxAttempts = 60; // 10 minutes max
+        const maxAttempts = 60; // 10 minutes max (10s interval)
         let attempts = 0;
+        const startTime = Date.now();
         
         const apiUrl = modelData.data.type === 'image-to-3d' 
           ? 'https://api.meshy.ai/openapi/v1/image-to-3d'
@@ -114,7 +116,10 @@ export function Generate() {
             if (statusResponse.ok) {
               const statusData = await statusResponse.json();
               console.log(`📊 Status: ${statusData.status}, Progress: ${statusData.progress || 0}%`);
-              
+              const glbUrl: string | undefined = statusData?.model_urls?.glb;
+              const objUrl: string | undefined = statusData?.model_urls?.obj;
+              const haveAnyUrl = !!(glbUrl || objUrl);
+
               if (statusData.status === 'SUCCEEDED') {
                 console.log('✅ Model generation completed!');
                 
@@ -167,6 +172,65 @@ export function Generate() {
                 console.error('❌ Model generation failed');
                 setStatus('failed');
                 return;
+              } else {
+                // 🕰️ Watchdog: if stuck > 4 minutes but URLs present, mark complete via Edge func
+                const elapsedMin = (Date.now() - startTime) / 60000;
+                const isImageTo3D = modelData.data.type === 'image-to-3d';
+                const aggressiveThreshold = isImageTo3D ? 4 : 6; // minutes
+                if (haveAnyUrl && elapsedMin >= aggressiveThreshold) {
+                  console.log(`🔥 Watchdog: elapsed ${elapsedMin.toFixed(1)}m, URLs present but status=${statusData.status}. Forcing completion...`);
+                  try {
+                    const result = await modelService.markModelComplete({
+                      taskId,
+                      glb_url: glbUrl || null,
+                      obj_url: objUrl || null,
+                      note: 'Auto-completed by client watchdog after timeout with valid URLs'
+                    });
+                    if (result.success) {
+                      console.log('✅ Marked completed via Edge function. Updating UI.');
+                      const completedModelData = {
+                        id: taskId,
+                        taskId,
+                        urls: {
+                          glb: glbUrl || objUrl,
+                          stl: glbUrl || objUrl,
+                          obj: objUrl,
+                          download: glbUrl || objUrl
+                        },
+                        modelUrl: glbUrl || objUrl,
+                        downloadUrl: glbUrl || objUrl,
+                        stlUrl: glbUrl || objUrl,
+                        objUrl: objUrl,
+                        name: modelData.data.prompt || 'Generated Model',
+                        type: modelData.data.type
+                      };
+                      setStatus('completed');
+                      setGeneratedModel(completedModelData);
+                      // Trigger thumbnail generation
+                      if (completedModelData.modelUrl) {
+                        try {
+                          const generatedThumbnails = await generateThumbnails(
+                            completedModelData.modelUrl,
+                            completedModelData.id
+                          );
+                          setThumbnailData({
+                            angles: generatedThumbnails,
+                            selectedAngle: Object.keys(generatedThumbnails)[0] || 'front',
+                            isCustom: false
+                          });
+                          setShowThumbnailSelector(true);
+                        } catch (e) {
+                          console.error('Thumbnail generation after watchdog completion failed:', e);
+                        }
+                      }
+                      return; // stop polling
+                    } else {
+                      console.warn('MarkModelComplete failed:', result.error);
+                    }
+                  } catch (e) {
+                    console.error('Error forcing completion:', e);
+                  }
+                }
               }
             }
             

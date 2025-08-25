@@ -5,6 +5,7 @@ import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
 import { ModelViewer } from '../components/3D/ModelViewer';
+import { modelService } from '../services/modelService';
 
 const categories = [
   'Home & Garden',
@@ -51,10 +52,44 @@ export function MarketplaceUpload() {
   const handleUpload = async () => {
     setUploading(true);
     
-    // Enhanced upload simulation with better UX
-    setTimeout(() => {
-      setUploading(false);
-      // Show success message with better styling
+    try {
+      // Validate required fields
+      if (!listingData.title.trim()) {
+        throw new Error('Title is required');
+      }
+      if (!listingData.description.trim()) {
+        throw new Error('Description is required');
+      }
+      if (!listingData.price || parseFloat(listingData.price) <= 0) {
+        throw new Error('Valid price is required');
+      }
+      
+      // Get model ID from modelData
+      const modelId = modelData?.id;
+      if (!modelId) {
+        throw new Error('Model ID not found. Please try generating the model again.');
+      }
+      
+      console.log('🚀 Publishing to marketplace...', { modelId, listingData });
+      
+      // Call the real marketplace publish service
+      const result = await modelService.publishToMarketplace({
+        modelId: modelId,
+        title: listingData.title.trim(),
+        description: listingData.description.trim(),
+        price: parseFloat(listingData.price),
+        category: listingData.category,
+        tags: listingData.tags.trim(),
+        notes: listingData.notes.trim() || undefined
+      });
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to publish to marketplace');
+      }
+      
+      console.log('✅ Successfully published to marketplace!', result.data);
+      
+      // Show success message
       const successDiv = document.createElement('div');
       successDiv.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-2 animate-fade-in';
       successDiv.innerHTML = `
@@ -69,7 +104,27 @@ export function MarketplaceUpload() {
         successDiv.remove();
         navigate('/marketplace');
       }, 2000);
-    }, 1500);
+      
+    } catch (error) {
+      console.error('❌ Failed to publish to marketplace:', error);
+      
+      // Show error message
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-2 animate-fade-in';
+      errorDiv.innerHTML = `
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+        <span>${error instanceof Error ? error.message : 'Failed to publish to marketplace'}</span>
+      `;
+      document.body.appendChild(errorDiv);
+      
+      setTimeout(() => {
+        errorDiv.remove();
+      }, 5000);
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (

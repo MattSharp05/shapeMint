@@ -279,6 +279,21 @@ export function Order() {
                         </span>
                       </div>
                     )}
+                    {currentStep === 2 && (
+                      <div className="mt-4 pt-3 border-t border-gray-200">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Quantity
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={wizardState.shippingInfo?.quantity || 1}
+                          onChange={(e) => handleShippingInfoChange({ quantity: parseInt(e.target.value) || 1 })}
+                          className="w-20 px-3 py-1.5 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -312,29 +327,20 @@ export function Order() {
               )}
 
               {currentStep === 2 && (
-                <>
-                <ShippingForm
-                  shippingInfo={wizardState.shippingInfo || {}}
-                  onShippingInfoChange={handleShippingInfoChange}
-                  onBack={handleBack}
-                  onGetQuote={handleGetQuote}
-                  isQuoteLoading={quoteState.loading}
+                <div className="space-y-6">
+                  <ShippingForm
+                    shippingInfo={wizardState.shippingInfo || {}}
+                    onShippingInfoChange={handleShippingInfoChange}
+                    onBack={handleBack}
+                    onGetQuote={handleGetQuote}
+                    isQuoteLoading={quoteState.loading}
+                    quoteError={quoteState.error}
+                    quoteData={quoteState.data}
+                    onPlaceOrder={handlePlaceOrder}
+                    isOrderLoading={orderState.loading}
+                    orderError={orderState.error}
                   />
-                  {quoteState.error && (
-                    <div className="mt-4 text-sm text-red-600">{quoteState.error}</div>
-                  )}
-                  {quoteState.data && (
-                    <div className="mt-6 p-4 border rounded-lg bg-green-50 text-sm">
-                      <div className="font-medium text-green-800">Quote Ready</div>
-                      <div className="text-green-700 mt-1">Price: {quoteState.data.priceTotal.toFixed(2)} {quoteState.data.currency}</div>
-                      {quoteState.data.reused && <div className="text-xs text-green-600 mt-1">(Reused recent quote)</div>}
-                      <button onClick={handlePlaceOrder} disabled={orderState.loading} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50">
-                        {orderState.loading ? 'Placing Order...' : 'Place Order'}
-                      </button>
-                      {orderState.error && <div className="mt-2 text-red-600 text-xs">{orderState.error}</div>}
-                    </div>
-                  )}
-                </>
+                </div>
               )}
             </div>
           </div>

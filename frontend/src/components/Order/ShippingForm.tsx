@@ -10,6 +10,11 @@ interface ShippingFormProps {
   onBack: () => void;
   onGetQuote: () => void;
   isQuoteLoading?: boolean;
+  quoteError?: string;
+  quoteData?: { quoteId: string; priceTotal: number; currency: string; reused?: boolean; expiresAt?: string; itemTotal?: number; surcharge?: number };
+  onPlaceOrder?: () => void;
+  isOrderLoading?: boolean;
+  orderError?: string;
 }
 
 export function ShippingForm({
@@ -18,6 +23,11 @@ export function ShippingForm({
   onBack,
   onGetQuote,
   isQuoteLoading = false,
+  quoteError,
+  quoteData,
+  onPlaceOrder,
+  isOrderLoading = false,
+  orderError,
 }: ShippingFormProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -110,16 +120,6 @@ export function ShippingForm({
               onChange={(e) => handleInputChange('email' as any, e.target.value)}
               placeholder="Enter email"
               error={errors.email}
-            />
-          </div>
-
-          <div>
-            <Input
-              label="Quantity"
-              value={(shippingInfo.quantity || 1).toString()}
-              onChange={(e) => handleInputChange('quantity' as any, e.target.value)}
-              placeholder="Enter quantity"
-              type="number"
             />
           </div>
 
@@ -218,7 +218,64 @@ export function ShippingForm({
         <strong>Note:</strong> A minimum order surcharge applies to items subtotal. If your items subtotal is less than $25.00, a surcharge will be added to bring the items subtotal up to $25.00 (shipping is added after).
       </div>
 
-      <div className="flex justify-between">
+      {/* Error Messages */}
+      {quoteError && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="flex">
+            <div className="text-red-600">
+              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Quote Error</h3>
+              <p className="mt-1 text-sm text-red-700">{quoteError}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {orderError && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="flex">
+            <div className="text-red-600">
+              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Order Error</h3>
+              <p className="mt-1 text-sm text-red-700">{orderError}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quote Success */}
+      {quoteData && (
+        <div className="bg-green-50 border border-green-200 rounded-md p-4">
+          <div className="flex">
+            <div className="text-green-600">
+              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3 flex-1">
+              <h3 className="text-sm font-medium text-green-800">Quote Ready</h3>
+              <div className="mt-1">
+                <p className="text-sm text-green-700">
+                  Total Price: <span className="font-semibold">${quoteData.priceTotal.toFixed(2)} {quoteData.currency}</span>
+                </p>
+                {quoteData.reused && (
+                  <p className="text-xs text-green-600 mt-1">(Using recent quote)</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-between space-x-4">
         <Button
           variant="outline"
           onClick={onBack}
@@ -226,22 +283,28 @@ export function ShippingForm({
         >
           Back
         </Button>
-        <Button
-          onClick={handleGetQuote}
-          disabled={!isFormValid() || isQuoteLoading}
-          className="px-6 py-2"
-        >
-          {isQuoteLoading ? 'Getting Quote...' : 'Get Quote'}
-        </Button>
-      </div>
-
-      {!isFormValid() && (
-        <div className="text-center">
-          <p className="text-sm text-gray-500 italic">
-            Phase 2: Vendor quote integration coming soon
-          </p>
+        
+        <div className="flex space-x-3">
+          <Button
+            onClick={handleGetQuote}
+            disabled={!isFormValid() || isQuoteLoading}
+            className="px-6 py-2"
+            variant="outline"
+          >
+            {isQuoteLoading ? 'Getting Quote...' : 'Get Quote'}
+          </Button>
+          
+          {quoteData && onPlaceOrder && (
+            <Button
+              onClick={onPlaceOrder}
+              disabled={isOrderLoading}
+              className="px-6 py-2"
+            >
+              {isOrderLoading ? 'Placing Order...' : 'Place Order'}
+            </Button>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

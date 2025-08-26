@@ -1,0 +1,1588 @@
+
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+
+COMMENT ON SCHEMA "public" IS 'standard public schema';
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_graphql" WITH SCHEMA "graphql";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE TYPE "public"."model_status" AS ENUM (
+    'generating',
+    'ready',
+    'failed'
+);
+
+
+ALTER TYPE "public"."model_status" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."order_status" AS ENUM (
+    'pending',
+    'paid',
+    'manufacturing',
+    'shipped',
+    'delivered',
+    'cancelled'
+);
+
+
+ALTER TYPE "public"."order_status" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."provider_type" AS ENUM (
+    'printify',
+    'craftcloud',
+    'jlcpcb',
+    'xometry'
+);
+
+
+ALTER TYPE "public"."provider_type" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."source_type" AS ENUM (
+    'text',
+    'image'
+);
+
+
+ALTER TYPE "public"."source_type" OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."generate_order_number"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  seq_val bigint;
+  base36 text;
+begin
+  if new.order_number is not null then
+    return new; -- allow manual override (testing)
+  end if;
+  seq_val := nextval('orders_order_seq');
+  base36 := upper(to_char(seq_val, 'FMXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX')); -- placeholder
+  -- Convert manually to base36 since to_char doesn't support base36 directly
+  -- We'll build the string via repeated mod/div
+  declare
+    n bigint := seq_val;
+    digits text := '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    rev text := '';
+    r int;
+  begin
+    if n = 0 then
+      rev := '0';
+    else
+      while n > 0 loop
+        r := (n % 36)::int;
+        rev := substr(digits, r+1, 1) || rev;
+        n := n / 36;
+      end loop;
+    end if;
+    -- Left pad to 6 chars
+    while length(rev) < 6 loop
+      rev := '0' || rev;
+    end loop;
+    new.order_number := 'SHPW' || rev;
+    return new;
+  end;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."generate_order_number"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  INSERT INTO public.users (id, email, full_name)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1))
+  );
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_new_user"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."set_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."set_updated_at"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_auth_user_metadata"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    UPDATE auth.users
+    SET raw_user_meta_data = jsonb_build_object('full_name', NEW.display_name)
+    WHERE id = NEW.user_id;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_auth_user_metadata"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_quotes_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+	NEW.updated_at = now();
+	RETURN NEW;
+END;$$;
+
+
+ALTER FUNCTION "public"."update_quotes_updated_at"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_updated_at_column"() OWNER TO "postgres";
+
+SET default_tablespace = '';
+
+SET default_table_access_method = "heap";
+
+
+CREATE TABLE IF NOT EXISTS "public"."failed_orders" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "order_data" "jsonb" NOT NULL,
+    "payment_info" "jsonb",
+    "error_message" "text",
+    "api_status" integer,
+    "processed" boolean DEFAULT false,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."failed_orders" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."function_errors" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "function_name" "text" NOT NULL,
+    "error_message" "text",
+    "error_stack" "text",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."function_errors" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."generated_models" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "name" "text",
+    "prompt" "text",
+    "style" "text",
+    "obj_url" "text",
+    "stl_url" "text",
+    "glb_url" "text",
+    "thumbnail_url" "text",
+    "status" "text",
+    "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
+    "task_id" "text" DEFAULT ''::"text",
+    "thumbnail_status" "text",
+    "thumbnail_angles" "jsonb",
+    "thumbnail_selected" "text" DEFAULT 'isometric'::"text",
+    "thumbnail_custom" boolean DEFAULT false,
+    "thumbnail_error" "text",
+    "type" character varying(50),
+    "mode" "text" DEFAULT 'preview'::"text",
+    "category" "text",
+    "price" numeric(10,2),
+    "tags" "text",
+    "notes" "text",
+    "is_marketplace_listed" boolean DEFAULT false,
+    "fbx_url" "text",
+    "usdz_url" "text",
+    CONSTRAINT "generated_models_status_check" CHECK (("status" = ANY (ARRAY['processing'::"text", 'completed'::"text", 'failed'::"text"])))
+);
+
+
+ALTER TABLE "public"."generated_models" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."generated_models"."thumbnail_status" IS 'Status of thumbnail generation process';
+
+
+
+COMMENT ON COLUMN "public"."generated_models"."thumbnail_angles" IS 'Array of thumbnail images taken from different angles';
+
+
+
+COMMENT ON COLUMN "public"."generated_models"."thumbnail_selected" IS 'Index of the selected thumbnail from angles array';
+
+
+
+COMMENT ON COLUMN "public"."generated_models"."thumbnail_custom" IS 'Whether user uploaded a custom thumbnail';
+
+
+
+COMMENT ON COLUMN "public"."generated_models"."thumbnail_error" IS 'Error message if thumbnail generation failed';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."generation_tasks" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "task_id" "text" NOT NULL,
+    "user_id" "uuid",
+    "status" "text" DEFAULT 'PENDING'::"text" NOT NULL,
+    "type" "text" NOT NULL,
+    "prompt" "text",
+    "image_url" "text",
+    "model_urls" "jsonb",
+    "error_message" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "completed_at" timestamp with time zone
+);
+
+
+ALTER TABLE "public"."generation_tasks" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."hy_generated_jobs" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "prompt_id" "text" NOT NULL,
+    "status" "text" DEFAULT 'pending'::"text" NOT NULL,
+    "progress" integer DEFAULT 0,
+    "prompt" "text",
+    "image_filename" "text",
+    "workflow_type" "text" DEFAULT 'hy3d'::"text",
+    "workflow_nodes" integer,
+    "comfyui_server" "text",
+    "output_files" "jsonb",
+    "primary_model_url" "text",
+    "primary_preview_url" "text",
+    "execution_time" "text",
+    "error_message" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."hy_generated_jobs" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."hy_generated_models" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "name" "text" NOT NULL,
+    "prompt" "text" NOT NULL,
+    "style" "text",
+    "obj_url" "text" NOT NULL,
+    "stl_url" "text" NOT NULL,
+    "glb_url" "text" NOT NULL,
+    "thumbnail_url" "text",
+    "status" "text" DEFAULT 'processing'::"text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "job_id" "uuid"
+);
+
+
+ALTER TABLE "public"."hy_generated_models" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."hy_generation_jobs" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "prompt_id" "text" NOT NULL,
+    "status" "text" DEFAULT 'queued'::"text" NOT NULL,
+    "progress" integer DEFAULT 0,
+    "prompt" "text",
+    "image_filename" "text",
+    "workflow_type" "text" DEFAULT 'hy3d'::"text",
+    "output_files" "jsonb" DEFAULT '[]'::"jsonb",
+    "primary_model_url" "text",
+    "primary_preview_url" "text",
+    "error_message" "text",
+    "execution_time" "text",
+    "workflow_nodes" integer,
+    "comfyui_server" "text" DEFAULT 'http://comfy.tunell.live'::"text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."hy_generation_jobs" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."manufacturing_quotes" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "model_id" "uuid" NOT NULL,
+    "material" "text" NOT NULL,
+    "quantity" integer NOT NULL,
+    "price" numeric(10,2) NOT NULL,
+    "shipping_price" numeric(10,2) NOT NULL,
+    "estimated_days" integer NOT NULL,
+    "quote_data" "jsonb" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
+    "expires_at" timestamp with time zone NOT NULL,
+    "manufacturer" character varying(50) DEFAULT 'slant3d'::character varying,
+    "vendor_model_id" character varying(255)
+);
+
+
+ALTER TABLE "public"."manufacturing_quotes" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."model_likes" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "model_id" "uuid" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL
+);
+
+
+ALTER TABLE "public"."model_likes" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."order_events" (
+    "id" bigint NOT NULL,
+    "order_id" "uuid" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "evt_type" "text" NOT NULL,
+    "evt_data" "jsonb",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."order_events" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."order_events_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."order_events_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."order_events_id_seq" OWNED BY "public"."order_events"."id";
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."orders" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "slant_order_id" "text",
+    "order_number" "text" NOT NULL,
+    "customer_name" "text" NOT NULL,
+    "customer_email" "text" NOT NULL,
+    "customer_phone" "text",
+    "file_url" "text" NOT NULL,
+    "filename" "text" NOT NULL,
+    "quantity" integer DEFAULT 1 NOT NULL,
+    "color" "text" NOT NULL,
+    "profile" "text" DEFAULT 'PLA'::"text",
+    "status" "text" DEFAULT 'created'::"text",
+    "stripe_session_id" "text",
+    "amount_paid" integer,
+    "payment_status" "text" DEFAULT 'pending'::"text",
+    "tracking_numbers" "text"[],
+    "shipping_status" "text",
+    "label_download_url" "text",
+    "billing_address" "jsonb",
+    "shipping_address" "jsonb",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "shipped_at" timestamp with time zone,
+    "delivered_at" timestamp with time zone,
+    "order_data" "jsonb",
+    "user_id" "uuid",
+    "slant_response" "jsonb",
+    "vendor_order_id" "text",
+    "vendor_order_raw" "jsonb",
+    "last_vendor_status" "jsonb",
+    "submitted_at" timestamp with time zone,
+    "cancelled_at" timestamp with time zone,
+    "shipping_option_mode" "text" DEFAULT 'Cheapest'::"text",
+    "shipping_option_id" "text",
+    "item_subtotal" numeric(12,2),
+    "surcharge_amount" numeric(12,2) DEFAULT 0,
+    "shipping_price" numeric(12,2),
+    "total_price" numeric(12,2),
+    "currency" "text" DEFAULT 'USD'::"text",
+    "file_hash" "text",
+    "shapeways_model_id" "text",
+    "selections" "jsonb",
+    "shipping_zip" "text",
+    "vendor" "text",
+    "quote_id" "uuid",
+    CONSTRAINT "orders_status_check" CHECK (("status" = ANY (ARRAY['pending'::"text", 'submitted'::"text", 'in_production'::"text", 'shipped'::"text", 'delivered'::"text", 'failed'::"text", 'cancelled'::"text"]))),
+    CONSTRAINT "orders_vendor_check" CHECK (("vendor" = 'shapeways'::"text"))
+);
+
+
+ALTER TABLE "public"."orders" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."order_summary" AS
+ SELECT "id",
+    "slant_order_id",
+    "order_number",
+    "customer_name",
+    "customer_email",
+    "filename",
+    "quantity",
+    "color",
+    "profile",
+    "status",
+    "tracking_numbers",
+    "shipping_status",
+    "label_download_url",
+    ("shipping_address" ->> 'name'::"text") AS "ship_to_name",
+    ("shipping_address" ->> 'city'::"text") AS "ship_to_city",
+    ("shipping_address" ->> 'state'::"text") AS "ship_to_state",
+    "created_at",
+    "updated_at"
+   FROM "public"."orders"
+  ORDER BY "created_at" DESC;
+
+
+ALTER VIEW "public"."order_summary" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."orders_order_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."orders_order_seq" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."quotes" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid",
+    "vendor" "text" NOT NULL,
+    "model_url" "text" NOT NULL,
+    "file_hash" "text" NOT NULL,
+    "shapeways_model_id" "text",
+    "material_id" "text" NOT NULL,
+    "selections" "jsonb" NOT NULL,
+    "quantity" integer DEFAULT 1 NOT NULL,
+    "shipping_address" "jsonb" NOT NULL,
+    "shipping_zip" "text",
+    "shapeways" "jsonb",
+    "price_total" numeric(12,2),
+    "currency" "text" DEFAULT 'USD'::"text" NOT NULL,
+    "status" "text" DEFAULT 'pending'::"text" NOT NULL,
+    "expires_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "quotes_quantity_check" CHECK ((("quantity" > 0) AND ("quantity" <= 100))),
+    CONSTRAINT "quotes_status_check" CHECK (("status" = ANY (ARRAY['quoted'::"text", 'failed'::"text", 'pending'::"text"]))),
+    CONSTRAINT "quotes_vendor_check" CHECK (("vendor" = 'shapeways'::"text"))
+);
+
+
+ALTER TABLE "public"."quotes" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."quote_summary" AS
+ SELECT "id",
+    "user_id",
+    "vendor",
+    "model_url",
+    "material_id",
+    "quantity",
+    "price_total",
+    "currency",
+    "status",
+    "shipping_zip",
+    ("shipping_address" ->> 'firstName'::"text") AS "first_name",
+    ("shipping_address" ->> 'lastName'::"text") AS "last_name",
+    ("shipping_address" ->> 'phone'::"text") AS "phone",
+    "created_at",
+    "expires_at"
+   FROM "public"."quotes" "q"
+  ORDER BY "created_at" DESC;
+
+
+ALTER VIEW "public"."quote_summary" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."stripe_sessions" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "session_id" "text" NOT NULL,
+    "payment_status" "text" NOT NULL,
+    "amount_total" integer,
+    "customer_email" "text",
+    "metadata" "jsonb",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."stripe_sessions" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."sw_models_cache" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "file_hash" "text" NOT NULL,
+    "shapeways_model_id" "text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."sw_models_cache" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."thumbnail_processing_queue" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "model_id" "uuid",
+    "status" "text" DEFAULT 'pending'::"text",
+    "priority" integer DEFAULT 0,
+    "attempts" integer DEFAULT 0,
+    "max_attempts" integer DEFAULT 3,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "error_message" "text",
+    "processing_started_at" timestamp with time zone
+);
+
+
+ALTER TABLE "public"."thumbnail_processing_queue" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."users" (
+    "id" "uuid" NOT NULL,
+    "email" "text" NOT NULL,
+    "full_name" "text" NOT NULL,
+    "avatar_url" "text",
+    "stripe_customer_id" "text",
+    "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
+    "bio" "text"
+);
+
+
+ALTER TABLE "public"."users" OWNER TO "postgres";
+
+
+ALTER TABLE ONLY "public"."order_events" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."order_events_id_seq"'::"regclass");
+
+
+
+ALTER TABLE ONLY "public"."failed_orders"
+    ADD CONSTRAINT "failed_orders_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."function_errors"
+    ADD CONSTRAINT "function_errors_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."generated_models"
+    ADD CONSTRAINT "generated_models_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."generation_tasks"
+    ADD CONSTRAINT "generation_tasks_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."generation_tasks"
+    ADD CONSTRAINT "generation_tasks_task_id_key" UNIQUE ("task_id");
+
+
+
+ALTER TABLE ONLY "public"."hy_generated_jobs"
+    ADD CONSTRAINT "hy_generated_jobs_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."hy_generated_models"
+    ADD CONSTRAINT "hy_generated_models_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."hy_generation_jobs"
+    ADD CONSTRAINT "hy_generation_jobs_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."manufacturing_quotes"
+    ADD CONSTRAINT "manufacturing_quotes_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."model_likes"
+    ADD CONSTRAINT "model_likes_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."model_likes"
+    ADD CONSTRAINT "model_likes_user_id_model_id_key" UNIQUE ("user_id", "model_id");
+
+
+
+ALTER TABLE ONLY "public"."order_events"
+    ADD CONSTRAINT "order_events_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_slant_order_id_key" UNIQUE ("slant_order_id");
+
+
+
+ALTER TABLE ONLY "public"."quotes"
+    ADD CONSTRAINT "quotes_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."stripe_sessions"
+    ADD CONSTRAINT "stripe_sessions_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."stripe_sessions"
+    ADD CONSTRAINT "stripe_sessions_session_id_key" UNIQUE ("session_id");
+
+
+
+ALTER TABLE ONLY "public"."sw_models_cache"
+    ADD CONSTRAINT "sw_models_cache_file_hash_key" UNIQUE ("file_hash");
+
+
+
+ALTER TABLE ONLY "public"."sw_models_cache"
+    ADD CONSTRAINT "sw_models_cache_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."thumbnail_processing_queue"
+    ADD CONSTRAINT "thumbnail_processing_queue_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."users"
+    ADD CONSTRAINT "users_pkey1" PRIMARY KEY ("id");
+
+
+
+CREATE INDEX "idx_failed_orders_processed" ON "public"."failed_orders" USING "btree" ("processed") WHERE ("processed" = false);
+
+
+
+CREATE INDEX "idx_generated_models_created_at" ON "public"."generated_models" USING "btree" ("created_at" DESC);
+
+
+
+CREATE INDEX "idx_generated_models_status" ON "public"."generated_models" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_generated_models_user_id" ON "public"."generated_models" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_generation_jobs_prompt_id" ON "public"."hy_generation_jobs" USING "btree" ("prompt_id");
+
+
+
+CREATE INDEX "idx_generation_jobs_status" ON "public"."hy_generation_jobs" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_generation_jobs_user_id" ON "public"."hy_generation_jobs" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_generation_tasks_created_at" ON "public"."generation_tasks" USING "btree" ("created_at");
+
+
+
+CREATE INDEX "idx_generation_tasks_status" ON "public"."generation_tasks" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_generation_tasks_task_id" ON "public"."generation_tasks" USING "btree" ("task_id");
+
+
+
+CREATE INDEX "idx_generation_tasks_user_id" ON "public"."generation_tasks" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_hy_generated_jobs_created_at" ON "public"."hy_generated_jobs" USING "btree" ("created_at");
+
+
+
+CREATE INDEX "idx_hy_generated_jobs_prompt_id" ON "public"."hy_generated_jobs" USING "btree" ("prompt_id");
+
+
+
+CREATE INDEX "idx_hy_generated_jobs_status" ON "public"."hy_generated_jobs" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_hy_generated_jobs_user_id" ON "public"."hy_generated_jobs" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_model_likes_user_model" ON "public"."model_likes" USING "btree" ("user_id", "model_id");
+
+
+
+CREATE INDEX "idx_order_events_order_id" ON "public"."order_events" USING "btree" ("order_id");
+
+
+
+CREATE INDEX "idx_orders_created_at" ON "public"."orders" USING "btree" ("created_at");
+
+
+
+CREATE INDEX "idx_orders_customer_email" ON "public"."orders" USING "btree" ("customer_email");
+
+
+
+CREATE INDEX "idx_orders_slant_order_id" ON "public"."orders" USING "btree" ("slant_order_id");
+
+
+
+CREATE INDEX "idx_orders_status" ON "public"."orders" USING "btree" ("status");
+
+
+
+CREATE INDEX "idx_orders_tracking" ON "public"."orders" USING "gin" ("tracking_numbers");
+
+
+
+CREATE INDEX "idx_orders_tracking_numbers" ON "public"."orders" USING "gin" ("tracking_numbers");
+
+
+
+CREATE INDEX "idx_orders_user_id" ON "public"."orders" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_orders_vendor_order_id" ON "public"."orders" USING "btree" ("vendor_order_id");
+
+
+
+CREATE INDEX "idx_stripe_sessions_session_id" ON "public"."stripe_sessions" USING "btree" ("session_id");
+
+
+
+CREATE INDEX "idx_thumbnail_queue_status_priority" ON "public"."thumbnail_processing_queue" USING "btree" ("status", "priority" DESC, "created_at");
+
+
+
+CREATE INDEX "quotes_expires_idx" ON "public"."quotes" USING "btree" ("expires_at");
+
+
+
+CREATE INDEX "quotes_file_hash_idx" ON "public"."quotes" USING "btree" ("file_hash");
+
+
+
+CREATE INDEX "quotes_material_idx" ON "public"."quotes" USING "btree" ("material_id");
+
+
+
+CREATE INDEX "quotes_shipping_zip_idx" ON "public"."quotes" USING "btree" ("shipping_zip");
+
+
+
+CREATE INDEX "quotes_status_idx" ON "public"."quotes" USING "btree" ("status");
+
+
+
+CREATE INDEX "quotes_user_created_idx" ON "public"."quotes" USING "btree" ("user_id", "created_at" DESC);
+
+
+
+CREATE OR REPLACE TRIGGER "trg_generate_order_number" BEFORE INSERT ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."generate_order_number"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_orders_updated_at" BEFORE UPDATE ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."set_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_update_quotes_updated_at" BEFORE UPDATE ON "public"."quotes" FOR EACH ROW EXECUTE FUNCTION "public"."update_quotes_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "update_generation_tasks_updated_at" BEFORE UPDATE ON "public"."generation_tasks" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "update_orders_updated_at" BEFORE UPDATE ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+ALTER TABLE ONLY "public"."generated_models"
+    ADD CONSTRAINT "generated_models_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."generation_tasks"
+    ADD CONSTRAINT "generation_tasks_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+
+
+
+ALTER TABLE ONLY "public"."hy_generated_jobs"
+    ADD CONSTRAINT "hy_generated_jobs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."hy_generated_models"
+    ADD CONSTRAINT "hy_generated_models_job_id_fkey" FOREIGN KEY ("job_id") REFERENCES "public"."hy_generated_jobs"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."hy_generated_models"
+    ADD CONSTRAINT "hy_generated_models_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."hy_generation_jobs"
+    ADD CONSTRAINT "hy_generation_jobs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."order_events"
+    ADD CONSTRAINT "order_events_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."order_events"
+    ADD CONSTRAINT "order_events_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_quote_id_fkey" FOREIGN KEY ("quote_id") REFERENCES "public"."quotes"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+
+
+
+ALTER TABLE ONLY "public"."quotes"
+    ADD CONSTRAINT "quotes_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."thumbnail_processing_queue"
+    ADD CONSTRAINT "thumbnail_processing_queue_model_id_fkey" FOREIGN KEY ("model_id") REFERENCES "public"."generated_models"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."users"
+    ADD CONSTRAINT "users_id_fkey1" FOREIGN KEY ("id") REFERENCES "auth"."users"("id");
+
+
+
+CREATE POLICY "Allow authenticated users to read stripe sessions" ON "public"."stripe_sessions" FOR SELECT TO "authenticated" USING (true);
+
+
+
+CREATE POLICY "Allow read of completed models for all" ON "public"."generated_models" FOR SELECT USING (("status" = 'completed'::"text"));
+
+
+
+CREATE POLICY "Allow service role to update generated_models" ON "public"."generated_models" FOR UPDATE USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Service role can insert generated models" ON "public"."generated_models" FOR INSERT TO "service_role" WITH CHECK (true);
+
+
+
+CREATE POLICY "Service role can insert stripe sessions" ON "public"."stripe_sessions" FOR INSERT TO "service_role" WITH CHECK (true);
+
+
+
+CREATE POLICY "Service role can manage all orders" ON "public"."orders" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role can manage all tasks" ON "public"."generation_tasks" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role can manage failed orders" ON "public"."failed_orders" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role can manage function errors" ON "public"."function_errors" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role can manage stripe sessions" ON "public"."stripe_sessions" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role can read generated models" ON "public"."generated_models" FOR SELECT TO "service_role" USING (true);
+
+
+
+CREATE POLICY "Service role can read stripe sessions" ON "public"."stripe_sessions" FOR SELECT TO "service_role" USING (true);
+
+
+
+CREATE POLICY "Service role can select generated_models" ON "public"."generated_models" FOR SELECT TO "service_role" USING (true);
+
+
+
+CREATE POLICY "Service role can update generated models" ON "public"."generated_models" FOR UPDATE TO "service_role" USING (true);
+
+
+
+CREATE POLICY "Service role can update generated_models" ON "public"."generated_models" FOR UPDATE TO "service_role" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Users can access their own models" ON "public"."generated_models" USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can create their own models" ON "public"."generated_models" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can insert own generation jobs" ON "public"."hy_generation_jobs" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can insert own models" ON "public"."hy_generated_models" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can insert their own generated models" ON "public"."generated_models" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can insert their own jobs" ON "public"."hy_generated_jobs" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can insert their own tasks" ON "public"."generation_tasks" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can manage their own likes" ON "public"."model_likes" USING (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "Users can read their own generated models" ON "public"."generated_models" FOR SELECT TO "authenticated" USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can update own generation jobs" ON "public"."hy_generation_jobs" FOR UPDATE USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can update their own data" ON "public"."users" FOR UPDATE USING (("auth"."uid"() = "id"));
+
+
+
+CREATE POLICY "Users can update their own generated models" ON "public"."generated_models" FOR UPDATE TO "authenticated" USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can update their own jobs" ON "public"."hy_generated_jobs" FOR UPDATE USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can view own generation jobs" ON "public"."hy_generation_jobs" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can view own models" ON "public"."hy_generated_models" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can view their own data" ON "public"."users" FOR SELECT USING (("auth"."uid"() = "id"));
+
+
+
+CREATE POLICY "Users can view their own jobs" ON "public"."hy_generated_jobs" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can view their own models" ON "public"."generated_models" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can view their own orders" ON "public"."orders" FOR SELECT USING (("customer_email" = ("auth"."jwt"() ->> 'email'::"text")));
+
+
+
+CREATE POLICY "Users can view their own tasks" ON "public"."generation_tasks" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+ALTER TABLE "public"."failed_orders" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."function_errors" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."generated_models" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."generation_tasks" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."hy_generated_jobs" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."hy_generated_models" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."hy_generation_jobs" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."manufacturing_quotes" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."model_likes" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."order_events" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "order_events_owner_insert" ON "public"."order_events" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "order_events_owner_select" ON "public"."order_events" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+ALTER TABLE "public"."orders" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "orders_owner_delete" ON "public"."orders" FOR DELETE USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "orders_owner_insert" ON "public"."orders" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "orders_owner_select" ON "public"."orders" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "orders_owner_update" ON "public"."orders" FOR UPDATE USING (("auth"."uid"() = "user_id"));
+
+
+
+ALTER TABLE "public"."quotes" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "quotes_insert_own" ON "public"."quotes" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "quotes_select_own" ON "public"."quotes" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "quotes_service_all" ON "public"."quotes" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+ALTER TABLE "public"."stripe_sessions" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."sw_models_cache" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "sw_models_cache_service_all" ON "public"."sw_models_cache" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+ALTER TABLE "public"."users" ENABLE ROW LEVEL SECURITY;
+
+
+
+
+ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
+
+
+
+
+
+
+GRANT USAGE ON SCHEMA "public" TO "postgres";
+GRANT USAGE ON SCHEMA "public" TO "anon";
+GRANT USAGE ON SCHEMA "public" TO "authenticated";
+GRANT USAGE ON SCHEMA "public" TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+GRANT ALL ON FUNCTION "public"."generate_order_number"() TO "anon";
+GRANT ALL ON FUNCTION "public"."generate_order_number"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."generate_order_number"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."set_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."set_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_updated_at"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_auth_user_metadata"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_auth_user_metadata"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_auth_user_metadata"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_quotes_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_quotes_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_quotes_updated_at"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+GRANT ALL ON TABLE "public"."failed_orders" TO "anon";
+GRANT ALL ON TABLE "public"."failed_orders" TO "authenticated";
+GRANT ALL ON TABLE "public"."failed_orders" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."function_errors" TO "anon";
+GRANT ALL ON TABLE "public"."function_errors" TO "authenticated";
+GRANT ALL ON TABLE "public"."function_errors" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."generated_models" TO "anon";
+GRANT ALL ON TABLE "public"."generated_models" TO "authenticated";
+GRANT ALL ON TABLE "public"."generated_models" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."generation_tasks" TO "anon";
+GRANT ALL ON TABLE "public"."generation_tasks" TO "authenticated";
+GRANT ALL ON TABLE "public"."generation_tasks" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."hy_generated_jobs" TO "anon";
+GRANT ALL ON TABLE "public"."hy_generated_jobs" TO "authenticated";
+GRANT ALL ON TABLE "public"."hy_generated_jobs" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."hy_generated_models" TO "anon";
+GRANT ALL ON TABLE "public"."hy_generated_models" TO "authenticated";
+GRANT ALL ON TABLE "public"."hy_generated_models" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."hy_generation_jobs" TO "anon";
+GRANT ALL ON TABLE "public"."hy_generation_jobs" TO "authenticated";
+GRANT ALL ON TABLE "public"."hy_generation_jobs" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."manufacturing_quotes" TO "anon";
+GRANT ALL ON TABLE "public"."manufacturing_quotes" TO "authenticated";
+GRANT ALL ON TABLE "public"."manufacturing_quotes" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."model_likes" TO "anon";
+GRANT ALL ON TABLE "public"."model_likes" TO "authenticated";
+GRANT ALL ON TABLE "public"."model_likes" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."order_events" TO "anon";
+GRANT ALL ON TABLE "public"."order_events" TO "authenticated";
+GRANT ALL ON TABLE "public"."order_events" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."order_events_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."order_events_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."order_events_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."orders" TO "anon";
+GRANT ALL ON TABLE "public"."orders" TO "authenticated";
+GRANT ALL ON TABLE "public"."orders" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."order_summary" TO "anon";
+GRANT ALL ON TABLE "public"."order_summary" TO "authenticated";
+GRANT ALL ON TABLE "public"."order_summary" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."orders_order_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."orders_order_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."orders_order_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."quotes" TO "anon";
+GRANT ALL ON TABLE "public"."quotes" TO "authenticated";
+GRANT ALL ON TABLE "public"."quotes" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."quote_summary" TO "anon";
+GRANT ALL ON TABLE "public"."quote_summary" TO "authenticated";
+GRANT ALL ON TABLE "public"."quote_summary" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."stripe_sessions" TO "anon";
+GRANT ALL ON TABLE "public"."stripe_sessions" TO "authenticated";
+GRANT ALL ON TABLE "public"."stripe_sessions" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."sw_models_cache" TO "anon";
+GRANT ALL ON TABLE "public"."sw_models_cache" TO "authenticated";
+GRANT ALL ON TABLE "public"."sw_models_cache" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."thumbnail_processing_queue" TO "anon";
+GRANT ALL ON TABLE "public"."thumbnail_processing_queue" TO "authenticated";
+GRANT ALL ON TABLE "public"."thumbnail_processing_queue" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."users" TO "anon";
+GRANT ALL ON TABLE "public"."users" TO "authenticated";
+GRANT ALL ON TABLE "public"."users" TO "service_role";
+
+
+
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "service_role";
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "service_role";
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+RESET ALL;

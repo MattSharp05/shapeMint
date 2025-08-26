@@ -2,8 +2,7 @@
 // Refine a Meshy preview model, upload results, and convert OBJ to STL
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const MESHY_TEXT_TO_3D_URL = 'https://api.meshy.ai/openapi/v2/text-to-3d';
-
-Deno.serve(async (req) => {
+Deno.serve(async (req)=>{
   try {
     // CORS headers
     const corsHeaders = {
@@ -12,7 +11,9 @@ Deno.serve(async (req) => {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization'
     };
     if (req.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, {
+        headers: corsHeaders
+      });
     }
     if (req.method !== 'POST') {
       return new Response(JSON.stringify({
@@ -20,7 +21,10 @@ Deno.serve(async (req) => {
         error: 'Method not allowed'
       }), {
         status: 405,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       });
     }
     // Get environment variables
@@ -33,7 +37,10 @@ Deno.serve(async (req) => {
         error: 'Missing required environment variables'
       }), {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       });
     }
     // Create Supabase client
@@ -54,7 +61,10 @@ Deno.serve(async (req) => {
         error: 'Invalid content type'
       }), {
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       });
     }
     if (!preview_task_id) {
@@ -63,17 +73,28 @@ Deno.serve(async (req) => {
         error: 'preview_task_id is required'
       }), {
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       });
     }
     // Build Meshy refine request (concise, extensible)
     const body = {
       mode: 'refine',
       preview_task_id,
-      ...(texture_prompt ? { texture_prompt } : {}),
-      ...(enable_pbr !== undefined ? { enable_pbr } : {}),
-      ...(ai_model ? { ai_model } : {}),
-      ...(texture_image_url ? { texture_image_url } : {})
+      ...texture_prompt ? {
+        texture_prompt
+      } : {},
+      ...enable_pbr !== undefined ? {
+        enable_pbr
+      } : {},
+      ...ai_model ? {
+        ai_model
+      } : {},
+      ...texture_image_url ? {
+        texture_image_url
+      } : {}
     };
     const authHeader = `Bearer ${meshyApiKey}`;
     // Start Meshy refine task
@@ -94,7 +115,10 @@ Deno.serve(async (req) => {
         details: errorText
       }), {
         status: meshyResponse.status,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       });
     }
     const meshyData = await meshyResponse.json();
@@ -105,17 +129,22 @@ Deno.serve(async (req) => {
         error: 'No task ID received from Meshy refine'
       }), {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       });
     }
     // Poll for completion
     let attempts = 0;
     const maxAttempts = 60;
     let statusData;
-    while (attempts < maxAttempts) {
+    while(attempts < maxAttempts){
       console.log(`Polling Meshy refine status (attempt ${attempts + 1})...`);
       const statusResponse = await fetch(`${MESHY_TEXT_TO_3D_URL}/${taskId}`, {
-        headers: { 'Authorization': authHeader }
+        headers: {
+          'Authorization': authHeader
+        }
       });
       if (statusResponse.ok) {
         statusData = await statusResponse.json();
@@ -128,13 +157,16 @@ Deno.serve(async (req) => {
             details: statusData
           }), {
             status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json'
+            }
           });
         }
       }
       attempts++;
       if (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise((resolve)=>setTimeout(resolve, 5000));
       }
     }
     if (!statusData || statusData.status !== 'SUCCEEDED') {
@@ -143,7 +175,10 @@ Deno.serve(async (req) => {
         error: 'Refine task timeout'
       }), {
         status: 408,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       });
     }
     // Download GLB and OBJ
@@ -156,7 +191,10 @@ Deno.serve(async (req) => {
         availableFormats: Object.keys(statusData.model_urls || {})
       }), {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       });
     }
     const [glbResponse, objResponse] = await Promise.all([
@@ -202,7 +240,7 @@ Deno.serve(async (req) => {
         fileName: `models/${refinedId}.stl`
       })
     });
-    let stlUrl: string | null = null, stlFileSize: number | null = null, scalingInfo: any = null, printingSpecs: any = null, stlNote: string | null = null;
+    let stlUrl = null, stlFileSize = null, scalingInfo = null, printingSpecs = null, stlNote = null;
     if (converterResponse.ok) {
       const converterResult = await converterResponse.json();
       if (converterResult.success) {
@@ -225,7 +263,10 @@ Deno.serve(async (req) => {
         downloadUrl: stlUrl || objPublicUrl,
         objUrl: objPublicUrl,
         stlUrl: stlUrl,
-        originalUrls: { glb: glbUrl, obj: objUrl },
+        originalUrls: {
+          glb: glbUrl,
+          obj: objUrl
+        },
         fileNames: {
           glb: `models/${refinedId}.glb`,
           obj: `models/${refinedId}.obj`,
@@ -249,7 +290,10 @@ Deno.serve(async (req) => {
         note: stlNote
       }
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
     });
   } catch (error) {
     console.error('❌ Refine function error:', error);
@@ -265,4 +309,4 @@ Deno.serve(async (req) => {
       }
     });
   }
-}); 
+});

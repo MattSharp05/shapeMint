@@ -1,9 +1,9 @@
 import axios from 'axios';
 import { modelService } from './model';
-import { MeshyResponse, CreateModelInput } from '../types/model';
+import { MeshyResponse } from '../types/model';
 import { supabase } from '../lib/supabase';
 
-const MESHY_API_BASE = '/api/meshy';
+const MESHY_API_BASE = 'https://shape-mint.vercel.app/api/meshy';  // Using production URL for all environments
 
 interface MeshyGenerationParams {
   prompt: string;
@@ -122,11 +122,11 @@ export class MeshyService {
   private headers: { Authorization: string };
 
   private constructor() {
-    const apiKey = import.meta.env.VITE_MESHY_API_KEY;
-    if (!apiKey) {
+    const MESHY_API_KEY = import.meta.env.VITE_MESHY_API_KEY;
+    if (!MESHY_API_KEY) {
       throw new Error('VITE_MESHY_API_KEY is not set');
     }
-    this.headers = { Authorization: `Bearer ${apiKey}` };
+    this.headers = { Authorization: `Bearer ${MESHY_API_KEY}` };
   }
 
   public static getInstance(): MeshyService {
@@ -148,7 +148,7 @@ export class MeshyService {
         style: params.style || 'base',
         negative_prompt: params.negative_prompt || '',
         seed: params.seed || Math.floor(Math.random() * 1000000),
-        enable_pbr: false
+        enable_pbr: true
       }, { headers: this.headers });
 
       console.log('Preview task creation response:', previewResponse.data);
@@ -218,7 +218,7 @@ export class MeshyService {
       const refineResponse = await axios.post(`${MESHY_API_BASE}/text-to-3d`, {
         mode: 'refine',
         preview_task_id: preview.taskId,
-        enable_pbr: false
+        enable_pbr: true
       }, { headers: this.headers });
 
       console.log('Full refine response:', refineResponse.data);
@@ -332,8 +332,8 @@ export class MeshyService {
   private async createImageTo3DTask(imageDataUri: string, options: Partial<ImageGenerationParams> = {}): Promise<string> {
     const payload = {
       image_url: imageDataUri,
-      ai_model: 'meshy-4', // Required for enable_pbr=true
-      enable_pbr: options.enable_pbr || false,
+      ai_model: 'meshy-4', // Using advanced model for better quality
+      enable_pbr: options.enable_pbr ?? true, // Enable PBR by default for better quality
       should_remesh: true,
       should_texture: true,
       topology: 'triangle',

@@ -1,0 +1,172 @@
+# 🔐 Authentication Test Payloads for ShapeMint
+
+## SQL Injection Payloads
+
+### Basic SQL Injection
+admin' OR '1'='1
+admin' OR 1=1--
+admin' OR 1=1#
+admin' --
+admin' #
+' OR '1'='1
+' OR 1=1--
+
+### Union Based SQL Injection
+' UNION SELECT 1,2,3--
+' UNION SELECT NULL,NULL,NULL--
+' UNION SELECT @@version,2,3--
+
+### Blind SQL Injection
+' AND (SELECT COUNT(*) FROM users)>0--
+' AND (SELECT LENGTH(email) FROM users LIMIT 1)>0--
+
+## XSS Payloads
+
+### Basic XSS
+<script>alert('XSS')</script>
+<img src=x onerror=alert('XSS')>
+javascript:alert('XSS')
+
+### Event Handler XSS
+" onmouseover="alert('XSS')
+' onfocus="alert('XSS')
+" onload="alert('XSS')
+
+### Encoded XSS
+&#60;script&#62;alert('XSS')&#60;/script&#62;
+%3Cscript%3Ealert('XSS')%3C/script%3E
+
+## Authentication Bypass
+
+### Empty/Null Values
+Email: 
+Password: 
+Email: null
+Password: null
+
+### Special Characters
+Email: admin@test.com'
+Email: admin@test.com"
+Email: admin@test.com\
+Email: admin@test.com;
+
+### Common Credentials
+admin/admin
+admin/password
+admin/123456
+test/test
+user/user
+guest/guest
+
+## Session Testing
+
+### Session Token Manipulation
+Replace session token with:
+- Empty string
+- Null value
+- Random string
+- Another user's token
+
+### JWT Token Testing
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+
+## Rate Limiting Bypass
+
+### Multiple Requests
+Send 100+ login attempts rapidly
+Send requests from different IPs
+Use different user agents
+
+### Timing Attacks
+Send requests with delays
+Send requests in parallel
+Send requests with different patterns
+
+## Input Validation
+
+### Email Format Testing
+test@test
+test@test.
+test@.test
+test@test..com
+test@@test.com
+test@test.com.
+test@test.com..
+
+### Password Testing
+a
+123
+password
+PASSWORD
+Password123
+Password123!
+VeryLongPasswordThatExceedsMaximumLength
+
+### Name Field Testing
+<script>alert('XSS')</script>
+'; DROP TABLE users; --
+admin' OR '1'='1
+VeryLongNameThatExceedsMaximumLength
+Name with special chars: !@#$%^&*()
+
+## API Testing
+
+### Supabase Auth Endpoints
+POST /auth/v1/token?grant_type=password
+POST /auth/v1/signup
+POST /auth/v1/logout
+
+### Edge Function Testing
+POST /functions/v1/generate-3d-model
+POST /functions/v1/obj-to-stl
+POST /functions/v1/create-checkout-session
+
+### Headers to Test
+Authorization: Bearer [token]
+Authorization: Bearer 
+Authorization: Bearer null
+Authorization: Bearer invalid_token
+X-Client-Info: 
+X-API-Key: 
+
+## CSRF Testing
+
+### Missing CSRF Token
+Remove csrf token from requests
+Send requests without csrf token
+Use invalid csrf token
+
+### CSRF Token Reuse
+Reuse csrf token multiple times
+Use csrf token from different session
+Use expired csrf token
+
+## File Upload Testing
+
+### Malicious File Types
+test.php
+test.php.jpg
+test.php;.jpg
+test.php%00.jpg
+test.php....jpg
+
+### File Content Testing
+<?php echo "test"; ?>
+<script>alert('XSS')</script>
+{"malicious": "content"}
+
+## Error Handling
+
+### Trigger Errors
+Send malformed JSON
+Send invalid content-type
+Send oversized payloads
+Send invalid parameters
+
+### Information Disclosure
+Check error messages for:
+- Database structure
+- File paths
+- API keys
+- Internal IPs
+- Version information 

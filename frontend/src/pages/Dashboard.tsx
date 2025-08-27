@@ -127,7 +127,12 @@ export function Dashboard() {
   ];
 
   React.useEffect(() => {
-    if (!user) return;
+    console.log('👤 Dashboard: User state check:', { user: user?.id || 'null/undefined', timestamp: new Date().toISOString() });
+    if (!user) {
+      console.log('⚠️ Dashboard: No user found, skipping model fetch');
+      return;
+    }
+    console.log('🔍 Dashboard: Fetching models for user:', user.id);
     setLoadingModels(true);
     setModelsError(null);
     supabase
@@ -136,15 +141,67 @@ export function Dashboard() {
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
+        console.log('📊 Dashboard: Query result:', { data, error, count: data?.length });
         if (error) {
+          console.error('❌ Dashboard: Query error:', error);
           setModelsError(error.message);
           setGeneratedModels([]);
         } else {
+          console.log('✅ Dashboard: Setting models:', data);
           setGeneratedModels(data as GeneratedModel[]);
         }
         setLoadingModels(false);
       });
-  }, [user]);
+  }, [user?.id]);
+
+  // Manual test function to debug database query
+  const testModelsFetch = async () => {
+    if (!user) {
+      console.log('❌ No user for manual test');
+      return;
+    }
+    console.log('🧪 Manual test: Fetching models for user:', user.id);
+    
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Query timeout after 10 seconds')), 10000)
+    );
+    
+    try {
+      console.log('🕰️ Starting query with 10s timeout...');
+      const queryPromise = supabase
+        .from('generated_models')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      
+      const result = await Promise.race([queryPromise, timeoutPromise]) as any;
+      const { data, error } = result;
+      console.log('🧪 Manual test result:', { data, error, count: data?.length });
+      
+      if (!error && data) {
+        console.log('✅ Query succeeded! Found', data.length, 'models');
+        if (data.length > 0) {
+          console.log('📊 First model:', data[0]);
+        }
+      }
+      
+    } catch (err) {
+      console.error('❌ Manual test error:', err);
+      console.log('🔍 Trying simpler query without user filter...');
+      
+      try {
+        const allResult = await Promise.race([
+          supabase.from('generated_models').select('id, user_id, prompt, status, created_at').limit(5),
+          timeoutPromise
+        ]) as any;
+        const { data: allData, error: allError } = allResult;
+        console.log('🔍 All models query result:', { allData, allError, count: allData?.length });
+      } catch (allErr) {
+        console.error('❌ All models query also failed:', allErr);
+      }
+    }
+  };
 
   // Function to fetch orders filtered by user email
   const fetchOrders = useCallback(async () => {
@@ -226,6 +283,13 @@ export function Dashboard() {
               <p className="text-xl text-gray-600">
                 Manage your designs, purchases, and manufacturing orders
               </p>
+              {/* Temporary debug button */}
+              <button 
+                onClick={testModelsFetch}
+                className="mt-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+              >
+                🧪 Test Models Fetch
+              </button>
             </div>
             
                           {/* Debug: Manual Thumbnail Generation */}

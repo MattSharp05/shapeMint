@@ -1,5 +1,4 @@
 import express from 'express';
-import { createProxyMiddleware } from 'http-proxy-middleware';
 import cors from 'cors';
 import axios from 'axios';
 import dotenv from 'dotenv';
@@ -8,72 +7,17 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
-app.use(cors());
+// Configure CORS
+app.use(cors({
+  origin: ['http://localhost:5175', 'http://localhost:5176'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
+// Handle preflight requests
+app.options('*', cors());
 app.use(express.json({ limit: '50mb' })); // Support large image uploads
-
-// Proxy middleware configuration for Meshy assets
-const meshyAssetsProxy = createProxyMiddleware({
-  target: 'https://assets.meshy.ai',
-  changeOrigin: true,
-  secure: true,
-  router: {
-    '/meshy-assets/*': 'https://assets.meshy.ai/:splat'
-  },
-  pathRewrite: (path) => {
-    // Extract the base path and query parameters
-    const [basePath, queryString] = path.split('?');
-    // Remove /meshy-assets prefix and ensure leading slash
-    const targetPath = basePath.replace(/^\/meshy-assets\/?/, '/');
-    // Preserve query parameters if they exist
-    return queryString ? `${targetPath}?${queryString}` : targetPath;
-  },
-  onProxyReq: (proxyReq, req) => {
-    // Log detailed request information
-    console.log('Meshy asset request:', {
-      originalUrl: req.originalUrl,
-      url: req.url,
-      path: req.path,
-      query: req.query,
-      headers: req.headers,
-      method: req.method,
-    });
-    console.log('Proxy request URL:', proxyReq.path);
-
-    // Set required headers for Meshy assets
-    proxyReq.setHeader('Origin', 'https://assets.meshy.ai');
-    proxyReq.setHeader('Referer', 'https://assets.meshy.ai/');
-    proxyReq.setHeader('Accept', '*/*');
-
-    // Copy authorization header if present
-    const authHeader = req.headers['authorization'];
-    if (authHeader) {
-      proxyReq.setHeader('Authorization', authHeader);
-    }
-  },
-  onProxyRes: (proxyRes, req) => {
-    // Log detailed response information
-    console.log('Meshy asset response:', {
-      originalUrl: req.originalUrl,
-      url: req.url,
-      path: req.path,
-      status: proxyRes.statusCode,
-      statusMessage: proxyRes.statusMessage,
-      headers: proxyRes.headers,
-      responseUrl: proxyRes.responseUrl
-    });
-    
-    if (proxyRes.statusCode !== 200) {
-      console.error('Proxy error:', {
-        status: proxyRes.statusCode,
-        message: proxyRes.statusMessage,
-        headers: proxyRes.headers
-      });
-    }
-  }
-});
-
-// Use proxy middleware for /meshy-assets path
-app.use('/meshy-assets', meshyAssetsProxy);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -177,7 +121,9 @@ app.get('/api/meshy/glb', async (req, res) => {
       return res.status(400).json({ error: 'URL parameter is required' });
     }
 
-    console.log('Proxying GLB request for:', url);
+    // Decode URL once to handle any URL-encoded characters
+    const decodedUrl = decodeURIComponent(url);
+    console.log('Proxying GLB request for:', decodedUrl);
 
     // Determine if this is a Supabase storage path or direct URL
     let fetchUrl;
@@ -188,30 +134,45 @@ app.get('/api/meshy/glb', async (req, res) => {
       'Connection': 'keep-alive'
     };
 
-    if (url.startsWith('http')) {
+    if (decodedUrl.startsWith('http')) {
       // Direct URL (e.g., from Meshy)
-      fetchUrl = url;
+      fetchUrl = decodedUrl;
       headers['Authorization'] = `Bearer ${MESHY_API_KEY}`;
     } else {
       // Supabase storage path - construct full URL
-      fetchUrl = `https://xmjynwcvldvacsuhulbc.supabase.co/storage/v1/object/public/3d-models/${url}`;
+      fetchUrl = `https://xmjynwcvldvacsuhulbc.supabase.co/storage/v1/object/public/3d-models/${decodedUrl}`;
       // No authorization needed for public Supabase storage
     }
 
     console.log('Fetching from:', fetchUrl);
 
+    // For Meshy/CloudFront URLs, preserve all query parameters as they contain the signature
+    if (fetchUrl.includes('cloudfront.net')) {
+      const urlObj = new URL(fetchUrl);
+      const queryParams = urlObj.searchParams;
+      
+      // Add CloudFront query parameters as headers
+      if (queryParams.has('Expires')) headers['CloudFront-Expires'] = queryParams.get('Expires');
+      if (queryParams.has('Signature')) headers['CloudFront-Signature'] = queryParams.get('Signature');
+      if (queryParams.has('Key-Pair-Id')) headers['CloudFront-Key-Pair-Id'] = queryParams.get('Key-Pair-Id');
+    }
+
+    // Log request details for debugging
+    console.log('Making request with:', {
+      url: fetchUrl,
+      headers: headers
+    });
+
     const response = await axios.get(fetchUrl, {
       headers,
-      responseType: 'arraybuffer'
+      responseType: 'arraybuffer',
+      maxRedirects: 5
     });
 
     // Set appropriate headers for GLB file
     res.set({
       'Content-Type': 'model/gltf-binary',
       'Content-Length': response.data.length,
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'Cache-Control': 'public, max-age=3600' // Cache for 1 hour
     });
 

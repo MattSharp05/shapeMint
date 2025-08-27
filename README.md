@@ -182,6 +182,30 @@ shapeMint/
 | `VITE_SUPABASE_ANON_KEY` | Supabase anonymous key | ✅ |
 | `VITE_MESHY_API_KEY` | Meshy AI API key | ✅ |
 
+## 🎉 Latest Updates (August 2025)
+
+### 🔄 Model Generation & Status Tracking
+- Added `meshy_task_id` column to track model generation status
+- Improved status polling with non-blocking edge functions
+- Fixed model visibility in Dashboard and Marketplace
+- Enhanced error handling in model generation process
+
+### 🔒 Security Improvements
+- Removed sensitive data logging (session tokens, user IDs)
+- Enhanced authentication flow with secure token storage
+- Improved RLS policies for model access
+
+### 🎨 UI/UX Enhancements
+- Fixed infinite re-render issues in Dashboard
+- Improved model loading states and error messages
+- Enhanced marketplace filtering to show completed models
+
+### 🗄️ Database Updates
+- Added new migrations for model tracking:
+  - `20250827032421_create_generated_models_table.sql`
+  - `20250827093000_add_progress_column.sql`
+  - `20250827094700_add_meshy_task_id.sql`
+
 ## 🐛 Known Issues
 
 - GLB model loading requires proxy server to be running

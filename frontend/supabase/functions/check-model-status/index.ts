@@ -1,5 +1,5 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { serve } from 'std/http/server.ts';
+import { createClient } from '@supabase/supabase-js';
 
 // Explicitly declare Deno namespace for Edge Function environment
 declare const Deno: {
@@ -36,12 +36,45 @@ serve(async (req) => {
       });
     }
 
+    // First, look up the database record to get the actual Meshy task ID
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return new Response(JSON.stringify({ error: 'Supabase configuration missing.' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500,
+      });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    console.log('🔍 Looking up database record for taskId:', taskId);
+    
+    const { data: modelRecord, error: lookupError } = await supabase
+      .from('generated_models')
+      .select('meshy_task_id')
+      .eq('id', taskId)
+      .single();
+
+    console.log('📊 Database lookup result:', { modelRecord, lookupError });
+
+    if (lookupError || !modelRecord?.meshy_task_id) {
+      console.error('❌ Model record not found or missing Meshy task ID:', { lookupError, modelRecord });
+      return new Response(JSON.stringify({ error: 'Model record not found or missing Meshy task ID.' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 404,
+      });
+    }
+
+    const meshyTaskId = modelRecord.meshy_task_id;
+    console.log(`Looking up Meshy task: ${meshyTaskId} for database record: ${taskId}`);
+
     // Use the correct API version based on the generation type
     let apiUrl;
     if (type === 'image-to-3d') {
-      apiUrl = `https://api.meshy.ai/v1/image-to-3d/${taskId}`;
+      apiUrl = `https://api.meshy.ai/v1/image-to-3d/${meshyTaskId}`;
     } else if (type === 'text-to-3d') {
-      apiUrl = `https://api.meshy.ai/v2/text-to-3d/${taskId}`; // Use v2 for text-to-3d tasks
+      apiUrl = `https://api.meshy.ai/v2/text-to-3d/${meshyTaskId}`; // Use v2 for text-to-3d tasks
     } else {
       throw new Error(`Unsupported task type: ${type}`);
     }
@@ -62,32 +95,24 @@ serve(async (req) => {
 
     const meshyData = await meshyResponse.json();
 
-    // If the model has finished processing, update our database
+    // If the task is complete, update the database record
     if (meshyData.status === 'SUCCEEDED') {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL');
-      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-
-      if (supabaseUrl && supabaseServiceKey) {
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
-        const updatePayload = {
-          status: 'completed',
-          glb_url: meshyData.model_urls?.glb,
-          obj_url: meshyData.model_urls?.obj,
-          stl_url: meshyData.model_urls?.stl,
-          updated_at: new Date().toISOString(),
-        };
-
         const { error: dbError } = await supabase
           .from('generated_models')
-          .update(updatePayload)
+          .update({
+            status: 'completed',
+            model_url: meshyData.model_urls?.glb,
+            glb_url: meshyData.model_urls?.glb,
+            obj_url: meshyData.model_urls?.obj,
+            stl_url: meshyData.model_urls?.stl,
+            thumbnail_url: meshyData.thumbnail_url,
+            updated_at: new Date().toISOString(),
+          })
           .eq('id', taskId);
 
         if (dbError) {
-          console.error(`⚠️ Database update failed for task ${taskId}:`, dbError);
-        } else {
-          console.log(`✅ Task ${taskId} marked as completed in database.`);
+          console.error('⚠️ Database update error (non-critical):', dbError);
         }
-      }
     }
 
     // IMPORTANT: Wrap the response in a `data` object for the frontend

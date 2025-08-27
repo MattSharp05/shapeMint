@@ -18,11 +18,7 @@ export class StorageService {
     
     // Check auth status
     const { data: { session } } = await supabase.auth.getSession();
-    console.log('Current auth session:', {
-      hasSession: !!session,
-      userId: session?.user?.id,
-      role: session?.user?.role
-    });
+    // Auth session check removed for security
     
     // Upload file to storage bucket
     console.log(`Uploading ${fileType} file to ${this.BUCKET_NAME}/${fileName}`);

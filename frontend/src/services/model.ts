@@ -9,7 +9,7 @@ export class ModelService {
   async createModel(input: CreateModelInput): Promise<GeneratedModel> {
     // Log to verify RLS match
     const { data: { user: sessionUser } } = await supabase.auth.getUser();
-    console.log('[createModel] input.user_id:', input.user_id, ' session uid:', sessionUser?.id);
+    // User ID verification logging removed for security
 
     const { data, error } = await supabase
       .from(MODELS_TABLE)

@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { modelService } from '../services/modelService';
 
 interface GenerationState {
   generating: boolean;
   progress: number;
-  status: 'pending' | 'generating' | 'completed' | 'failed';
-  generatedModel: string | null;
-  generationData: any;
+  status: 'pending' | 'generating' | 'polling' | 'completed' | 'failed';
+  type: 'image-to-3d' | 'text-to-3d' | null;
+  generatedModelUrl: string | null;
   error: string | null;
 }
 
@@ -15,93 +15,124 @@ export function useModelGeneration() {
     generating: false,
     progress: 0,
     status: 'pending',
-    generatedModel: null,
-    generationData: null,
+    type: null,
+    generatedModelUrl: null,
     error: null,
   });
 
+  const pollingRef = useRef<number | null>(null);
+
+  const stopPolling = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  };
+
+  const startPolling = (taskId: string, type: 'image-to-3d' | 'text-to-3d') => {
+    stopPolling(); // Ensure no multiple polls are running
+
+    pollingRef.current = window.setInterval(async () => {
+      try {
+        const response = await modelService.checkModelStatus(taskId, type);
+
+        if (response.status === 'completed') {
+          stopPolling();
+          setState(prev => ({
+            ...prev,
+            generating: false,
+            status: 'completed',
+            progress: 100,
+            generatedModelUrl: response.model_url,
+          }));
+        } else if (response.status === 'failed') {
+          stopPolling();
+          setState(prev => ({
+            ...prev,
+            generating: false,
+            status: 'failed',
+            error: response.error || 'Model generation failed.',
+          }));
+        } else {
+          // Still processing, update progress
+          setState(prev => ({
+            ...prev,
+            status: 'polling',
+            progress: response.progress || prev.progress, // Use progress from backend if available
+          }));
+        }
+      } catch (error: any) {
+        stopPolling();
+        setState(prev => ({
+          ...prev,
+          generating: false,
+          status: 'failed',
+          error: error.message || 'Failed to check model status.',
+        }));
+      }
+    }, 5000); // Poll every 5 seconds
+  };
+
   const generateModel = async (data: { prompt: string; image?: File }) => {
-    setState(prev => ({
-      ...prev,
+    const generationType = data.image ? 'image-to-3d' : 'text-to-3d';
+    setState({
       generating: true,
       status: 'generating',
+      type: generationType,
       progress: 0,
       error: null,
-    }));
+      generatedModelUrl: null,
+    });
 
     try {
-      // Start progress simulation
-      const progressInterval = setInterval(() => {
-        setState(prev => ({
-          ...prev,
-          progress: prev.progress < 90 ? prev.progress + 5 : prev.progress,
-        }));
-      }, 1000);
-
       const response = await modelService.generate3DModel(data);
-      clearInterval(progressInterval);
-
-      if (!response.success) {
-        setState(prev => ({
-          ...prev,
-          status: 'failed',
-          error: response.error || 'Failed to generate model',
-          progress: 0,
-          generating: false,
-        }));
-        return;
-      }
-
-      const modelUrl = response.data.result?.task_id || response.data.task_id || response.data.url;
       
-      if (!modelUrl) {
+      if (!response.success || !response.taskId) {
         setState(prev => ({
           ...prev,
-          status: 'failed',
-          error: 'No model URL received from generation service',
-          progress: 0,
           generating: false,
+          status: 'failed',
+          error: response.error || 'Failed to start model generation.',
         }));
         return;
       }
 
+      // Start polling for the task ID
+      startPolling(response.taskId, generationType);
       setState(prev => ({
         ...prev,
-        status: 'completed',
-        progress: 100,
-        generatedModel: modelUrl,
-        generationData: {
-          ...data,
-          modelDetails: response.data,
-          taskId: response.data.task_id,
-          format: response.data.format || 'GLB',
-          polygons: response.data.polygons || 'Unknown',
-          fileSize: response.data.file_size || 'Unknown',
-        },
-        generating: false,
+        status: 'polling',
+        progress: 10, // Initial progress after starting
       }));
-    } catch (err) {
-      console.error('Error during model generation:', err);
+
+    } catch (err: any) {
       setState(prev => ({
         ...prev,
-        status: 'failed',
-        error: 'An unexpected error occurred',
-        progress: 0,
         generating: false,
+        status: 'failed',
+        error: err.message || 'An unexpected error occurred during generation.',
       }));
     }
   };
 
   const reset = () => {
+    stopPolling();
     setState({
       generating: false,
       progress: 0,
       status: 'pending',
-      generatedModel: null,
-      generationData: null,
+      type: null,
+      generatedModelUrl: null,
       error: null,
     });
   };
+
+  // Cleanup effect to stop polling when the component unmounts
+  useEffect(() => {
+    return () => {
+      stopPolling();
+    };
+  }, []);
 
   return {
     ...state,

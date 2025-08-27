@@ -86,9 +86,7 @@ export function GenerationForm({
       // Prepare generation parameters with explicit type
       const baseParams = {
         type: mode === 'image' ? ('image-to-3d' as const) : ('text-to-3d' as const),
-        mode: settings.quality as 'preview' | 'refine',
-        enable_pbr: true,
-        topology: 'quad' as const
+        mode: 'preview' as const // Always use preview mode for now
       };
 
       if (mode === 'text') {
@@ -96,7 +94,8 @@ export function GenerationForm({
         console.log('Starting text-to-3D generation with prompt:', prompt.trim());
         modelData = await modelService.generate3DModel({
           ...baseParams,
-          prompt: `${prompt}${prefilledData?.socialTag ? ` #${prefilledData.socialTag}` : ''}`
+          prompt: `${prompt}${prefilledData?.socialTag ? ` #${prefilledData.socialTag}` : ''}`,
+          userId: user.id
         });
         
       } else {
@@ -108,7 +107,8 @@ export function GenerationForm({
         modelData = await modelService.generate3DModel({
           ...baseParams,
           prompt: imageFile ? imageFile.name : 'Image-to-3D generation', // Use filename or a fallback
-          image: imagePreview // Send data URI for image-to-3D
+          image: imagePreview, // Send data URI for image-to-3D
+          userId: user.id
         });
       }
       

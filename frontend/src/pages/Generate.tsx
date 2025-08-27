@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+
 import { useThumbnailGenerator } from '../hooks/useThumbnailGenerator';
 import { GenerationForm } from '../components/Generation/GenerationForm';
 import { GenerationProgress } from '../components/Generation/GenerationProgress';
@@ -20,7 +21,14 @@ export function Generate() {
     selectedAngle: string;
     isCustom: boolean;
   } | null>(null);
-  const [stlConversionInProgress, setStlConversionInProgress] = useState(false);
+
+  
+  // Generation form state
+  const [mode, setMode] = useState<'text' | 'image'>('text');
+  const [prompt, setPrompt] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  
   const [prefilledData, setPrefilledData] = useState<{
     prefilledPrompt?: string;
     socialTag?: string;
@@ -39,10 +47,7 @@ export function Generate() {
   }, [location.state]);
 
   // Client-side thumbnail generation (like working branch)
-  const {
-    isGenerating: isGeneratingThumbnails,
-    generateThumbnails
-  } = useThumbnailGenerator({ 
+  const { isGenerating: isGeneratingThumbnails } = useThumbnailGenerator({ 
     uploadToStorage: false // Use data URLs for MVP speed
   });
 
@@ -89,168 +94,74 @@ export function Generate() {
     if (modelData.data?.status === 'processing' && modelData.data?.taskId) {
       console.log('🔄 Model generation started, beginning polling for completion...');
       const taskId = modelData.data.taskId;
+      const type = modelData.data.type;
       
       setStatus('generating');
       
-      // Start polling for completion using Meshy API directly
-      const pollForCompletion = async () => {
+      // Start polling for completion using check-model-status edge function
+      const pollForCompletion = async (taskId: string, type: 'text-to-3d' | 'image-to-3d') => {
         const maxAttempts = 60; // 10 minutes max (10s interval)
         let attempts = 0;
-        const startTime = Date.now();
-        
-        const apiUrl = modelData.data.type === 'image-to-3d' 
-          ? 'https://api.meshy.ai/openapi/v1/image-to-3d'
-          : 'https://api.meshy.ai/openapi/v2/text-to-3d';
-        
-        while (attempts < maxAttempts) {
+
+        const checkStatus = async (): Promise<boolean> => {
+          if (attempts >= maxAttempts) {
+            console.error('⏰ Polling timeout');
+            setStatus('failed');
+            return true; // Stop polling
+          }
+
           try {
             console.log(`🔍 Polling attempt ${attempts + 1}/${maxAttempts} for task ${taskId}`);
-            
-            // Check Meshy API directly for status
-            const statusResponse = await fetch(`${apiUrl}/${taskId}`, {
-              headers: {
-                'Authorization': `Bearer ${import.meta.env.VITE_MESHY_API_KEY}`,
-              },
-            });
-            
-            if (statusResponse.ok) {
-              const statusData = await statusResponse.json();
-              console.log(`📊 Status: ${statusData.status}, Progress: ${statusData.progress || 0}%`);
-              const glbUrl: string | undefined = statusData?.model_urls?.glb;
-              const objUrl: string | undefined = statusData?.model_urls?.obj;
-              const haveAnyUrl = !!(glbUrl || objUrl);
+            const statusResponse = await modelService.checkModelStatus(taskId, type);
+            console.log('📊 Status data:', statusResponse);
 
-              if (statusData.status === 'SUCCEEDED') {
-                console.log('✅ Model generation completed!');
-                
-                // Map completed model data
-                const completedModelData = {
-                  id: taskId,
-                  taskId: taskId,
-                  urls: {
-                    glb: statusData.model_urls?.glb,
-                    stl: statusData.model_urls?.glb, // Use GLB as fallback
-                    obj: statusData.model_urls?.obj,
-                    download: statusData.model_urls?.glb
-                  },
-                  modelUrl: statusData.model_urls?.glb,
-                  downloadUrl: statusData.model_urls?.glb,
-                  stlUrl: statusData.model_urls?.glb,
-                  objUrl: statusData.model_urls?.obj,
-                  name: modelData.data.prompt || 'Generated Model',
-                  type: modelData.data.type
-                };
-                
-                setStatus('completed');
-                setGeneratedModel(completedModelData);
-                
-                // Start client-side thumbnail generation immediately (like working branch)
-                if (completedModelData.modelUrl) {
-                  console.log('🎨 Starting client-side thumbnail generation...');
-                  try {
-                    const generatedThumbnails = await generateThumbnails(
-                      completedModelData.modelUrl,
-                      completedModelData.id
-                    );
-                    
-                    setThumbnailData({
-                      angles: generatedThumbnails,
-                      selectedAngle: Object.keys(generatedThumbnails)[0] || 'front',
-                      isCustom: false
-                    });
-                    setShowThumbnailSelector(true);
-                    
-                    console.log('🎨 Thumbnail selector activated with real 3D previews!');
-                    
-                  } catch (error) {
-                    console.error('⚠️ Thumbnail generation failed:', error);
-                    // Continue without thumbnails - not blocking
-                  }
-                }
-                return;
-              } else if (statusData.status === 'FAILED') {
-                console.error('❌ Model generation failed');
-                setStatus('failed');
-                return;
+            if (statusResponse?.status === 'completed') {
+              console.log('✅ Model generation complete!');
+              // Create a model object that matches the expected structure
+              const finalModelData = {
+                ...statusResponse,
+                id: taskId,
+                urls: { glb: statusResponse.model_url },
+                modelUrl: statusResponse.model_url
+              };
+              setGeneratedModel(finalModelData);
+              setStatus('completed');
+              return true; // Stop polling
+            } else if (statusResponse?.status === 'failed') {
+              console.error('❌ Model generation failed:', statusResponse.error);
+              setStatus('failed');
+              return true; // Stop polling
+            } else if (statusResponse?.status === 'processing') {
+              if (typeof statusResponse.progress === 'number') {
+                console.log(`⏳ Model generation is ${statusResponse.progress}% complete.`);
               } else {
-                // 🕰️ Watchdog: if stuck > 4 minutes but URLs present, mark complete via Edge func
-                const elapsedMin = (Date.now() - startTime) / 60000;
-                const isImageTo3D = modelData.data.type === 'image-to-3d';
-                const aggressiveThreshold = isImageTo3D ? 4 : 6; // minutes
-                if (haveAnyUrl && elapsedMin >= aggressiveThreshold) {
-                  console.log(`🔥 Watchdog: elapsed ${elapsedMin.toFixed(1)}m, URLs present but status=${statusData.status}. Forcing completion...`);
-                  try {
-                    const result = await modelService.markModelComplete({
-                      taskId,
-                      glb_url: glbUrl || null,
-                      obj_url: objUrl || null,
-                      note: 'Auto-completed by client watchdog after timeout with valid URLs'
-                    });
-                    if (result.success) {
-                      console.log('✅ Marked completed via Edge function. Updating UI.');
-                      const completedModelData = {
-                        id: taskId,
-                        taskId,
-                        urls: {
-                          glb: glbUrl || objUrl,
-                          stl: glbUrl || objUrl,
-                          obj: objUrl,
-                          download: glbUrl || objUrl
-                        },
-                        modelUrl: glbUrl || objUrl,
-                        downloadUrl: glbUrl || objUrl,
-                        stlUrl: glbUrl || objUrl,
-                        objUrl: objUrl,
-                        name: modelData.data.prompt || 'Generated Model',
-                        type: modelData.data.type
-                      };
-                      setStatus('completed');
-                      setGeneratedModel(completedModelData);
-                      // Trigger thumbnail generation
-                      if (completedModelData.modelUrl) {
-                        try {
-                          const generatedThumbnails = await generateThumbnails(
-                            completedModelData.modelUrl,
-                            completedModelData.id
-                          );
-                          setThumbnailData({
-                            angles: generatedThumbnails,
-                            selectedAngle: Object.keys(generatedThumbnails)[0] || 'front',
-                            isCustom: false
-                          });
-                          setShowThumbnailSelector(true);
-                        } catch (e) {
-                          console.error('Thumbnail generation after watchdog completion failed:', e);
-                        }
-                      }
-                      return; // stop polling
-                    } else {
-                      console.warn('MarkModelComplete failed:', result.error);
-                    }
-                  } catch (e) {
-                    console.error('Error forcing completion:', e);
-                  }
-                }
+                console.log('⏳ Model is still processing...');
               }
-            }
-            
-            attempts++;
-            if (attempts < maxAttempts) {
-              await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10s between polls
             }
           } catch (error) {
             console.error('Polling error:', error);
-            attempts++;
-            await new Promise(resolve => setTimeout(resolve, 10000));
           }
+
+          attempts++;
+          return false; // Continue polling
+        };
+
+        // Perform the first check immediately
+        const shouldStop = await checkStatus();
+
+        // If the first check didn't resolve it, start the interval
+        if (!shouldStop) {
+          const intervalId = setInterval(async () => {
+            const stop = await checkStatus();
+            if (stop) {
+              clearInterval(intervalId);
+            }
+          }, 10000);
         }
-        
-        console.error('⏰ Polling timeout - model may still be generating');
-        setStatus('failed');
       };
-      
+
       // Start polling in background
-      pollForCompletion();
+      pollForCompletion(taskId, type);
       return;
     }
     
@@ -374,6 +285,15 @@ export function Generate() {
             <GenerationForm 
               onSuccess={handleGenerationSuccess} 
               prefilledData={prefilledData}
+              mode={mode}
+              setMode={setMode}
+              prompt={prompt}
+              setPrompt={setPrompt}
+              imageFile={imageFile}
+              setImageFile={setImageFile}
+              imagePreview={imagePreview}
+              setImagePreview={setImagePreview}
+              isGenerating={status === 'generating'}
             />
             
             {status !== 'pending' && (
@@ -392,7 +312,7 @@ export function Generate() {
                 3D Preview
               </h3>
               <ModelViewer 
-                modelUrl={generatedModel?.urls?.glb}
+                modelUrl={generatedModel}
                 className="h-80 w-full"
               />
             </Card>

@@ -110,7 +110,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Listen for auth state changes
   useEffect(() => {
     const getSession = async () => {
+      console.log('🔐 Getting initial session...');
       const { data: { session } } = await supabase.auth.getSession();
+      // Session data logging removed for security
       if (session?.user) {
         setUser({
           id: session.user.id,

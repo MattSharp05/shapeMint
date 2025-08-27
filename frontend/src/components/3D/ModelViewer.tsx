@@ -1,11 +1,13 @@
-import { Suspense, useState, useEffect, useRef } from 'react';
+import { Suspense, useState, useEffect, useRef, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, useGLTF } from '@react-three/drei';
 import { Loader2, AlertCircle, Package, RefreshCw } from 'lucide-react';
 import * as THREE from 'three';
 
+const proxyBaseUrl = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001';
+
 interface ModelViewerProps {
-  modelUrl?: string;
+  modelUrl?: string | { modelUrl?: string };
   className?: string;
   debug?: boolean;
 }
@@ -16,14 +18,17 @@ const checkProxyHealth = async (): Promise<boolean> => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
     
-    const response = await fetch('http://localhost:3001/api/health', { 
+    // Use a simple test URL to check if proxy is working
+    const PROXY_HEALTH_CHECK_URL = `${import.meta.env.VITE_PROXY_URL}/api/health`;
+    const response = await fetch(PROXY_HEALTH_CHECK_URL, { 
       method: 'HEAD',
       signal: controller.signal,
       mode: 'cors'
     });
     
     clearTimeout(timeoutId);
-    return response.ok;
+    // A 403 or 404 status means the proxy is working, but the test URL is invalid.
+    return response.status === 403 || response.status === 404 || response.ok;
   } catch (error) {
     console.warn('⚠️ Proxy health check failed:', error);
     // If health check fails, assume proxy is ready (fallback)
@@ -33,24 +38,26 @@ const checkProxyHealth = async (): Promise<boolean> => {
 
 // Utility function to validate URL accessibility with retry
 const validateUrlWithRetry = async (url: string, maxRetries = 2): Promise<boolean> => {
+  // URL is already proxied by modelService if needed
+  const finalUrl = url;
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
       
-      const response = await fetch(url, { 
+      const response = await fetch(finalUrl, { 
         method: 'HEAD',
         signal: controller.signal,
-        mode: 'cors'
+        mode: 'cors',
+        headers: {
+          'Accept': '*/*'
+        }
       });
       
       clearTimeout(timeoutId);
-      if (response.ok) return true;
+      return response.ok || response.status === 404; // 404 is ok for proxy validation
       
-      // Wait before retry
-      if (attempt < maxRetries - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-      }
     } catch (error) {
       console.warn(`URL validation attempt ${attempt + 1} failed:`, error);
       if (attempt < maxRetries - 1) {
@@ -69,23 +76,57 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
   onLoadError?: (error: string) => void;
 }) {
   const [hasErrored, setHasErrored] = useState(false);
-  const [scene, setScene] = useState<THREE.Object3D | null>(null);
   const [isValidating, setIsValidating] = useState(true);
   const errorReported = useRef(false);
   const validationAttempted = useRef(false);
-  
+
   // Use proxy endpoint to avoid CORS issues
-  let proxiedUrl = url;
+  const proxiedUrl = useMemo(() => {
+    if (url.includes('assets.meshy.ai') || 
+        url.includes('meshy.ai') || 
+        url.includes('cloudfront.net')) {
+      const proxyUrl = `${proxyBaseUrl}/api/meshy/glb?url=${encodeURIComponent(url)}`;
+      if (debug) {
+        console.log('🔗 Original URL:', url);
+        console.log('🔗 Proxied URL:', proxyUrl);
+      }
+      return proxyUrl;
+    }
+    return url;
+  }, [url, debug]);
+
+  // Load the model using the proxied URL
+  const { scene: gltfScene } = useGLTF(proxiedUrl);
   
-  // Check if this is a Meshy URL that needs proxying
-  if (url.includes('assets.meshy.ai') || url.includes('meshy.ai')) {
-    proxiedUrl = `/api/meshy/glb?url=${encodeURIComponent(url)}`;
-  }
-  // Check if this is a Supabase storage URL that needs proxying  
-  else if (url.includes('supabase.co/storage/v1/object/public/')) {
-    proxiedUrl = `/api/meshy/glb?url=${encodeURIComponent(url)}`;
-  }
+  // Update scene state when GLTF loads
+  useEffect(() => {
+    if (gltfScene) {
+      setIsValidating(false);
+      onLoadComplete?.();
+    }
+  }, [gltfScene, onLoadComplete]);
   
+  useEffect(() => {
+    // Cleanup function to dispose of resources when the component unmounts
+    return () => {
+      if (gltfScene) {
+        if (debug) console.log('🧹 Disposing of GLTF scene...');
+        gltfScene.traverse((object: any) => {
+          // Type guard to ensure we only operate on meshes
+          if (object instanceof THREE.Mesh) {
+            object.geometry.dispose();
+            if (Array.isArray(object.material)) {
+              object.material.forEach(material => material.dispose());
+            } else {
+              object.material.dispose();
+            }
+          }
+        });
+      }
+    };
+  }, [gltfScene, debug]);
+
+  // Debug logging
   if (debug) {
     console.log('🔍 ModelViewer Debug Info:', {
       originalUrl: url,
@@ -126,13 +167,10 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
           if (proxiedUrl !== url) {
             console.warn('⚠️ Proxy URL failed, trying direct URL as fallback');
             const directUrlValid = await validateUrlWithRetry(url);
-            if (directUrlValid) {
-              // Update proxiedUrl to use direct URL
-              proxiedUrl = url;
-              if (debug) console.log('✅ Using direct URL as fallback');
-            } else {
+            if (!directUrlValid) {
               throw new Error('Model file is not accessible from either proxy or direct URL');
             }
+            if (debug) console.log('✅ Using direct URL as fallback');
           } else {
             throw new Error('Model file is not accessible or server is not ready');
           }
@@ -156,7 +194,6 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
   // Reset error state on URL change
   useEffect(() => {
     setHasErrored(false);
-    setScene(null);
     errorReported.current = false;
     validationAttempted.current = false;
     setIsValidating(true); // Reset validation state
@@ -191,47 +228,17 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
     };
   }, [onLoadError, debug]);
 
-  // Load the GLB model - ALWAYS call useGLTF hook (React rule)
-  let gltf: any = null;
-  let gltfError: string | null = null;
-  
-  try {
-    // Always attempt to load, but handle errors gracefully
-    gltf = useGLTF(proxiedUrl);
-  } catch (error) {
-    gltfError = error instanceof Error ? error.message : 'Failed to load GLB model';
-    if (debug) console.error('❌ useGLTF synchronous error:', error);
-  }
-
-  // Handle successful load
-  useEffect(() => {
-    if (gltf?.scene && !hasErrored && !gltfError && !errorReported.current) {
-      if (debug) console.log('✅ GLB loaded successfully');
-      setScene(gltf.scene);
-      onLoadComplete?.();
-    }
-  }, [gltf, hasErrored, gltfError, debug, onLoadComplete]);
-
-  // Handle GLTF errors
-  useEffect(() => {
-    if (gltfError && !errorReported.current && !isValidating) {
-      console.error('❌ Model loading failed:', gltfError);
-      setHasErrored(true);
-      errorReported.current = true;
-      onLoadError?.(gltfError);
-    }
-  }, [gltfError, onLoadError, isValidating]);
 
   // Early returns AFTER all hooks
-  if (hasErrored || gltfError) {
+  if (hasErrored) {
     return null; // Return nothing if there's an error, let the parent handle it
   }
 
-  if (isValidating || !scene) {
+  if (isValidating || !gltfScene) {
     return null; // Still loading or validating
   }
 
-  return <primitive object={scene} key={proxiedUrl} />;
+  return <primitive object={gltfScene} key={proxiedUrl} />;
 }
 
 function Scene({ modelUrl, debug = false, onLoadStart, onLoadComplete, onLoadError }: { 
@@ -263,7 +270,9 @@ function Scene({ modelUrl, debug = false, onLoadStart, onLoadComplete, onLoadErr
   );
 }
 
-export function ModelViewer({ modelUrl, className = '', debug = false }: ModelViewerProps) {
+export function ModelViewer({ modelUrl: modelProp, className = '', debug = false }: ModelViewerProps) {
+  // Handle both string URL and model object being passed
+  const modelUrl = typeof modelProp === 'string' ? modelProp : modelProp?.modelUrl;
   const [loadingState, setLoadingState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [retryKey, setRetryKey] = useState(0);

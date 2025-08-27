@@ -212,7 +212,7 @@ export const modelService: ModelService = {
     try {
       const { error } = await supabase
         .from('generated_models')
-        .update({ status: 'published', updated_at: new Date().toISOString() })
+        .update({ status: 'published', is_marketplace_listed: true, updated_at: new Date().toISOString() })
         .eq('id', modelId);
 
       if (error) {
@@ -233,6 +233,7 @@ export const modelService: ModelService = {
         .from('generated_models')
         .select('*')
         .eq('status', 'completed')
+        .eq('is_marketplace_listed', true)
         .order('created_at', { ascending: false });
 
       if (error) {

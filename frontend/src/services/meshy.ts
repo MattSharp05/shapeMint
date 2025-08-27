@@ -3,7 +3,7 @@ import { modelService } from './model';
 import { MeshyResponse } from '../types/model';
 import { supabase } from '../lib/supabase';
 
-const MESHY_API_BASE = 'https://shape-mint.vercel.app/api/meshy';  // Using production URL for all environments
+const MESHY_API_BASE = '/api/meshy';  // Using relative URL for proper routing
 
 interface MeshyGenerationParams {
   prompt: string;

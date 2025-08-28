@@ -4,7 +4,10 @@ import { OrbitControls, PerspectiveCamera, useGLTF } from '@react-three/drei';
 import { Loader2, AlertCircle, Package, RefreshCw } from 'lucide-react';
 import * as THREE from 'three';
 
-const proxyBaseUrl = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001';
+// In production, use relative URL to avoid CORS and page reloads
+// In development, use the proxy server URL from env or default to localhost:3001
+const isProduction = import.meta.env.PROD;
+const proxyBaseUrl = isProduction ? '' : (import.meta.env.VITE_PROXY_URL || 'http://localhost:3001');
 
 interface ModelViewerProps {
   modelUrl?: string | { modelUrl?: string };

@@ -83,15 +83,25 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
   const errorReported = useRef(false);
   const validationAttempted = useRef(false);
 
-  // Use proxy endpoint to avoid CORS issues
+  // Use proxy endpoint to avoid CORS issues in development
+  // In production, use direct URLs for Meshy assets
   const proxiedUrl = useMemo(() => {
+    // In production, use direct URLs to avoid localhost proxy
+    if (isProduction) {
+      if (debug) {
+        console.log('🔗 Production mode - using direct URL:', url);
+      }
+      return url;
+    }
+    
+    // In development, use proxy for Meshy assets
     if (url.includes('assets.meshy.ai') || 
         url.includes('meshy.ai') || 
         url.includes('cloudfront.net')) {
       const proxyUrl = `${proxyBaseUrl}/api/meshy/glb?url=${encodeURIComponent(url)}`;
       if (debug) {
-        console.log('🔗 Original URL:', url);
-        console.log('🔗 Proxied URL:', proxyUrl);
+        console.log('🔗 Development mode - Original URL:', url);
+        console.log('🔗 Development mode - Proxied URL:', proxyUrl);
       }
       return proxyUrl;
     }

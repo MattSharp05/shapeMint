@@ -116,9 +116,19 @@ export class ThumbnailGenerator {
 
   async loadModel(modelUrl: string): Promise<THREE.Object3D> {
     return new Promise((resolve, reject) => {
-      // Use proxy endpoint to avoid CORS issues
-      const proxyBaseUrl = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001';
-      const proxiedUrl = `${proxyBaseUrl}/api/download?url=${encodeURIComponent(modelUrl)}`;
+      // Use proxy endpoint to avoid CORS issues in development
+      // In production, use direct URLs for model assets
+      const isProduction = import.meta.env.PROD;
+      let proxiedUrl;
+      
+      if (isProduction) {
+        // In production, use direct URL
+        proxiedUrl = modelUrl;
+      } else {
+        // In development, use proxy server
+        const proxyBaseUrl = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001';
+        proxiedUrl = `${proxyBaseUrl}/api/download?url=${encodeURIComponent(modelUrl)}`;
+      }
       
       this.loader.load(
         proxiedUrl,

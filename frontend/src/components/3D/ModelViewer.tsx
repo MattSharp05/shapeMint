@@ -4,10 +4,12 @@ import { OrbitControls, PerspectiveCamera, useGLTF } from '@react-three/drei';
 import { Loader2, AlertCircle, Package, RefreshCw } from 'lucide-react';
 import * as THREE from 'three';
 
-// In production, use relative URL to avoid CORS and page reloads
-// In development, use the proxy server URL from env or default to localhost:3001
+// Always use relative URLs for API endpoints to ensure they work in both development and production
+// This ensures that in production, the URLs are relative and handled by Vercel API routes
+// In development, they'll be handled by Vite's dev server proxy configuration
 const isProduction = import.meta.env.PROD;
-const proxyBaseUrl = isProduction ? '' : (import.meta.env.VITE_PROXY_URL || 'http://localhost:3001');
+// Force empty proxyBaseUrl to ensure relative URLs
+const proxyBaseUrl = '';
 
 interface ModelViewerProps {
   modelUrl?: string | { modelUrl?: string };

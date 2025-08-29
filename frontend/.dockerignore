@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.DS_Store
+npm-debug.log
+Dockerfile
+.dockerignore
+frontend/node_modules
+**/__tests__
+coverage
+build
+*.log

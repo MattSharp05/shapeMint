@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -19,10 +21,78 @@ app.use(cors({
 app.options('*', cors());
 app.use(express.json({ limit: '50mb' })); // Support large image uploads
 
+// Proxy middleware configuration for Meshy assets
+const meshyAssetsProxy = createProxyMiddleware({
+  target: 'https://assets.meshy.ai',
+  changeOrigin: true,
+  secure: true,
+  pathRewrite: (path) => {
+    // Extract the base path and query parameters
+    const [basePath, queryString] = path.split('?');
+    // Remove /meshy-assets prefix and ensure leading slash
+    const targetPath = basePath.replace(/^\/meshy-assets\/?/, '/');
+    // Preserve query parameters if they exist
+    return queryString ? `${targetPath}?${queryString}` : targetPath;
+  },
+  onProxyReq: (proxyReq, req) => {
+    // Log detailed request information
+    console.log('Meshy asset request:', {
+      originalUrl: req.originalUrl,
+      url: req.url,
+      path: req.path,
+      query: req.query,
+      headers: req.headers,
+      method: req.method,
+    });
+    console.log('Proxy request URL:', proxyReq.path);
+
+    // Set required headers for Meshy assets
+    proxyReq.setHeader('Origin', 'https://assets.meshy.ai');
+    proxyReq.setHeader('Referer', 'https://assets.meshy.ai/');
+    proxyReq.setHeader('Accept', '*/*');
+
+    // Copy authorization header if present
+    const authHeader = req.headers['authorization'];
+    if (authHeader) {
+      proxyReq.setHeader('Authorization', authHeader);
+    }
+  },
+  onProxyRes: (proxyRes, req) => {
+    // Log detailed response information
+    console.log('Meshy asset response:', {
+      originalUrl: req.originalUrl,
+      url: req.url,
+      path: req.path,
+      status: proxyRes.statusCode,
+      statusMessage: proxyRes.statusMessage,
+      headers: proxyRes.headers,
+      responseUrl: proxyRes.responseUrl
+    });
+    
+    if (proxyRes.statusCode !== 200) {
+      console.error('Proxy error:', {
+        status: proxyRes.statusCode,
+        message: proxyRes.statusMessage,
+        headers: proxyRes.headers
+      });
+    }
+  }
+});
+
+// Use proxy middleware for /meshy-assets path
+app.use('/meshy-assets', meshyAssetsProxy);
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Serve static files from the built React app (dist)
+// Calculate __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+app.use(express.static(path.join(__dirname, 'dist')));
 
 // Meshy API proxy endpoints
 const MESHY_API_KEY = process.env.VITE_MESHY_API_KEY;
@@ -183,6 +253,12 @@ app.get('/api/meshy/glb', async (req, res) => {
     console.error('GLB proxy error:', error.message);
     res.status(500).json({ error: 'Failed to load GLB file' });
   }
+});
+
+// Client-side routing fallback (exclude API routes)
+// Using a regex instead of '*' to satisfy path-to-regexp v6 (Express 5)
+app.get(/^(?!\/api\/).*/, (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 // Start server

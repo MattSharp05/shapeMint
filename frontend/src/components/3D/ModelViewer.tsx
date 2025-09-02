@@ -8,8 +8,7 @@ import * as THREE from 'three';
 // This ensures that in production, the URLs are relative and handled by Vercel API routes
 // In development, they'll be handled by Vite's dev server proxy configuration
 const isProduction = import.meta.env.PROD;
-// Force empty proxyBaseUrl to ensure relative URLs
-const proxyBaseUrl = '';
+const proxyBaseUrl = import.meta.env.VITE_PROXY_URL || '';
 
 interface ModelViewerProps {
   modelUrl?: string | { modelUrl?: string };

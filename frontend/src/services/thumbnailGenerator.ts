@@ -126,7 +126,7 @@ export class ThumbnailGenerator {
         proxiedUrl = modelUrl;
       } else {
         // In development, use proxy server
-        const proxyBaseUrl = import.meta.env.VITE_PROXY_URL || 'http://localhost:3001';
+        const proxyBaseUrl = import.meta.env.VITE_PROXY_URL || '';
         proxiedUrl = `${proxyBaseUrl}/api/download?url=${encodeURIComponent(modelUrl)}`;
       }
       

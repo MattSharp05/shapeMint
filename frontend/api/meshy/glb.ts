@@ -1,12 +1,28 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
 
-const MESHY_API_KEY = process.env.VITE_MESHY_API_KEY;
+const MESHY_API_KEY = process.env.MESHY_API_KEY || process.env.VITE_MESHY_API_KEY;
+
+// Add this logging and validation
+if (!MESHY_API_KEY) {
+  console.error('MESHY_API_KEY not found in environment variables');
+}
+
+console.log('Available env vars:', Object.keys(process.env).filter(key => key.includes('MESHY')));
 
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
+  // Add CORS headers to all responses
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

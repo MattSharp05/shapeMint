@@ -35,4 +35,4 @@ async function handler(
   }
 }
 
-export default handler;
+export { handler as default };

@@ -1,19 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
 
-const MESHY_API_KEY = process.env.MESHY_API_KEY || process.env.VITE_MESHY_API_KEY;
-
-// Add this logging and validation
-if (!MESHY_API_KEY) {
-  console.error('MESHY_API_KEY not found in environment variables');
-}
-
-console.log('Available env vars:', Object.keys(process.env).filter(key => key.includes('MESHY')));
-
-async function handler(
+export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
+  console.log('=== GLB Proxy Request ===');
+  console.log('Method:', req.method);
+  console.log('Query:', req.query);
+  console.log('Available env vars:', Object.keys(process.env).filter(key => key.includes('MESHY')));
+
   // Add CORS headers to all responses
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -24,75 +20,71 @@ async function handler(
   }
 
   if (req.method !== 'GET') {
+    console.log('Method not allowed:', req.method);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
     const { url } = req.query;
-    
-    console.log('GLB API Route called with:', { url, method: req.method, hasApiKey: !!MESHY_API_KEY });
+    console.log('Requested URL:', url);
     
     if (!url || typeof url !== 'string') {
+      console.log('Invalid URL parameter');
       return res.status(400).json({ error: 'URL parameter is required' });
     }
 
-    console.log('Proxying GLB request for:', url);
+    const MESHY_API_KEY = process.env.MESHY_API_KEY || process.env.VITE_MESHY_API_KEY;
+    console.log('API Key found:', !!MESHY_API_KEY);
+    
+    if (!MESHY_API_KEY) {
+      console.log('No API key available');
+      return res.status(500).json({ error: 'API key not configured' });
+    }
 
-    // Determine if this is a Supabase storage path or direct URL
     let fetchUrl: string;
     let headers: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': '*/*',
-      'Accept-Encoding': 'gzip, deflate, br',
-      'Connection': 'keep-alive'
     };
 
     if (url.startsWith('http')) {
-      // Direct URL (e.g., from Meshy)
       fetchUrl = url;
-      if (MESHY_API_KEY) {
-        headers['Authorization'] = `Bearer ${MESHY_API_KEY}`;
-      }
+      headers['Authorization'] = `Bearer ${MESHY_API_KEY}`;
     } else {
-      // Supabase storage path - construct full URL
       fetchUrl = `https://xmjynwcvldvacsuhulbc.supabase.co/storage/v1/object/public/3d-models/${url}`;
-      // No authorization needed for public Supabase storage
     }
 
     console.log('Fetching from:', fetchUrl);
+    console.log('Headers:', Object.keys(headers));
 
     const response = await axios.get(fetchUrl, {
       headers,
-      responseType: 'arraybuffer'
+      responseType: 'arraybuffer',
+      timeout: 30000 // 30 second timeout
     });
 
-    // Set appropriate headers for GLB file
+    console.log('Response status:', response.status);
+    console.log('Response size:', response.data.length);
+
     res.set({
       'Content-Type': 'model/gltf-binary',
       'Content-Length': response.data.length,
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Cache-Control': 'public, max-age=3600' // Cache for 1 hour
+      'Cache-Control': 'public, max-age=3600'
     });
 
-    // Send the GLB data
     res.send(Buffer.from(response.data));
     
   } catch (error: any) {
-    console.error('GLB proxy error:', error.message);
-    console.error('Error details:', error);
-    console.error('Request URL:', req.url);
-    console.error('Request query:', req.query);
+    console.error('=== GLB Proxy Error ===');
+    console.error('Error message:', error.message);
+    console.error('Error status:', error.response?.status);
+    console.error('Error data:', error.response?.data);
+    console.error('Full error:', error);
     
-    // Return more detailed error information for debugging
     res.status(500).json({ 
       error: 'Failed to load GLB file',
-      message: error.message,
-      url: req.query.url,
-      hasApiKey: !!MESHY_API_KEY
+      details: error.message,
+      status: error.response?.status 
     });
   }
 }
-
-export default handler;

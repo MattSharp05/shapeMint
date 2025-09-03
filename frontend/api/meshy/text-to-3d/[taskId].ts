@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
 
-const MESHY_API_KEY = process.env.VITE_MESHY_API_KEY;
+const MESHY_API_KEY = process.env.MESHY_API_KEY || process.env.VITE_MESHY_API_KEY;
 const MESHY_TEXT_TO_3D_BASE = 'https://api.meshy.ai/v2';
 
-export default async function handler(
+async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
@@ -33,4 +33,6 @@ export default async function handler(
       error: error.response?.data || { message: 'Failed to check text-to-3D status' }
     });
   }
-} 
+}
+
+export default handler;

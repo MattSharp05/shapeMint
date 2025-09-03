@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
 
-const MESHY_API_KEY = process.env.VITE_MESHY_API_KEY;
+const MESHY_API_KEY = process.env.MESHY_API_KEY || process.env.VITE_MESHY_API_KEY;
 const MESHY_IMAGE_TO_3D_BASE = 'https://api.meshy.ai/openapi/v1';
 
-export default async function handler(
+async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
@@ -33,4 +33,6 @@ export default async function handler(
       error: error.response?.data || { message: 'Image-to-3D request failed' }
     });
   }
-} 
+}
+
+export default handler;

@@ -10,7 +10,7 @@ if (!MESHY_API_KEY) {
 
 console.log('Available env vars:', Object.keys(process.env).filter(key => key.includes('MESHY')));
 
-export default async function handler(
+async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
@@ -29,6 +29,8 @@ export default async function handler(
 
   try {
     const { url } = req.query;
+    
+    console.log('GLB API Route called with:', { url, method: req.method, hasApiKey: !!MESHY_API_KEY });
     
     if (!url || typeof url !== 'string') {
       return res.status(400).json({ error: 'URL parameter is required' });
@@ -79,6 +81,18 @@ export default async function handler(
     
   } catch (error: any) {
     console.error('GLB proxy error:', error.message);
-    res.status(500).json({ error: 'Failed to load GLB file' });
+    console.error('Error details:', error);
+    console.error('Request URL:', req.url);
+    console.error('Request query:', req.query);
+    
+    // Return more detailed error information for debugging
+    res.status(500).json({ 
+      error: 'Failed to load GLB file',
+      message: error.message,
+      url: req.query.url,
+      hasApiKey: !!MESHY_API_KEY
+    });
   }
-} 
+}
+
+export default handler;

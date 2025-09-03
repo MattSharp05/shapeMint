@@ -45,37 +45,7 @@ const checkProxyHealth = async (): Promise<boolean> => {
   }
 };
 
-// Utility function to validate URL accessibility with retry
-const validateUrlWithRetry = async (url: string, maxRetries = 2): Promise<boolean> => {
-  // URL is already proxied by modelService if needed
-  const finalUrl = url;
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-      
-      const response = await fetch(finalUrl, { 
-        method: 'HEAD',
-        signal: controller.signal,
-        mode: 'cors',
-        headers: {
-          'Accept': '*/*'
-        }
-      });
-      
-      clearTimeout(timeoutId);
-      return response.ok || response.status === 404; // 404 is ok for proxy validation
-      
-    } catch (error) {
-      console.warn(`URL validation attempt ${attempt + 1} failed:`, error);
-      if (attempt < maxRetries - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-      }
-    }
-  }
-  return false;
-};
 
 function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }: { 
   url: string; 
@@ -164,33 +134,21 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
         setIsValidating(true);
         onLoadStart?.();
         
-        // Check proxy health first
+        // Skip validation in production - just let useGLTF handle it
+        if (isProduction) {
+          setIsValidating(false);
+          if (debug) console.log('✅ Production mode - skipping validation');
+          return;
+        }
+        
+        // Only do health check in development
         const proxyReady = await checkProxyHealth();
         if (!proxyReady && debug) {
           console.warn('⚠️ Proxy health check failed, proceeding anyway...');
         }
         
-        // Wait longer for proxy to be ready (increased from 1s to 2s)
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Validate the URL is accessible
-        const urlValid = await validateUrlWithRetry(proxiedUrl);
-        if (!urlValid) {
-          // Try direct URL as fallback if proxy fails
-          if (proxiedUrl !== url) {
-            console.warn('⚠️ Proxy URL failed, trying direct URL as fallback');
-            const directUrlValid = await validateUrlWithRetry(url);
-            if (!directUrlValid) {
-              throw new Error('Model file is not accessible from either proxy or direct URL');
-            }
-            if (debug) console.log('✅ Using direct URL as fallback');
-          } else {
-            throw new Error('Model file is not accessible or server is not ready');
-          }
-        }
-        
         setIsValidating(false);
-        if (debug) console.log('✅ URL validation successful');
+        if (debug) console.log('✅ Validation complete');
         
       } catch (error) {
         console.error('❌ Model validation failed:', error);

@@ -61,6 +61,14 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
 
   // Use proxy endpoint to avoid CORS issues
   const proxiedUrl = useMemo(() => {
+    console.log('🔗 Model component processing URL:', url);
+    console.log('🔗 Production environment check:', { 
+      isProduction, 
+      proxyBaseUrl, 
+      hasProxyBaseUrl: !!proxyBaseUrl,
+      urlIncludesMeshy: url.includes('assets.meshy.ai') || url.includes('meshy.ai')
+    });
+    
     if (url.includes('assets.meshy.ai') || 
         url.includes('meshy.ai') || 
         url.includes('cloudfront.net')) {
@@ -68,19 +76,54 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
       // In dev, proxyBaseUrl might be localhost or empty
       // In production, proxyBaseUrl is empty, making this a relative URL
       const proxyUrl = `${proxyBaseUrl}/api/meshy/glb?url=${encodeURIComponent(url)}`;
-      if (debug) {
-        console.log('🔗 Original URL:', url);
-        console.log('🔗 Proxied URL:', proxyUrl);
-        console.log('🔗 Environment:', isProduction ? 'Production' : 'Development');
-      }
+      console.log('🔗 Meshy URL detected - using proxy:');
+      console.log('  - Original URL:', url);
+      console.log('  - Proxy Base URL:', proxyBaseUrl);
+      console.log('  - Final Proxy URL:', proxyUrl);
+      console.log('  - Environment:', isProduction ? 'PRODUCTION' : 'DEVELOPMENT');
       return proxyUrl;
     }
+    console.log('🔗 Non-Meshy URL - using direct:', url);
     return url;
   }, [url, debug]);
 
   // Load the model using the proxied URL
-  const { scene: gltfScene } = useGLTF(proxiedUrl);
+  let gltfScene;
+  try {
+    const gltfResult = useGLTF(proxiedUrl);
+    gltfScene = gltfResult.scene;
+    
+    // Debug logging for useGLTF
+    console.log('🎮 useGLTF result:', { 
+      hasScene: !!gltfScene, 
+      proxiedUrl,
+      environment: isProduction ? 'PRODUCTION' : 'DEVELOPMENT'
+    });
+  } catch (error) {
+    console.error('❌ useGLTF error:', error);
+    console.error('❌ Failed URL:', proxiedUrl);
+    console.error('❌ Environment:', isProduction ? 'PRODUCTION' : 'DEVELOPMENT');
+    gltfScene = null;
+  }
   
+  // Test API endpoint accessibility in production
+  useEffect(() => {
+    if (isProduction && proxiedUrl.includes('/api/meshy/glb')) {
+      console.log('🧪 Testing API endpoint accessibility in production...');
+      fetch(proxiedUrl, { method: 'HEAD' })
+        .then(response => {
+          console.log('🧪 API endpoint test result:', {
+            status: response.status,
+            statusText: response.statusText,
+            url: proxiedUrl
+          });
+        })
+        .catch(error => {
+          console.error('🧪 API endpoint test failed:', error);
+        });
+    }
+  }, [proxiedUrl, isProduction]);
+
   // Update scene state when GLTF loads
   useEffect(() => {
     if (gltfScene) {
@@ -244,6 +287,16 @@ function Scene({ modelUrl, debug = false, onLoadStart, onLoadComplete, onLoadErr
 export function ModelViewer({ modelUrl: modelProp, className = '', debug = false }: ModelViewerProps) {
   // Handle both string URL and model object being passed
   const modelUrl = typeof modelProp === 'string' ? modelProp : modelProp?.modelUrl;
+  
+  // Debug logging to see what we're receiving
+  console.log('🔍 ModelViewer received:', { 
+    modelProp, 
+    modelUrl, 
+    type: typeof modelProp,
+    environment: isProduction ? 'PRODUCTION' : 'DEVELOPMENT',
+    hasProxyUrl: !!import.meta.env.VITE_PROXY_URL,
+    proxyUrl: import.meta.env.VITE_PROXY_URL
+  });
   const [loadingState, setLoadingState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [retryKey, setRetryKey] = useState(0);

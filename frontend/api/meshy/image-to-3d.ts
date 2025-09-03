@@ -35,4 +35,4 @@ async function handler(
   }
 }
 
-export { handler as default };
+module.exports = handler;

@@ -18,6 +18,11 @@ interface ModelViewerProps {
 
 // Utility function to check if proxy server is ready
 const checkProxyHealth = async (): Promise<boolean> => {
+  // Skip health checks in production when VITE_PROXY_URL is undefined
+  if (!import.meta.env.VITE_PROXY_URL) {
+    return true;
+  }
+  
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout

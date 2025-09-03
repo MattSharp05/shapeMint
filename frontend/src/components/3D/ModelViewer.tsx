@@ -88,23 +88,51 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
   }, [url, debug]);
 
   // Load the model using the proxied URL
-  let gltfScene;
-  try {
-    const gltfResult = useGLTF(proxiedUrl);
-    gltfScene = gltfResult.scene;
-    
-    // Debug logging for useGLTF
-    console.log('🎮 useGLTF result:', { 
-      hasScene: !!gltfScene, 
-      proxiedUrl,
-      environment: isProduction ? 'PRODUCTION' : 'DEVELOPMENT'
-    });
-  } catch (error) {
-    console.error('❌ useGLTF error:', error);
-    console.error('❌ Failed URL:', proxiedUrl);
-    console.error('❌ Environment:', isProduction ? 'PRODUCTION' : 'DEVELOPMENT');
-    gltfScene = null;
-  }
+  const [gltfScene, setGltfScene] = useState<THREE.Group | null>(null);
+  const [loadError, setLoadError] = useState<Error | null>(null);
+
+  // Use manual loading in production to avoid useGLTF issues
+  useEffect(() => {
+    if (isProduction) {
+      console.log('🎮 Production mode - using manual GLTF loading');
+      setLoadError(null);
+      
+      // Import GLTFLoader dynamically
+      import('three/examples/jsm/loaders/GLTFLoader.js').then(({ GLTFLoader }) => {
+        const loader = new GLTFLoader();
+        loader.load(
+          proxiedUrl,
+          (gltf) => {
+            console.log('✅ Manual GLTF load successful:', gltf);
+            setGltfScene(gltf.scene);
+          },
+          (progress) => {
+            console.log('📊 GLTF loading progress:', progress);
+          },
+          (error) => {
+            console.error('❌ Manual GLTF load failed:', error);
+            setLoadError(error as Error);
+          }
+        );
+      }).catch(error => {
+        console.error('❌ Failed to import GLTFLoader:', error);
+        setLoadError(error as Error);
+      });
+    } else {
+      // Use useGLTF in development
+      try {
+        const gltfResult = useGLTF(proxiedUrl);
+        setGltfScene(gltfResult.scene);
+        console.log('🎮 Development mode - useGLTF result:', { 
+          hasScene: !!gltfResult.scene, 
+          proxiedUrl
+        });
+      } catch (error) {
+        console.error('❌ useGLTF error in development:', error);
+        setLoadError(error as Error);
+      }
+    }
+  }, [proxiedUrl, isProduction]);
   
   // Test API endpoint accessibility in production
   useEffect(() => {
@@ -129,8 +157,12 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
     if (gltfScene) {
       setIsValidating(false);
       onLoadComplete?.();
+    } else if (loadError) {
+      setIsValidating(false);
+      setHasErrored(true);
+      onLoadError?.(loadError.message || 'Failed to load 3D model');
     }
-  }, [gltfScene, onLoadComplete]);
+  }, [gltfScene, loadError, onLoadComplete, onLoadError]);
   
   useEffect(() => {
     // Cleanup function to dispose of resources when the component unmounts
@@ -289,14 +321,16 @@ export function ModelViewer({ modelUrl: modelProp, className = '', debug = false
   const modelUrl = typeof modelProp === 'string' ? modelProp : modelProp?.modelUrl;
   
   // Debug logging to see what we're receiving
-  console.log('🔍 ModelViewer received:', { 
-    modelProp, 
-    modelUrl, 
-    type: typeof modelProp,
-    environment: isProduction ? 'PRODUCTION' : 'DEVELOPMENT',
-    hasProxyUrl: !!import.meta.env.VITE_PROXY_URL,
-    proxyUrl: import.meta.env.VITE_PROXY_URL
-  });
+  if (debug) {
+    console.log('🔍 ModelViewer received:', { 
+      modelProp, 
+      modelUrl, 
+      type: typeof modelProp,
+      environment: isProduction ? 'PRODUCTION' : 'DEVELOPMENT',
+      hasProxyUrl: !!import.meta.env.VITE_PROXY_URL,
+      proxyUrl: import.meta.env.VITE_PROXY_URL
+    });
+  }
   const [loadingState, setLoadingState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [retryKey, setRetryKey] = useState(0);

@@ -14,6 +14,8 @@ async function handler(
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Content-Type', 'model/gltf-binary');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -66,12 +68,7 @@ async function handler(
     console.log('Response status:', response.status);
     console.log('Response size:', response.data.length);
 
-    res.set({
-      'Content-Type': 'model/gltf-binary',
-      'Content-Length': response.data.length,
-      'Cache-Control': 'public, max-age=3600'
-    });
-
+    res.setHeader('Content-Length', response.data.length);
     res.send(Buffer.from(response.data));
     
   } catch (error: any) {

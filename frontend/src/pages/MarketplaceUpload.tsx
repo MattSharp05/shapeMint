@@ -128,20 +128,20 @@ export function MarketplaceUpload() {
   };
 
   return (
-    <div className="pt-16 min-h-screen bg-gradient-to-br from-gray-50 via-purple-50 to-pink-50">
+    <div className="pt-16 min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Enhanced Header */}
         <div className="mb-12">
           <button
             onClick={() => navigate('/generate')}
-            className="group flex items-center space-x-2 text-gray-600 hover:text-purple-600 transition-all duration-200 mb-6 transform hover:translate-x-1"
+            className="group flex items-center space-x-2 text-gray-600 hover:text-brand-primary transition-all duration-200 mb-6 transform hover:translate-x-1"
           >
             <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
             <span className="font-medium">Back to Generate</span>
           </button>
           
           <div className="text-center">
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-clip-text text-transparent mb-4">
+            <h1 className="text-5xl font-bold text-brand-primary mb-4">
               Publish to Marketplace
             </h1>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
@@ -155,7 +155,7 @@ export function MarketplaceUpload() {
           <div className="space-y-6">
             <Card className="p-8 backdrop-blur-sm bg-white/90 border-0 shadow-xl hover:shadow-2xl transition-all duration-300">
               <h3 className="text-2xl font-bold text-gray-900 mb-8 flex items-center">
-                <Sparkles className="h-6 w-6 mr-3 text-purple-600" />
+                <Sparkles className="h-6 w-6 mr-3 text-brand-primary" />
                 Listing Details
               </h3>
               
@@ -166,7 +166,7 @@ export function MarketplaceUpload() {
                     placeholder="Give your design a catchy title"
                     value={listingData.title}
                     onChange={(e) => setListingData({...listingData, title: e.target.value})}
-                    className="transition-all duration-200 focus:ring-4 focus:ring-purple-100"
+                    className="transition-all duration-200 focus:ring-4 focus:ring-brand-light"
                     required
                   />
                 </div>
@@ -179,7 +179,7 @@ export function MarketplaceUpload() {
                     placeholder="Describe your design, its features, and potential uses..."
                     value={listingData.description}
                     onChange={(e) => setListingData({...listingData, description: e.target.value})}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-purple-100 focus:border-purple-500 resize-none transition-all duration-200 bg-gray-50 focus:bg-white"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-brand-light focus:border-brand-primary resize-none transition-all duration-200 bg-gray-50 focus:bg-white"
                     rows={4}
                     required
                   />
@@ -195,7 +195,7 @@ export function MarketplaceUpload() {
                       placeholder="9.99"
                       value={listingData.price}
                       onChange={(e) => setListingData({...listingData, price: e.target.value})}
-                      className="transition-all duration-200 focus:ring-4 focus:ring-purple-100"
+                      className="transition-all duration-200 focus:ring-4 focus:ring-brand-light"
                       required
                     />
                   </div>
@@ -207,7 +207,7 @@ export function MarketplaceUpload() {
                     <select
                       value={listingData.category}
                       onChange={(e) => setListingData({...listingData, category: e.target.value})}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-purple-100 focus:border-purple-500 transition-all duration-200 bg-gray-50 focus:bg-white"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-brand-light focus:border-brand-primary transition-all duration-200 bg-gray-50 focus:bg-white"
                     >
                       {categories.map(category => (
                         <option key={category} value={category}>{category}</option>
@@ -222,7 +222,7 @@ export function MarketplaceUpload() {
                     placeholder="modern, minimalist, functional, decorative"
                     value={listingData.tags}
                     onChange={(e) => setListingData({...listingData, tags: e.target.value})}
-                    className="transition-all duration-200 focus:ring-4 focus:ring-purple-100"
+                    className="transition-all duration-200 focus:ring-4 focus:ring-brand-light"
                     helperText="Add relevant tags to help buyers find your design"
                   />
                 </div>
@@ -243,7 +243,7 @@ export function MarketplaceUpload() {
                   placeholder="Any special printing instructions, recommended materials, or other notes for buyers..."
                   value={listingData.notes}
                   onChange={(e) => setListingData({...listingData, notes: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-purple-100 focus:border-purple-500 resize-none transition-all duration-200 bg-gray-50 focus:bg-white"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-4 focus:ring-brand-light focus:border-brand-primary resize-none transition-all duration-200 bg-gray-50 focus:bg-white"
                   rows={3}
                 />
               </div>
@@ -252,7 +252,7 @@ export function MarketplaceUpload() {
             <Button 
               onClick={handleUpload}
               loading={uploading}
-              className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold text-lg shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
+              className="w-full py-4 bg-brand-primary hover:bg-brand-primary-dark text-white font-bold text-lg shadow-xl hover:shadow-2xl transform hover:scale-105 transition-all duration-200"
               size="lg"
               icon={Upload}
             >
@@ -272,7 +272,7 @@ export function MarketplaceUpload() {
                   modelUrl={modelUrl}
                   className="h-80 w-full rounded-xl overflow-hidden shadow-lg"
                 />
-                <div className="absolute inset-0 rounded-xl ring-2 ring-purple-200 group-hover:ring-purple-400 transition-all duration-300"></div>
+                <div className="absolute inset-0 rounded-xl ring-2 ring-brand-light group-hover:ring-brand-primary transition-all duration-300"></div>
               </div>
               <div className="mt-6 text-sm text-gray-600 bg-gray-50 rounded-lg p-4">
                 <p><strong>Generated from:</strong> {modelData.prompt || 'Image upload'}</p>
@@ -287,7 +287,7 @@ export function MarketplaceUpload() {
                 Marketplace Preview
               </h3>
               
-              <div className="border-2 border-dashed border-purple-200 rounded-xl p-6 bg-gradient-to-br from-purple-50 to-pink-50 hover:border-purple-300 transition-all duration-300">
+              <div className="border-2 border-dashed border-brand-primary/30 rounded-xl p-6 bg-brand-light hover:border-brand-primary transition-all duration-300">
                 <h4 className="font-bold text-gray-900 mb-3 text-lg">
                   {listingData.title || 'Your Design Title'}
                 </h4>
@@ -295,10 +295,10 @@ export function MarketplaceUpload() {
                   {listingData.description || 'Your design description will appear here...'}
                 </p>
                 <div className="flex justify-between items-center mb-4">
-                  <span className="text-sm bg-purple-100 text-purple-800 px-3 py-1 rounded-full font-medium">
+                  <span className="text-sm bg-brand-light text-brand-primary px-3 py-1 rounded-full font-medium">
                     {listingData.category}
                   </span>
-                  <span className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                  <span className="text-2xl font-bold text-brand-primary">
                     ${listingData.price || '0.00'}
                   </span>
                 </div>

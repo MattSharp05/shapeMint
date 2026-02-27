@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase } from '../supabaseClient';
 import type { GeneratedModel, CreateModelInput } from '../types/model';
 
 const MODELS_TABLE = 'generated_models';

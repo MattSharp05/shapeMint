@@ -1,7 +1,8 @@
-import { useState, useEffect, useContext, createContext } from 'react';
-import { supabase } from '../supabaseClient';
+import React, { useState, useEffect, useContext, createContext } from 'react';
+import { supabase, checkSupabaseConnection } from '../supabaseClient';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { userService } from '../services/user';
+import { logger } from '../utils/logger';
 
 interface AuthUser {
   id: string;
@@ -49,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
     } catch (error) {
-      console.error('Login error:', error);
+      logger.error('Login error:', error);
       throw error;
     } finally {
       setLoading(false);
@@ -76,9 +77,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Step 2: Create user record in database
         try {
           await userService.createUser(u.id, u.email || '', name);
-          console.log('✅ User created successfully');
+          logger.log('✅ User created successfully');
         } catch (userError) {
-          console.error('❌ Error creating user:', userError);
+          logger.error('❌ Error creating user:', userError);
           // Continue with auth user creation even if user record creation fails
         }
         
@@ -93,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return authUser;
       }
     } catch (error) {
-      console.error('Registration error:', error);
+      logger.error('Registration error:', error);
       throw error;
     } finally {
       setLoading(false);
@@ -110,23 +111,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Listen for auth state changes
   useEffect(() => {
     const getSession = async () => {
-      console.log('🔐 Getting initial session...');
-      const { data: { session } } = await supabase.auth.getSession();
-      // Session data logging removed for security
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email || '',
-          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '',
-          createdAt: session.user.created_at || new Date().toISOString(),
-        });
+      logger.debug('🔐 Getting initial session...');
+      
+      // First, check if Supabase is reachable
+      const connectionCheck = await checkSupabaseConnection();
+      if (!connectionCheck.connected) {
+        logger.error('⚠️ Supabase connection failed:', connectionCheck.error);
+        // Don't throw - allow app to continue, but user won't be able to auth
+        setLoading(false);
+        return;
       }
-      setLoading(false);
-    };
-    getSession();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (session?.user) {
+      
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          // Check if it's a network error
+          if (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_NAME_NOT_RESOLVED')) {
+            logger.error('⚠️ Network error connecting to Supabase. Project may be paused or unreachable.');
+          } else {
+            logger.error('Error getting session:', error);
+          }
+          setUser(null);
+        } else if (session?.user) {
+          logger.debug('✅ Session found, user logged in');
           setUser({
             id: session.user.id,
             email: session.user.email || '',
@@ -134,11 +141,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             createdAt: session.user.created_at || new Date().toISOString(),
           });
         } else {
+          logger.debug('ℹ️ No active session found');
+          setUser(null);
+        }
+      } catch (error: any) {
+        // Handle network errors gracefully
+        if (error?.message?.includes('Failed to fetch') || error?.message?.includes('ERR_NAME_NOT_RESOLVED')) {
+          logger.error('⚠️ Cannot reach Supabase. Please check: 1) Project is active in Supabase dashboard 2) Network connection');
+        } else {
+          logger.error('Error in getSession:', error);
+        }
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    getSession();
+    
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        logger.debug('🔄 Auth state changed:', event);
+        if (session?.user) {
+          logger.debug('✅ User authenticated:', session.user.email);
+          setUser({
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '',
+            createdAt: session.user.created_at || new Date().toISOString(),
+          });
+        } else {
+          logger.debug('❌ User logged out or session expired');
           setUser(null);
         }
         setLoading(false);
       }
     );
+    
     return () => {
       subscription.unsubscribe();
     };
@@ -146,7 +185,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout }}>
-      {children}
+      {loading ? (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 }

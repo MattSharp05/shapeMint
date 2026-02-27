@@ -9,22 +9,14 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 5176,
+    port: 5175,
     strictPort: true,
     cors: true,
     open: true, // Auto-open in default browser
     proxy: {
-      // Route ALL /api/meshy requests to our local proxy server
-      '/api/meshy': {
+      '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
-        secure: false,
-      },
-
-      '/meshy-assets': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-        secure: false,
       },
     },
   },

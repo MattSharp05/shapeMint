@@ -39,11 +39,12 @@ export function OrderSuccess() {
   const [orderData, setOrderData] = useState<OrderSuccessData | null>(null);
   
   const sessionId = searchParams.get('session_id');
+  const vendor = searchParams.get('vendor');
   const directOrderData = location.state?.orderData;
   const isDirectOrder = location.state?.isDirectOrder;
 
   useEffect(() => {
-    // Handle direct order data from navigation state
+    // Handle direct order data from navigation state (Shapeways, Slant3D, Treatstock)
     if (isDirectOrder && directOrderData) {
       console.log('✅ Using direct order data:', directOrderData);
       setOrderData(directOrderData);
@@ -51,8 +52,77 @@ export function OrderSuccess() {
       return;
     }
 
+    // Handle Craftcloud Stripe redirect — look up the order from the DB
+    if (vendor === 'craftcloud' && user) {
+      console.log('🔄 Craftcloud payment redirect — looking up order from DB');
+      const fetchOrder = async () => {
+        try {
+          // Query for the most recent Craftcloud order for this user
+          const { data: order, error: dbError } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('vendor', 'craftcloud')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (dbError) {
+            console.error('DB query error:', dbError.message, dbError.code, dbError.details);
+          }
+
+          if (dbError || !order) {
+            console.error('Could not find Craftcloud order:', dbError);
+            setError('Could not find your order. The order may not have been saved correctly. Please check your dashboard or contact support.');
+            setLoading(false);
+            return;
+          }
+
+          console.log('✅ Found Craftcloud order:', order.id, 'status:', order.status);
+
+          // Update order status from pending_payment to submitted
+          const { error: updateErr } = await supabase
+            .from('orders')
+            .update({ status: 'submitted', updated_at: new Date().toISOString() })
+            .eq('id', order.id)
+            .eq('status', 'pending_payment');
+
+          if (updateErr) {
+            console.warn('Failed to update order status:', updateErr.message);
+            // Non-blocking — order exists, just status update failed
+          }
+
+          setError(null);
+          setOrderData({
+            orderId: order.order_number || order.vendor_order_id || order.id,
+            customerName: order.customer_name || `${order.shipping_address?.firstName || ''} ${order.shipping_address?.lastName || ''}`.trim(),
+            customerEmail: order.customer_email || order.shipping_address?.email || '',
+            filename: 'model',
+            quantity: String(order.quantity || 1),
+            color: '',
+            material: order.material_id || '',
+            shippingAddress: {
+              name: order.customer_name || '',
+              street: order.shipping_address?.address1 || '',
+              city: order.shipping_address?.city || '',
+              state: order.shipping_address?.state || '',
+              zip: order.shipping_address?.zipCode || order.shipping_zip || '',
+            },
+            message: `Order placed successfully via Craftcloud. Total: $${order.total_price?.toFixed(2) || '0.00'} ${order.currency || 'USD'}`,
+          });
+          setLoading(false);
+        } catch (e) {
+          console.error('Error fetching Craftcloud order:', e);
+          setError('Could not load order details. Please check your dashboard.');
+          setLoading(false);
+        }
+      };
+      fetchOrder();
+      return;
+    }
+
     // Handle legacy Stripe flow (disabled)
-    if (!sessionId) {
+    if (!sessionId && !vendor) {
       setError('No order data found. Please try again.');
       setLoading(false);
       return;
@@ -64,17 +134,17 @@ export function OrderSuccess() {
       return;
     }
 
-    // LEGACY STRIPE FLOW DISABLED - Using direct Slant3D orders
+    // LEGACY STRIPE FLOW DISABLED
     console.log('🔄 Legacy Stripe flow disabled - orders are now created directly');
     setError('Legacy payment flow is no longer supported. Please create a new order.');
     setLoading(false);
-  }, [sessionId, user, isDirectOrder, directOrderData]);
+  }, [sessionId, vendor, user, isDirectOrder, directOrderData]);
 
   if (loading) {
     return (
       <div className="pt-16 min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto mb-4"></div>
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Processing Your Order</h2>
           <p className="text-gray-600">Please wait while we verify your payment and create your order...</p>
         </div>

@@ -175,7 +175,7 @@ export function DownloadCheckout() {
                     value={email}
                     onChange={handleEmailChange}
                     onBlur={handleEmailBlur}
-                    className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${
+                    className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-brand-primary focus:border-brand-primary ${
                       emailError ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300'
                     }`}
                     required

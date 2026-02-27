@@ -124,7 +124,7 @@ export function ContactUs() {
           <div>
             <Card className="p-8">
               <div className="flex items-center space-x-2 mb-6">
-                <MessageCircle className="h-6 w-6 text-purple-600" />
+                <MessageCircle className="h-6 w-6 text-brand-primary" />
                 <h2 className="text-2xl font-bold text-gray-900">Send us a message</h2>
               </div>
 
@@ -173,7 +173,7 @@ export function ContactUs() {
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({...formData, category: e.target.value as any})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                   >
                     <option value="general">General Inquiry</option>
                     <option value="technical">Technical Support</option>
@@ -199,7 +199,7 @@ export function ContactUs() {
                     value={formData.message}
                     onChange={(e) => setFormData({...formData, message: e.target.value})}
                     placeholder="Tell us how we can help you..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-brand-primary focus:border-brand-primary resize-none"
                     rows={6}
                     required
                   />
@@ -220,7 +220,7 @@ export function ContactUs() {
             {/* Contact Info */}
             <div className="mt-8">
               <Card className="p-6 text-center max-w-sm mx-auto">
-                <Mail className="h-8 w-8 text-purple-600 mx-auto mb-3" />
+                <Mail className="h-8 w-8 text-brand-primary mx-auto mb-3" />
                 <h3 className="font-semibold text-gray-900 mb-1">Email</h3>
                 <p className="text-gray-600 text-sm">support@shapemint.com</p>
               </Card>
@@ -230,7 +230,7 @@ export function ContactUs() {
           {/* FAQ Section */}
           <div>
             <div className="flex items-center space-x-2 mb-6">
-              <HelpCircle className="h-6 w-6 text-purple-600" />
+              <HelpCircle className="h-6 w-6 text-brand-primary" />
               <h2 className="text-2xl font-bold text-gray-900">Frequently Asked Questions</h2>
             </div>
 

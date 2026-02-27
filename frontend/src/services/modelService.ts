@@ -1,6 +1,24 @@
 import { supabase } from '../../supabaseClient';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
+// Type for the Blender mesh repair validation report
+export interface RepairReport {
+  is_manifold: boolean;
+  is_watertight: boolean;
+  volume_cm3: number;
+  bounding_box_mm: { x: number; y: number; z: number };
+  min_wall_thickness_mm: number;
+  wall_thickness_passed: boolean;
+  repair_steps_applied: string[];
+  used_voxel_remesh: boolean;
+  applied_solidify: boolean;
+  warnings: string[];
+  print_ready: boolean;
+  processing_time_seconds: number;
+  input_face_count: number;
+  output_face_count: number;
+}
+
 // Type for the response from the generate-3d-model function
 export interface GenerationResponse {
   success: boolean;
@@ -52,7 +70,15 @@ export interface ModelService {
   generate3DModel(params: Generate3DModelParams): Promise<GenerationResponse>;
   checkModelStatus(taskId: string, type: 'text-to-3d' | 'image-to-3d'): Promise<StatusResponse>;
   markModelComplete(params: MarkCompleteParams): Promise<GenerationResponse>;
-  publishToMarketplace(modelId: string): Promise<{ success: boolean; error?: string }>;
+  publishToMarketplace(params: {
+    modelId: string;
+    title?: string;
+    description?: string;
+    price?: number;
+    category?: string;
+    tags?: string;
+    notes?: string;
+  }): Promise<{ success: boolean; error?: string; data?: any }>;
   fetchMarketplaceModels(): Promise<any[]>;
 }
 
@@ -208,19 +234,49 @@ export const modelService: ModelService = {
     }
   },
 
-  async publishToMarketplace(modelId: string): Promise<{ success: boolean; error?: string }> {
+  async publishToMarketplace(params: {
+    modelId: string;
+    title?: string;
+    description?: string;
+    price?: number;
+    category?: string;
+    tags?: string;
+    notes?: string;
+  }): Promise<{ success: boolean; error?: string; data?: any }> {
     try {
-      const { error } = await supabase
+      const { modelId, title, description, price, category, tags, notes } = params;
+      
+      // Build update object - only include fields that are provided
+      const updateData: any = {
+        is_marketplace_listed: true,
+        updated_at: new Date().toISOString()
+      };
+
+      // Only update status to 'completed' if it's not already completed
+      // Don't change status if it's already 'completed' to preserve existing state
+      // But ensure it's at least 'completed' for marketplace listing
+      updateData.status = 'completed';
+
+      // Add optional fields if provided
+      if (title !== undefined) updateData.name = title;
+      if (description !== undefined) updateData.description = description;
+      if (price !== undefined) updateData.price = price;
+      if (category !== undefined) updateData.category = category;
+      if (tags !== undefined) updateData.tags = tags;
+      if (notes !== undefined) updateData.notes = notes;
+
+      const { data, error } = await supabase
         .from('generated_models')
-        .update({ status: 'published', is_marketplace_listed: true, updated_at: new Date().toISOString() })
-        .eq('id', modelId);
+        .update(updateData)
+        .eq('id', modelId)
+        .select();
 
       if (error) {
         console.error('Failed to publish to marketplace:', error);
         return { success: false, error: error.message };
       }
 
-      return { success: true };
+      return { success: true, data: data?.[0] };
     } catch (error: any) {
       console.error('Marketplace publish error:', error);
       return { success: false, error: error?.message || 'Unknown error occurred' };

@@ -1,6 +1,6 @@
 import { Suspense, useState, useEffect, useRef, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, useGLTF } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import { Loader2, AlertCircle, Package, RefreshCw } from 'lucide-react';
 import * as THREE from 'three';
 
@@ -59,31 +59,20 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
   const errorReported = useRef(false);
   const validationAttempted = useRef(false);
 
-  // Use proxy endpoint to avoid CORS issues
+  // Resolve the model URL — try direct first, proxy as fallback for CORS issues
   const proxiedUrl = useMemo(() => {
-    console.log('🔗 Model component processing URL:', url);
-    console.log('🔗 Production environment check:', { 
-      isProduction, 
-      proxyBaseUrl, 
-      hasProxyBaseUrl: !!proxyBaseUrl,
-      urlIncludesMeshy: url.includes('assets.meshy.ai') || url.includes('meshy.ai')
-    });
-    
-    if (url.includes('assets.meshy.ai') || 
-        url.includes('meshy.ai') || 
-        url.includes('cloudfront.net')) {
-      // In both dev and production, use the /api/meshy/glb endpoint
-      // In dev, proxyBaseUrl might be localhost or empty
-      // In production, proxyBaseUrl is empty, making this a relative URL
+    // Try loading directly first — Meshy CDN (CloudFront) typically allows CORS
+    // Only fall back to proxy if VITE_PROXY_URL is explicitly set
+    if (proxyBaseUrl && (
+      url.includes('assets.meshy.ai') ||
+      url.includes('meshy.ai') ||
+      url.includes('cloudfront.net')
+    )) {
       const proxyUrl = `${proxyBaseUrl}/api/meshy/glb?url=${encodeURIComponent(url)}`;
-      console.log('🔗 Meshy URL detected - using proxy:');
-      console.log('  - Original URL:', url);
-      console.log('  - Proxy Base URL:', proxyBaseUrl);
-      console.log('  - Final Proxy URL:', proxyUrl);
-      console.log('  - Environment:', isProduction ? 'PRODUCTION' : 'DEVELOPMENT');
+      if (debug) console.log('🔗 Using proxy for Meshy URL:', proxyUrl);
       return proxyUrl;
     }
-    console.log('🔗 Non-Meshy URL - using direct:', url);
+    if (debug) console.log('🔗 Loading URL directly:', url);
     return url;
   }, [url, debug]);
 
@@ -91,48 +80,32 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
   const [gltfScene, setGltfScene] = useState<THREE.Group | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
 
-  // Use manual loading in production to avoid useGLTF issues
+  // Load GLTF using manual GLTFLoader in all environments
+  // (useGLTF hook cannot be called inside useEffect — Rules of Hooks violation)
   useEffect(() => {
-    if (isProduction) {
-      console.log('🎮 Production mode - using manual GLTF loading');
-      setLoadError(null);
-      
-      // Import GLTFLoader dynamically
-      import('three/examples/jsm/loaders/GLTFLoader.js').then(({ GLTFLoader }) => {
-        const loader = new GLTFLoader();
-        loader.load(
-          proxiedUrl,
-          (gltf) => {
-            console.log('✅ Manual GLTF load successful:', gltf);
-            setGltfScene(gltf.scene);
-          },
-          (progress) => {
-            console.log('📊 GLTF loading progress:', progress);
-          },
-          (error) => {
-            console.error('❌ Manual GLTF load failed:', error);
-            setLoadError(error as Error);
-          }
-        );
-      }).catch(error => {
-        console.error('❌ Failed to import GLTFLoader:', error);
-        setLoadError(error as Error);
-      });
-    } else {
-      // Use useGLTF in development
-      try {
-        const gltfResult = useGLTF(proxiedUrl);
-        setGltfScene(gltfResult.scene);
-        console.log('🎮 Development mode - useGLTF result:', { 
-          hasScene: !!gltfResult.scene, 
-          proxiedUrl
-        });
-      } catch (error) {
-        console.error('❌ useGLTF error in development:', error);
-        setLoadError(error as Error);
-      }
-    }
-  }, [proxiedUrl, isProduction]);
+    console.log('🎮 Loading GLTF model:', proxiedUrl);
+    setLoadError(null);
+    setGltfScene(null);
+
+    import('three/examples/jsm/loaders/GLTFLoader.js').then(({ GLTFLoader }) => {
+      const loader = new GLTFLoader();
+      loader.load(
+        proxiedUrl,
+        (gltf) => {
+          console.log('✅ GLTF load successful');
+          setGltfScene(gltf.scene);
+        },
+        undefined,
+        (error) => {
+          console.error('❌ GLTF load failed:', error);
+          setLoadError(error as Error);
+        }
+      );
+    }).catch(error => {
+      console.error('❌ Failed to import GLTFLoader:', error);
+      setLoadError(error as Error);
+    });
+  }, [proxiedUrl]);
   
   // Test API endpoint accessibility in production
   useEffect(() => {
@@ -388,7 +361,7 @@ export function ModelViewer({ modelUrl: modelProp, className = '', debug = false
       {loadingState === 'loading' && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-50 rounded-lg z-10">
           <div className="text-center">
-            <Loader2 className="h-8 w-8 text-purple-600 animate-spin mx-auto mb-3" />
+            <Loader2 className="h-8 w-8 text-brand-primary animate-spin mx-auto mb-3" />
             <p className="text-sm text-gray-600 font-medium">Loading 3D Model...</p>
             <p className="text-xs text-gray-500 mt-1">
               {retryCount > 0 ? `Retry attempt ${retryCount}...` : 'This may take a few seconds'}
@@ -420,7 +393,7 @@ export function ModelViewer({ modelUrl: modelProp, className = '', debug = false
             {retryCount < maxRetries && (
               <button 
                 onClick={handleRetry}
-                className="inline-flex items-center px-3 py-1.5 text-xs bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+                className="inline-flex items-center px-3 py-1.5 text-xs bg-brand-primary text-white rounded-md hover:bg-brand-primary-dark transition-colors"
               >
                 <RefreshCw className="h-3 w-3 mr-1" />
                 Retry ({maxRetries - retryCount} left)

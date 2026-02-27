@@ -43,7 +43,7 @@ export function Register() {
   };
 
   return (
-    <div className="pt-16 min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+    <div className="pt-16 min-h-screen bg-brand-light flex items-center justify-center">
       <div className="max-w-md w-full mx-4">
         <Card className="p-8">
           <div className="text-center mb-8">
@@ -63,7 +63,7 @@ export function Register() {
                 placeholder="Full name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                 required
               />
             </div>
@@ -75,7 +75,7 @@ export function Register() {
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                 required
               />
             </div>
@@ -87,7 +87,7 @@ export function Register() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                 required
               />
               <button
@@ -112,7 +112,7 @@ export function Register() {
                 placeholder="Confirm password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                 required
               />
             </div>
@@ -124,12 +124,12 @@ export function Register() {
             )}
 
             <div className="flex items-center">
-              <input type="checkbox" className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" required />
+              <input type="checkbox" className="h-4 w-4 text-brand-primary focus:ring-brand-primary border-gray-300 rounded" required />
               <span className="ml-2 text-sm text-gray-600">
                 I agree to the{' '}
-                <a href="#" className="text-purple-600 hover:text-purple-500">Terms of Service</a>
+                <a href="#" className="text-brand-primary hover:text-brand-primary-dark">Terms of Service</a>
                 {' '}and{' '}
-                <a href="#" className="text-purple-600 hover:text-purple-500">Privacy Policy</a>
+                <a href="#" className="text-brand-primary hover:text-brand-primary-dark">Privacy Policy</a>
               </span>
             </div>
 
@@ -141,7 +141,7 @@ export function Register() {
           <div className="mt-6 text-center">
             <p className="text-gray-600">
               Already have an account?{' '}
-              <Link to="/login" className="text-purple-600 hover:text-purple-500 font-medium">
+              <Link to="/login" className="text-brand-primary hover:text-brand-primary-dark font-medium">
                 Sign in
               </Link>
             </p>

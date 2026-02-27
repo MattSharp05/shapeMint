@@ -89,7 +89,8 @@ serve(async (req) => {
       status: 'processing',
       mode: mode,
       meshy_task_id: taskId,
-      notes: `Meshy task: ${taskId}`
+      notes: `Meshy task: ${taskId}`,
+      is_marketplace_listed: true // Default to true for all generated models
     }
 
     const { data: insertedRecord, error: dbError } = await supabase
@@ -109,6 +110,16 @@ serve(async (req) => {
     }
 
     console.log('✅ Model saved to database with ID:', recordId)
+
+    // Fire-and-forget: pre-warm the Blender repair container
+    // so it's ready by the time Meshy finishes (1-5 minutes later)
+    const modalWarmUrl = Deno.env.get('MODAL_WARM_ENDPOINT_URL')
+    if (modalWarmUrl) {
+      fetch(modalWarmUrl).catch((err: any) => {
+        console.warn('⚠️ Modal warm-up ping failed (non-critical):', err.message)
+      })
+      console.log('🔥 Sent warm-up ping to Blender repair service')
+    }
 
     return new Response(
       JSON.stringify({ success: true, data: { taskId: recordId, id: recordId, meshyTaskId: taskId, status: 'processing', type: type } }),

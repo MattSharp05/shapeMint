@@ -81,7 +81,7 @@ export function Manufacturing() {
                   <select
                     value={selectedMaterial}
                     onChange={(e) => setSelectedMaterial(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                   >
                     {materials.map(material => (
                       <option key={material.id} value={material.id}>
@@ -104,7 +104,7 @@ export function Manufacturing() {
                     max="100"
                     value={quantity}
                     onChange={(e) => setQuantity(parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                   />
                 </div>
 
@@ -170,7 +170,7 @@ export function Manufacturing() {
                 <Card 
                   key={quote.id} 
                   className={`p-6 transition-all ${
-                    selectedQuote === quote.id ? 'ring-2 ring-purple-500 bg-purple-50' : 'hover:shadow-md'
+                    selectedQuote === quote.id ? 'ring-2 ring-brand-primary bg-brand-light' : 'hover:shadow-md'
                   }`}
                   onClick={() => setSelectedQuote(quote.id)}
                   hover
@@ -188,7 +188,7 @@ export function Manufacturing() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-2xl font-bold text-purple-600">
+                      <div className="text-2xl font-bold text-brand-primary">
                         ${quote.price}
                       </div>
                       <div className="text-sm text-gray-500">
@@ -240,7 +240,7 @@ export function Manufacturing() {
             </div>
 
             {selectedQuote && (
-              <Card className="p-6 mt-6 bg-gradient-to-r from-purple-50 to-blue-50">
+              <Card className="p-6 mt-6 bg-brand-light">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
                   Order Summary
                 </h3>

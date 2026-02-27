@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase } from '../supabaseClient';
 import type { User } from '../types/user';
 
 const USERS_TABLE = 'users';

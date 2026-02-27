@@ -1,7 +1,8 @@
-// Vendor data with Shapeways materials and colors for Phase 1
+// Vendor data with Shapeways and Slant3D materials and colors for Phase 1
 // Data revised per user specifications with Colors and Materials/Finishes separation
 
 import { Vendor, Material, Color, Finish, MaterialCombination } from '../types/order';
+import { CRAFTCLOUD_MATERIALS } from './craftcloudMaterials';
 
 export const VENDORS: Vendor[] = [
   {
@@ -13,8 +14,20 @@ export const VENDORS: Vendor[] = [
   {
     id: 'slant3d',
     name: 'Slant3D',
-    description: 'Coming soon - Fast and affordable 3D printing',
-    enabled: false, // Disabled for Phase 1
+    description: 'Fast and affordable 3D printing',
+    enabled: true,
+  },
+  {
+    id: 'treatstock',
+    name: 'Treatstock',
+    description: 'Marketplace with multiple 3D printing providers',
+    enabled: true,
+  },
+  {
+    id: 'craftcloud',
+    name: 'Craftcloud',
+    description: 'Best prices from competing 3D printing vendors worldwide',
+    enabled: true,
   },
 ];
 
@@ -36,6 +49,7 @@ export const SHAPEWAYS_COLORS: Color[] = [
   { id: '14k-yellow-gold', name: '14K Yellow Gold', swatchUrl: 'https://www.shapeways.com/rrstatic/img/materials/swatch-plated-brass-14k.png' },
   { id: '18k-yellow-gold', name: '18K Yellow Gold', swatchUrl: 'https://www.shapeways.com/rrstatic/img/materials/swatch-plated-brass-18k.png' },
   { id: '14k-rose-gold', name: '14K Rose Gold', swatchUrl: 'https://www.shapeways.com/rrstatic/img/materials/swatch-plated-brass-14k-rose.png' },
+  { id: 'clear', name: 'Clear', swatchUrl: 'https://www.shapeways.com/wp-content/uploads/2025/05/SLA.png' },
 ];
 
 // Finishes - shared across multiple materials with correct swatch URLs
@@ -215,6 +229,25 @@ export const SHAPEWAYS_MATERIALS: Material[] = [
       SHAPEWAYS_FINISHES.find(f => f.id === 'polished')!,
     ],
   },
+  {
+    id: 'sla-watershed',
+    name: 'SLA - Somos® Watershed',
+    description: 'High-resolution stereolithography (SLA) printing with excellent detail and smooth surface finish. Perfect for prototypes, models, and parts requiring fine detail.',
+    swatchUrl: 'https://www.shapeways.com/wp-content/uploads/2025/05/SLA.png',
+    colors: [
+      SHAPEWAYS_COLORS.find(c => c.id === 'clear')!,
+      SHAPEWAYS_COLORS.find(c => c.id === 'black')!,
+    ],
+    finishes: [
+      // SLA materials typically have a default finish (no additional finishes available)
+      { 
+        id: 'default-sla', 
+        name: 'Default', 
+        description: 'Standard SLA finish with smooth surface',
+        swatchUrl: 'https://www.shapeways.com/wp-content/uploads/2025/05/SLA.png'
+      },
+    ],
+  },
 ];
 
 // Material combinations that map to specific Shapeways materialIds
@@ -238,6 +271,10 @@ export const MATERIAL_COMBINATIONS: MaterialCombination[] = [
   // Silver combinations
   { materialId: '53', baseMaterialId: 'silver-casting', finishId: 'natural' },
   { materialId: '54', baseMaterialId: 'silver-casting', finishId: 'polished' },
+  
+  // SLA Watershed combinations
+  { materialId: '328', baseMaterialId: 'sla-watershed', colorId: 'clear', finishId: 'default-sla' },
+  { materialId: '329', baseMaterialId: 'sla-watershed', colorId: 'black', finishId: 'default-sla' },
   
   // Add more combinations as needed based on the API documentation
 ];
@@ -267,4 +304,78 @@ export function getShapewaysMaterialId(baseMaterialId: string, colorId?: string,
     combo.finishId === finishId
   );
   return combination?.materialId;
+}
+
+// Slant3D Materials (Filaments)
+// Slant3D uses a simpler model - just filaments (materials) with colors
+// Filaments are fetched from the API, but we provide a basic set for UI
+export const SLANT3D_MATERIALS: Material[] = [
+  {
+    id: 'pla-black',
+    name: 'PLA Black',
+    description: 'Standard PLA filament in black',
+    swatchUrl: 'https://via.placeholder.com/100x100/000000/FFFFFF?text=PLA+Black',
+    colors: [
+      { id: 'black', name: 'Black', hex: '#000000' }
+    ],
+    finishes: []
+  },
+  {
+    id: 'pla-white',
+    name: 'PLA White',
+    description: 'Standard PLA filament in white',
+    swatchUrl: 'https://via.placeholder.com/100x100/FFFFFF/000000?text=PLA+White',
+    colors: [
+      { id: 'white', name: 'White', hex: '#FFFFFF' }
+    ],
+    finishes: []
+  },
+  {
+    id: 'petg-black',
+    name: 'PETG Black',
+    description: 'PETG filament in black - stronger and more durable than PLA',
+    swatchUrl: 'https://via.placeholder.com/100x100/1a1a1a/FFFFFF?text=PETG+Black',
+    colors: [
+      { id: 'black', name: 'Black', hex: '#1a1a1a' }
+    ],
+    finishes: []
+  },
+  {
+    id: 'petg-white',
+    name: 'PETG White',
+    description: 'PETG filament in white - stronger and more durable than PLA',
+    swatchUrl: 'https://via.placeholder.com/100x100/FAFAFA/000000?text=PETG+White',
+    colors: [
+      { id: 'white', name: 'White', hex: '#FAFAFA' }
+    ],
+    finishes: []
+  }
+];
+
+// Helper to get all materials for a vendor
+export function getMaterialsForVendor(vendorId: string): Material[] {
+  if (vendorId === 'shapeways') {
+    return SHAPEWAYS_MATERIALS;
+  } else if (vendorId === 'slant3d') {
+    return SLANT3D_MATERIALS;
+  } else if (vendorId === 'treatstock') {
+    // For now use a simple generic material for Treatstock.
+    // Treatstock pricing is driven by their own material groups,
+    // which are selected at quote time from provider options.
+    return [
+      {
+        id: 'treatstock-pla',
+        name: 'PLA (Generic)',
+        description: 'Standard PLA-like plastic suitable for most prototypes',
+        swatchUrl: 'https://via.placeholder.com/100x100/FFFFFF/000000?text=PLA',
+        colors: [
+          { id: 'white', name: 'White', hex: '#FFFFFF' },
+        ],
+        finishes: [],
+      },
+    ];
+  } else if (vendorId === 'craftcloud') {
+    return CRAFTCLOUD_MATERIALS;
+  }
+  return [];
 }

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { ThumbnailGenerator, DEFAULT_CAMERA_ANGLES, CameraAngle } from '../services/thumbnailGenerator';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../supabaseClient';
 
 interface UseThumbnailGeneratorOptions {
   width?: number;

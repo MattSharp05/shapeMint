@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-function handler(
+export default function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
@@ -10,5 +10,3 @@ function handler(
     environment: process.env.NODE_ENV || 'development'
   });
 }
-
-module.exports = handler;

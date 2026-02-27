@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase } from '../supabaseClient';
 import { ThumbnailGenerator, DEFAULT_CAMERA_ANGLES } from './thumbnailGenerator';
 
 interface ModelNeedingThumbnail {

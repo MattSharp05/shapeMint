@@ -17,7 +17,7 @@ export function Input({ label, error, helperText, className = '', ...props }: In
       <input
         className={`
           block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm
-          focus:ring-2 focus:ring-purple-500 focus:border-purple-500
+          focus:ring-2 focus:ring-brand-primary focus:border-brand-primary
           disabled:bg-gray-50 disabled:text-gray-500
           ${error ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : ''}
           ${className}

@@ -23,6 +23,12 @@ async function fetchWithTimeout(resource: string, options: RequestInit & { timeo
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(resource, { ...rest, signal: controller.signal });
+  } catch (error: any) {
+    // Provide better error message for timeout/abort errors
+    if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+      throw new Error(`request_timeout: The request to ${resource} timed out after ${timeoutMs}ms. This may be due to a slow network connection or the server taking too long to respond.`);
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
   }
@@ -68,9 +74,31 @@ async function getExistingQuote(client: any, userId: string, modelUrl: string, m
 }
 
 async function ensureModelUploaded(token: string, modelUrl: string, client: any) {
-  // Fetch GLB
-  const resp = await fetchWithTimeout(modelUrl, { timeoutMs: 10000 });
+  // Check Content-Length header first to avoid loading large files
+  const headResp = await fetchWithTimeout(modelUrl, { method: 'HEAD', timeoutMs: 5000 });
+  const contentLength = headResp.headers.get('content-length');
+  const fileSizeBytes = contentLength ? parseInt(contentLength, 10) : null;
+  
+  // Edge functions have ~150MB memory limit, but we need headroom for processing
+  // Base64 encoding increases size by ~33%, and we need memory for other operations
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
+  if (fileSizeBytes && fileSizeBytes > MAX_FILE_SIZE) {
+    const fileSizeMB = (fileSizeBytes / (1024 * 1024)).toFixed(2);
+    console.error(JSON.stringify({ evt: 'file_too_large', fileSizeBytes, fileSizeMB, maxSizeMB: MAX_FILE_SIZE / (1024 * 1024) }));
+    throw new Error(`file_too_large: File size (${fileSizeMB}MB) exceeds maximum allowed size (${MAX_FILE_SIZE / (1024 * 1024)}MB). Please use a smaller file or compress the model.`);
+  }
+
+  // Fetch file - increased timeout for large files or slow connections
+  const resp = await fetchWithTimeout(modelUrl, { timeoutMs: 60000 }); // 60 seconds for file download
   if (!resp.ok) throw new Error(`model_fetch_${resp.status}`);
+  
+  // Get actual file size from response if not available from HEAD
+  const actualFileSize = fileSizeBytes || (resp.headers.get('content-length') ? parseInt(resp.headers.get('content-length')!, 10) : null);
+  if (actualFileSize && actualFileSize > MAX_FILE_SIZE) {
+    const fileSizeMB = (actualFileSize / (1024 * 1024)).toFixed(2);
+    throw new Error(`file_too_large: File size (${fileSizeMB}MB) exceeds maximum allowed size (${MAX_FILE_SIZE / (1024 * 1024)}MB).`);
+  }
+
   const arrayBuf = await resp.arrayBuffer();
   const fileHash = await sha256Hex(arrayBuf);
 
@@ -81,32 +109,55 @@ async function ensureModelUploaded(token: string, modelUrl: string, client: any)
     return { fileHash, shapewaysModelId: cacheEntry.shapeways_model_id };
   }
 
-  // Upload
-  const fileName = modelUrl.split('/').pop()?.split('?')[0] || 'model.glb';
-  // Previous implementation used String.fromCharCode(...Uint8Array) which overflows the call stack for large files.
-  // Use a chunked conversion to base64 to avoid RangeError: Maximum call stack size exceeded.
+  // Upload - use streaming base64 conversion to minimize memory usage
+  const fileName = modelUrl.split('/').pop()?.split('?')[0] || 'model.stl';
+  
+  // Optimized base64 conversion that processes in chunks to minimize memory spikes
   function arrayBufferToBase64(buffer: ArrayBuffer): string {
-    let binary = '';
     const bytes = new Uint8Array(buffer);
     const chunkSize = 0x8000; // 32KB chunks
+    let binary = '';
+    
+    // Process in chunks to avoid memory spikes
     for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, i + chunkSize);
-      binary += String.fromCharCode(...chunk);
+      const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+      // Use apply with spread for smaller chunks to avoid call stack issues
+      if (chunk.length < 8192) {
+        binary += String.fromCharCode.apply(null, Array.from(chunk));
+      } else {
+        // For larger chunks, process in sub-chunks
+        for (let j = 0; j < chunk.length; j += 8192) {
+          const subChunk = chunk.subarray(j, Math.min(j + 8192, chunk.length));
+          binary += String.fromCharCode.apply(null, Array.from(subChunk));
+        }
+      }
     }
     return btoa(binary);
   }
+  
+  console.log(JSON.stringify({ evt: 'converting_to_base64', fileSizeBytes: arrayBuf.byteLength }));
   const b64 = arrayBufferToBase64(arrayBuf);
+  
+  // Clear arrayBuf from memory before creating JSON payload
+  // Note: In JavaScript, we can't force GC, but we can help by not holding references
+  const uploadPayload = {
+    fileName,
+    file: b64,
+    hasRightsToModel: 1,
+    acceptTermsAndConditions: 1,
+    description: 'Uploaded via ShapeMint'
+  };
+  
+  // Clear b64 reference after creating payload (though it's still in the object)
+  console.log(JSON.stringify({ evt: 'uploading_to_shapeways', fileName, payloadSizeBytes: JSON.stringify(uploadPayload).length }));
+  
   const uploadResp = await fetchWithTimeout(`${SHAPEWAYS_API}/models/v1`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      fileName,
-      file: b64,
-      hasRightsToModel: 1,
-      acceptTermsAndConditions: 1,
-      description: 'Uploaded via ShapeMint'
-    })
+    body: JSON.stringify(uploadPayload),
+    timeoutMs: 60000 // Longer timeout for large files
   });
+  
   const uploadJson = await uploadResp.json();
   if (!uploadResp.ok || uploadJson.result !== 'success') {
     console.error(JSON.stringify({ evt: 'upload_failed', status: uploadResp.status, body: uploadJson }));
@@ -123,50 +174,138 @@ async function getModelMaterialPrice(token: string, modelId: string, materialId:
   // Poll the model info for the material price because newly uploaded models can be "processing".
   // To avoid transient prices, prefer basePrice when available and require two consecutive
   // identical non-zero price reads (stabilization) before returning.
-  const maxAttempts = 20;
-  const delayMs = 2500;
+  // Large files can take longer to process, so we poll for up to 2 minutes
+  const maxAttempts = 30; // Increased from 20 to allow more time for large files
+  const delayMs = 4000; // Increased from 2500ms to 4 seconds between attempts
   let lastJson: any = null;
   let lastSeenPrice: number | null = null;
+  let consecutiveValidPrices = 0;
+  const requiredConsecutive = 2; // Require 2 consecutive valid prices
+  
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const resp = await fetchWithTimeout(`${SHAPEWAYS_API}/models/${modelId}/v1`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { 'Authorization': `Bearer ${token}` },
+      timeoutMs: 15000 // Increased timeout for model info polling (15 seconds per request)
     });
     const json = await resp.json();
     lastJson = json;
     if (!resp.ok || json.result !== 'success') {
       // If transient server error, retry a few times
       console.error(JSON.stringify({ evt: 'model_info_fetch_failed', status: resp.status, attempt }));
+      consecutiveValidPrices = 0; // Reset on error
     } else {
       const mat = json.materials?.[materialId];
       // Log material object for debugging
       try { console.log(JSON.stringify({ evt: 'model_material_entry', attempt, modelId, materialId, mat })); } catch {}
-      if (!mat) throw new Error('material_not_found');
-      // Prefer canonical basePrice when present; fall back to price fields
-      const rawPrice = (mat.basePrice ?? mat.base_price ?? mat.price ?? mat.base_price);
-      const price = Number(rawPrice);
-      const isPrintable = Boolean(mat.isPrintable || mat.is_printable || json.printable === 'true' || json.printable === true || json.printable === 'printable');
+      if (!mat) {
+        console.warn(JSON.stringify({ evt: 'material_not_found_in_response', attempt, modelId, materialId, availableMaterials: Object.keys(json.materials || {}) }));
+        consecutiveValidPrices = 0;
+      } else {
+        // Prefer canonical basePrice when present; fall back to price fields
+        const rawPrice = (mat.basePrice ?? mat.base_price ?? mat.price);
+        const price = Number(rawPrice);
+        const isPrintable = Boolean(mat.isPrintable || mat.is_printable || json.printable === 'true' || json.printable === true || json.printable === 'printable');
+        // isActive can be explicitly false during processing, so only treat as true if explicitly true
+        const isActive = mat.isActive === true || mat.is_active === true;
+        
+        // Check if we have a basePrice (more reliable indicator than flags)
+        const hasBasePrice = !!(mat.basePrice || mat.base_price);
+        const basePriceValue = Number(mat.basePrice ?? mat.base_price ?? 0);
 
-      // If price is a valid non-negative number, consider it; prefer non-zero but accept zero when explicitly printable.
-      if (!isNaN(price) && (price > 0 || (isPrintable && price >= 0))) {
-        // If we've seen the same price in the previous successful poll, treat it as stabilized and return.
-        if (lastSeenPrice !== null && Math.abs(lastSeenPrice - price) < 0.000001) {
-          return price;
+        // Check if we have a valid price
+        // Accept price if:
+        // 1. Price > 0 AND (isPrintable OR isActive) - standard case
+        // 2. Price > 0 AND hasBasePrice - if there's a basePrice, it's likely valid even if flags are false
+        // 3. basePrice > 0 - basePrice is the most reliable indicator
+        // 4. Price >= 0 AND isPrintable AND isActive - zero price but explicitly printable
+        const hasValidPrice = !isNaN(price) && (
+          (price > 0 && (isPrintable || isActive)) || 
+          (price > 0 && hasBasePrice && basePriceValue > 0) ||
+          (basePriceValue > 0) ||
+          (price >= 0 && isPrintable && isActive)
+        );
+
+        if (hasValidPrice) {
+          // If we've seen the same price in the previous successful poll, increment counter
+          if (lastSeenPrice !== null && Math.abs(lastSeenPrice - price) < 0.000001) {
+            consecutiveValidPrices++;
+            // If we have enough consecutive valid prices, return
+            if (consecutiveValidPrices >= requiredConsecutive) {
+              console.log(JSON.stringify({ evt: 'price_stabilized', attempt, price, consecutiveValidPrices }));
+              return price;
+            }
+          } else {
+            // Price changed or first valid price - reset counter
+            consecutiveValidPrices = 1;
+            lastSeenPrice = price;
+          }
+        } else {
+          // Invalid price (0 or negative, or not printable/active) - reset counter
+          consecutiveValidPrices = 0;
+          lastSeenPrice = null;
+          console.log(JSON.stringify({ evt: 'invalid_price', attempt, price, basePrice: basePriceValue, hasBasePrice, isPrintable, isActive }));
         }
-        // Otherwise, record this price and continue polling for stabilization.
-        lastSeenPrice = price;
       }
-      // otherwise wait and retry
     }
     if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, delayMs));
   }
-  // Exhausted retries
-  console.error(JSON.stringify({ evt: 'model_info_poll_timeout', modelId, materialId, lastJson }));
-  throw new Error('material_price_unavailable');
+  
+  // Exhausted retries - check if we have any valid price data in the last response
+  if (lastJson?.materials?.[materialId]) {
+    const mat = lastJson.materials[materialId];
+    const rawPrice = (mat.basePrice ?? mat.base_price ?? mat.price);
+    const price = Number(rawPrice);
+    const basePriceValue = Number(mat.basePrice ?? mat.base_price ?? 0);
+    const hasBasePrice = !!(mat.basePrice || mat.base_price);
+    const isPrintable = Boolean(mat.isPrintable || mat.is_printable);
+    const isActive = mat.isActive === true || mat.is_active === true; // Only true if explicitly true
+    
+    console.log(JSON.stringify({ evt: 'checking_fallback_price', price, basePrice: basePriceValue, hasBasePrice, isPrintable, isActive, mat }));
+    
+    // If we have a valid price in the last response, use it even if not stabilized
+    // Accept if: price > 0 AND (flags OR hasBasePrice) OR basePrice > 0
+    if (!isNaN(price) && (
+      (price > 0 && (isPrintable || isActive || (hasBasePrice && basePriceValue > 0))) ||
+      (basePriceValue > 0)
+    )) {
+      const finalPrice = basePriceValue > 0 ? basePriceValue : price;
+      console.warn(JSON.stringify({ evt: 'using_unstabilized_price', price: finalPrice, isPrintable, isActive, hasBasePrice }));
+      return finalPrice;
+    }
+    
+    // Check if model is still processing (price is 0 and not printable/active and no basePrice)
+    if (price === 0 && basePriceValue === 0 && !isPrintable && !isActive) {
+      console.error(JSON.stringify({ evt: 'model_still_processing', modelId, materialId, attempt: maxAttempts, totalWaitTimeSeconds: (maxAttempts * delayMs) / 1000 }));
+      throw new Error('model_still_processing: Shapeways is still processing this model. Large files can take 2-3 minutes to process. Please try again in a few minutes.');
+    }
+  }
+  
+  // Exhausted retries - log full material data for debugging
+  const lastMat = lastJson?.materials?.[materialId];
+  console.error(JSON.stringify({ 
+    evt: 'model_info_poll_timeout', 
+    modelId, 
+    materialId, 
+    lastSeenPrice, 
+    lastMaterial: lastMat ? {
+      price: lastMat.price,
+      basePrice: lastMat.basePrice,
+      isPrintable: lastMat.isPrintable,
+      isActive: lastMat.isActive,
+      name: lastMat.name
+    } : null,
+    hasLastJson: !!lastJson,
+    hasMaterials: !!lastJson?.materials,
+    materialKeys: lastJson?.materials ? Object.keys(lastJson.materials) : []
+  }));
+  
+  throw new Error('material_price_unavailable: Unable to get price for this material. The model may still be processing or the material may not be available for this model.');
 }
 
 async function getCheapestShipping(token: string, country: string, zip: string): Promise<{ price: number; optionId: string }> {
   const resp = await fetchWithTimeout(`${SHAPEWAYS_API}/cart/shipping-options/v1?country=${encodeURIComponent(country)}&zipCode=${encodeURIComponent(zip)}`, {
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: { 'Authorization': `Bearer ${token}` },
+    timeoutMs: 15000 // Increased timeout for shipping options
   });
   const json = await resp.json();
   if (!resp.ok || json.result !== 'success') throw new Error('shipping_options_failed');
@@ -184,9 +323,24 @@ async function getCheapestShipping(token: string, country: string, zip: string):
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  
+  // Log all headers for debugging (excluding sensitive data)
+  const allHeaders: Record<string, string> = {};
+  req.headers.forEach((value, key) => {
+    if (key.toLowerCase() === 'authorization') {
+      allHeaders[key] = value.substring(0, 20) + '...'; // Only log first 20 chars
+    } else {
+      allHeaders[key] = value;
+    }
+  });
+  console.log(JSON.stringify({ evt: 'request_headers', headers: Object.keys(allHeaders), hasAuth: req.headers.has('Authorization') }));
+  
   // Expect request context for auth from Supabase edge runtime
   const authHeader = req.headers.get('Authorization');
-  if (!authHeader) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: corsHeaders });
+  if (!authHeader) {
+    console.error(JSON.stringify({ evt: 'missing_auth_header', allHeaders: Object.keys(allHeaders) }));
+    return new Response(JSON.stringify({ error: 'unauthorized', message: 'Missing Authorization header. Please ensure you are logged in.' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
 
   // Create Supabase service client (needed for RLS bypass on insert + still propagate user context headers for row policies referencing auth.uid())
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -234,7 +388,10 @@ Deno.serve(async (req: Request) => {
     // Pre-check full color support if user selected full-color MJF
     if (baseMaterialId === 'full-color-nylon-12-mjf') {
       // Fetch model info once (lightweight) to validate supportsColorFiles / printable
-      const infoResp = await fetchWithTimeout(`${SHAPEWAYS_API}/models/${shapewaysModelId}/v1`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const infoResp = await fetchWithTimeout(`${SHAPEWAYS_API}/models/${shapewaysModelId}/v1`, { 
+        headers: { 'Authorization': `Bearer ${token}` },
+        timeoutMs: 15000 // Increased timeout for model info check
+      });
       const infoJson = await infoResp.json();
       if (infoResp.ok && infoJson.result === 'success') {
         const mat = infoJson.materials?.[materialId];
@@ -312,11 +469,72 @@ Deno.serve(async (req: Request) => {
     }).select().maybeSingle();
     if (insertErr) throw new Error(`db_insert_failed:${insertErr.message}`);
 
-  return new Response(JSON.stringify({ quoteId: inserted.id, priceTotal, currency: 'USD', expiresAt, reused: false, itemTotal, surcharge }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    // Build response object - ensure all numeric values are properly formatted
+    const responseData = { 
+      quoteId: inserted.id, 
+      priceTotal: Number(priceTotal.toFixed(2)), 
+      currency: 'USD', 
+      expiresAt, 
+      reused: false, 
+      itemTotal: Number(itemTotal.toFixed(2)), 
+      surcharge: Number(surcharge.toFixed(2)), 
+      shippingTotal: Number(shippingPrice.toFixed(2)) // Explicitly format and ensure it's a number
+    };
+    
+    // Debug: Log what we're returning
+    try { 
+      console.log(JSON.stringify({ 
+        evt: 'quote_response_data', 
+        quoteId: responseData.quoteId,
+        priceTotal: responseData.priceTotal,
+        itemTotal: responseData.itemTotal,
+        surcharge: responseData.surcharge,
+        shippingTotal: responseData.shippingTotal,
+        shippingPrice: shippingPrice, // Also log the original variable
+        shippingPriceType: typeof shippingPrice,
+        hasShippingTotal: 'shippingTotal' in responseData,
+        responseDataKeys: Object.keys(responseData)
+      })); 
+    } catch {}
+    
+    // Double-check the response before sending
+    const responseJson = JSON.stringify(responseData);
+    try {
+      const parsed = JSON.parse(responseJson);
+      console.log(JSON.stringify({ evt: 'quote_response_verification', parsedShippingTotal: parsed.shippingTotal, parsedSurcharge: parsed.surcharge }));
+    } catch {}
+    
+    return new Response(responseJson, { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (e) {
   const err = e as Error;
   const isRange = err && err.name === 'RangeError' && /call stack|stack size/i.test(err.message || '');
-  console.error(JSON.stringify({ evt: 'quote_error', message: err.message, name: err.name }));
-  return new Response(JSON.stringify({ error: 'quote_failed', message: isRange ? 'file_encoding_failed' : err.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  const isFileTooLarge = err.message?.includes('file_too_large');
+  const isMemoryError = err.message?.includes('Memory limit exceeded') || err.message?.includes('memory');
+  const isTimeout = err.name === 'AbortError' || err.message?.includes('timeout') || err.message?.includes('aborted');
+  
+  console.error(JSON.stringify({ evt: 'quote_error', message: err.message, name: err.name, isFileTooLarge, isMemoryError, isTimeout }));
+  
+  // Provide helpful error messages
+  let errorMessage = err.message;
+  let statusCode = 500;
+  
+  if (isTimeout) {
+    statusCode = 504; // Gateway Timeout
+    errorMessage = 'The request timed out. This may happen with large files or when Shapeways is processing the model. Please try again in a few moments, or use a smaller file.';
+  } else if (isFileTooLarge) {
+    statusCode = 400;
+    errorMessage = err.message || 'File is too large. Please use a file smaller than 50MB.';
+  } else if (isMemoryError || isRange) {
+    statusCode = 413; // Payload Too Large
+    errorMessage = 'File is too large to process. Please use a smaller file or compress the model.';
+  }
+  
+  return new Response(JSON.stringify({ 
+    error: isTimeout ? 'request_timeout' : isFileTooLarge ? 'file_too_large' : isMemoryError ? 'file_too_large' : 'quote_failed', 
+    message: errorMessage 
+  }), { 
+    status: statusCode, 
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+  });
   }
 });

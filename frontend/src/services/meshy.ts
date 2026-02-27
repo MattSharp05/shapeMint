@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { modelService } from './model';
 import { MeshyResponse } from '../types/model';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../supabaseClient';
 
 const MESHY_API_BASE = '/api/meshy';  // Using relative URL for proper routing
 

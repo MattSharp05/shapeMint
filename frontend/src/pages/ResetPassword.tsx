@@ -94,10 +94,10 @@ export function ResetPassword() {
   // Show loading while checking authentication
   if (checkingAuth) {
     return (
-      <div className="pt-16 min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+      <div className="pt-16 min-h-screen bg-brand-light flex items-center justify-center">
         <div className="max-w-md w-full mx-4">
           <Card className="p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary mx-auto mb-4"></div>
             <p className="text-gray-600">Checking authentication...</p>
           </Card>
         </div>
@@ -108,7 +108,7 @@ export function ResetPassword() {
   // Show error if not authenticated
   if (!isAuthenticated && error) {
     return (
-      <div className="pt-16 min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+      <div className="pt-16 min-h-screen bg-brand-light flex items-center justify-center">
         <div className="max-w-md w-full mx-4">
           <Card className="p-8 text-center">
             <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -129,7 +129,7 @@ export function ResetPassword() {
 
   if (success) {
     return (
-      <div className="pt-16 min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+      <div className="pt-16 min-h-screen bg-brand-light flex items-center justify-center">
         <div className="max-w-md w-full mx-4">
           <Card className="p-8 text-center">
             <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -151,7 +151,7 @@ export function ResetPassword() {
   }
 
   return (
-    <div className="pt-16 min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+    <div className="pt-16 min-h-screen bg-brand-light flex items-center justify-center">
       <div className="max-w-md w-full mx-4">
         <Card className="p-8">
           <div className="text-center mb-8">
@@ -180,7 +180,7 @@ export function ResetPassword() {
                 placeholder="New password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                 required
                 minLength={8}
               />
@@ -200,7 +200,7 @@ export function ResetPassword() {
                 placeholder="Confirm new password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                 required
                 minLength={8}
               />
@@ -237,7 +237,7 @@ export function ResetPassword() {
               Remember your password?{' '}
               <button
                 onClick={() => navigate('/login')}
-                className="text-purple-600 hover:text-purple-500 font-medium"
+                className="text-brand-primary hover:text-brand-primary-dark font-medium"
               >
                 Sign in
               </button>

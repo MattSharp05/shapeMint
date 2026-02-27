@@ -4,7 +4,7 @@ import axios from 'axios';
 const MESHY_API_KEY = process.env.MESHY_API_KEY || process.env.VITE_MESHY_API_KEY;
 const MESHY_IMAGE_TO_3D_BASE = 'https://api.meshy.ai/openapi/v1';
 
-async function handler(
+export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
@@ -34,5 +34,3 @@ async function handler(
     });
   }
 }
-
-module.exports = handler;

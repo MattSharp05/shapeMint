@@ -63,6 +63,10 @@ export const MATERIAL_COMBINATIONS: MaterialCombination[] = [
   { materialId: '111', baseMaterialId: 'gold-plated-brass-casting', colorId: '14k-rose-gold', finishId: 'goldplated-brass-layer-thickness' },
   { materialId: '112', baseMaterialId: 'gold-plated-brass-casting', colorId: '18k-yellow-gold', finishId: 'goldplated-brass-layer-thickness' },
   { materialId: '113', baseMaterialId: 'gold-plated-brass-casting', finishId: 'goldplated-brass-layer-thickness' },
+
+  // SLA Watershed combinations
+  { materialId: '328', baseMaterialId: 'sla-watershed', colorId: 'clear', finishId: 'default-sla' },
+  { materialId: '329', baseMaterialId: 'sla-watershed', colorId: 'black', finishId: 'default-sla' },
 ];
 
 export function getShapewaysMaterialId(baseMaterialId: string, colorId?: string, finishId?: string): string | undefined {

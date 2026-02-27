@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Search, Grid, List, Heart, Download, Printer, Loader2 } from 'lucide-react';
+import { Search, Grid, List, Printer, Loader2 } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
 import { modelService } from '../services/modelService';
 import { MarketplaceModel } from '../types';
-
-// Remove all mock designs - keeping only real generated models
 
 const categories = ['All', 'Home & Garden', 'Art & Decor', 'Accessories', 'Lighting', 'Office'];
 
@@ -19,7 +17,7 @@ export function Marketplace() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [sortBy, setSortBy] = useState('popular');
+  const [sortBy, setSortBy] = useState('newest');
   const [marketplaceModels, setMarketplaceModels] = useState<MarketplaceModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,24 +45,17 @@ export function Marketplace() {
 
   const realDesigns = marketplaceModels.map((model) => ({
     id: model.id,
-    title: model.name || capitalizeWords(model.prompt || 'Untitled Model'), // Use model name first, fallback to prompt
-    description: model.prompt || 'AI-generated 3D model', // Use prompt as description
-    // Use actual thumbnail if available, otherwise fallback to placeholder
+    title: model.name || capitalizeWords(model.prompt || 'Untitled Model'),
+    description: model.prompt || 'AI-generated 3D model',
     thumbnail: model.thumbnail_url || DEFAULT_MODEL_THUMBNAIL,
-    price: 9.99, // Placeholder price, can be replaced with real pricing logic
     category: capitalizeWords(model.style || 'Other'),
-    downloads: 0, // Placeholder
-    likes: 0, // Placeholder
-    userName: `Creator-${model.user_id.slice(-4)}`, // Better user display format
-    featured: false, // Placeholder
     modelUrl: model.glb_url || model.obj_url || model.stl_url || '',
-    stl_url: model.stl_url || '', // <-- Add STL URL explicitly
-    objUrl: model.obj_url || '', // <-- Add OBJ URL explicitly
-    glbUrl: model.glb_url || '', // <-- Add GLB URL explicitly
-    createdAt: model.created_at, // Add creation date for sorting
+    stl_url: model.stl_url || '',
+    objUrl: model.obj_url || '',
+    glbUrl: model.glb_url || '',
+    createdAt: model.created_at,
   }));
 
-  // Use only real models - no more mock data
   const allDesigns = realDesigns;
 
   const filteredDesigns = allDesigns.filter(design => {
@@ -74,27 +65,22 @@ export function Marketplace() {
     return matchesSearch && matchesCategory;
   });
 
-  // Apply sorting logic
   const sortedDesigns = [...filteredDesigns].sort((a, b) => {
     switch (sortBy) {
       case 'newest':
-        // Sort by creation date (newest first)
         const dateA = new Date(a.createdAt || '2024-01-01').getTime();
         const dateB = new Date(b.createdAt || '2024-01-01').getTime();
         return dateB - dateA;
-      case 'price-low':
-        return a.price - b.price;
-      case 'price-high':
-        return b.price - a.price;
-      case 'popular':
+      case 'oldest':
+        const dateC = new Date(a.createdAt || '2024-01-01').getTime();
+        const dateD = new Date(b.createdAt || '2024-01-01').getTime();
+        return dateC - dateD;
       default:
-        // Sort by downloads + likes (most popular first)
-        return (b.downloads + b.likes) - (a.downloads + a.likes);
+        return 0;
     }
   });
 
-  const handleBuyNow = (design: typeof realDesigns[0]) => {
-    // Navigate to order page with marketplace design data
+  const handleGetPrinted = (design: typeof realDesigns[0]) => {
     navigate('/order', {
       state: {
         modelData: {
@@ -108,31 +94,9 @@ export function Marketplace() {
           designId: design.id,
           designTitle: design.title,
           designDescription: design.description,
-          creator: design.userName
         },
         modelUrl: design.modelUrl,
-        stlUrl: design.stl_url // <-- Pass STL URL explicitly
-      }
-    });
-  };
-
-  const handleDownloadOnly = (design: typeof realDesigns[0]) => {
-    // Navigate to download checkout page
-    navigate('/download-checkout', {
-      state: {
-        modelData: {
-          designId: design.id,
-          designTitle: design.title,
-          designDescription: design.description,
-          creator: design.userName,
-          isMarketplaceItem: true,
-          objUrl: design.objUrl,
-          glbUrl: design.glbUrl
-        },
-        modelUrl: design.modelUrl,
-        stlUrl: design.stl_url, // Pass STL URL explicitly
-        price: design.price,
-        isGenerated: false
+        stlUrl: design.stl_url
       }
     });
   };
@@ -147,14 +111,13 @@ export function Marketplace() {
               3D Design Marketplace
             </h1>
             <p className="text-xl text-gray-600">
-              Discover and purchase high-quality 3D models from talented creators
+              Discover high-quality AI-generated 3D models ready for printing
             </p>
           </div>
 
-          {/* Loading UI */}
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
-              <Loader2 className="h-12 w-12 text-purple-600 animate-spin mx-auto mb-4" />
+              <Loader2 className="h-12 w-12 text-brand-primary animate-spin mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">
                 Loading Marketplace...
               </h3>
@@ -178,15 +141,14 @@ export function Marketplace() {
               3D Design Marketplace
             </h1>
             <p className="text-xl text-gray-600">
-              Discover and purchase high-quality 3D models from talented creators
+              Discover high-quality AI-generated 3D models ready for printing
             </p>
           </div>
 
-          {/* Error UI */}
           <div className="flex items-center justify-center py-20">
             <div className="text-center max-w-md">
               <div className="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-red-600 text-2xl">⚠️</span>
+                <span className="text-red-600 text-2xl">!</span>
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">
                 Unable to Load Marketplace
@@ -194,9 +156,9 @@ export function Marketplace() {
               <p className="text-gray-600 mb-6">
                 {error}
               </p>
-              <Button 
-                onClick={() => window.location.reload()} 
-                className="bg-purple-600 hover:bg-purple-700 text-white"
+              <Button
+                onClick={() => window.location.reload()}
+                className="bg-brand-primary hover:bg-brand-primary-dark text-white"
               >
                 Try Again
               </Button>
@@ -215,7 +177,7 @@ export function Marketplace() {
             3D Design Marketplace
           </h1>
           <p className="text-xl text-gray-600">
-            Discover and purchase high-quality 3D models from talented creators
+            Discover high-quality AI-generated 3D models ready for printing
           </p>
         </div>
 
@@ -230,43 +192,41 @@ export function Marketplace() {
                   placeholder="Search designs..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                 />
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-4">
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
               >
                 {categories.map(category => (
                   <option key={category} value={category}>{category}</option>
                 ))}
               </select>
-              
+
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
               >
-                <option value="popular">Most Popular</option>
                 <option value="newest">Newest</option>
-                <option value="price-low">Price: Low to High</option>
-                <option value="price-high">Price: High to Low</option>
+                <option value="oldest">Oldest</option>
               </select>
-              
+
               <div className="flex border border-gray-300 rounded-lg">
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-2 ${viewMode === 'grid' ? 'bg-purple-50 text-purple-600' : 'text-gray-400'}`}
+                  className={`p-2 ${viewMode === 'grid' ? 'bg-brand-light text-brand-primary' : 'text-gray-400'}`}
                 >
                   <Grid className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`p-2 ${viewMode === 'list' ? 'bg-purple-50 text-purple-600' : 'text-gray-400'}`}
+                  className={`p-2 ${viewMode === 'list' ? 'bg-brand-light text-brand-primary' : 'text-gray-400'}`}
                 >
                   <List className="h-4 w-4" />
                 </button>
@@ -284,8 +244,8 @@ export function Marketplace() {
 
         {/* Design Grid */}
         <div className={`grid gap-6 ${
-          viewMode === 'grid' 
-            ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' 
+          viewMode === 'grid'
+            ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
             : 'grid-cols-1'
         }`}>
           {sortedDesigns.map((design) => (
@@ -298,76 +258,31 @@ export function Marketplace() {
                       alt={design.title}
                       className="w-full h-48 object-cover"
                     />
-                    {design.featured && (
-                      <div className="absolute top-2 left-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-2 py-1 rounded-md text-xs font-medium">
-                        Featured
-                      </div>
-                    )}
-                    <button className="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-sm rounded-full hover:bg-white transition-colors">
-                      <Heart className="h-4 w-4 text-gray-600" />
-                    </button>
                   </div>
                   <div className="p-6">
-                    <div className="flex justify-between items-start mb-2">
-                      <Link 
-                        to={`/design/${design.id}`}
-                        className="text-lg font-semibold text-gray-900 hover:text-purple-600 transition-colors cursor-pointer"
-                      >
-                        {design.title}
-                      </Link>
-                      <span className="text-2xl font-bold text-purple-600">
-                        ${design.price}
-                      </span>
-                    </div>
+                    <Link
+                      to={`/design/${design.id}`}
+                      className="text-lg font-semibold text-gray-900 hover:text-brand-primary transition-colors cursor-pointer block mb-2"
+                    >
+                      {design.title}
+                    </Link>
                     <p className="text-gray-600 text-sm mb-4">
                       {design.description}
                     </p>
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="mb-4">
                       <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                         {design.category}
                       </span>
-                      <Link 
-                        to={`/creator/${design.userName}`}
-                        className="text-xs text-gray-500 hover:text-purple-600 transition-colors"
-                      >
-                        by {design.userName}
-                      </Link>
                     </div>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center space-x-4 text-sm text-gray-500">
-                        <div className="flex items-center space-x-1">
-                          <Download className="h-3 w-3" />
-                          <span>{design.downloads}</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <Heart className="h-3 w-3" />
-                          <span>{design.likes}</span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Action Buttons - Prioritizing Print */}
-                    <div className="space-y-2">
-                      <Button 
-                        size="sm" 
-                        className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
-                        onClick={() => handleBuyNow(design)}
-                      >
-                        <Printer className="h-4 w-4 mr-2" />
-                        Get it Printed
-                        <span className="ml-auto text-xs opacity-90">Starting $20</span>
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 text-sm"
-                        onClick={() => handleDownloadOnly(design)}
-                      >
-                        <Download className="h-3 w-3 mr-1" />
-                        Download Files Only
-                        <span className="ml-auto text-xs text-gray-500">${design.price}</span>
-                      </Button>
-                    </div>
+
+                    <Button
+                      size="sm"
+                      className="w-full bg-brand-primary hover:bg-brand-primary-dark text-white font-semibold shadow-sm hover:shadow-md transform hover:scale-105 transition-all duration-200"
+                      onClick={() => handleGetPrinted(design)}
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      Get it Printed
+                    </Button>
                   </div>
                 </>
               ) : (
@@ -380,63 +295,26 @@ export function Marketplace() {
                   <div className="flex-1 p-6">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <Link 
-                            to={`/design/${design.id}`}
-                            className="text-lg font-semibold text-gray-900 hover:text-purple-600 transition-colors cursor-pointer"
-                          >
-                            {design.title}
-                          </Link>
-                          {design.featured && (
-                            <span className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-2 py-1 rounded-md text-xs font-medium">
-                              Featured
-                            </span>
-                          )}
-                        </div>
+                        <Link
+                          to={`/design/${design.id}`}
+                          className="text-lg font-semibold text-gray-900 hover:text-brand-primary transition-colors cursor-pointer block mb-2"
+                        >
+                          {design.title}
+                        </Link>
                         <p className="text-gray-600 mb-2">{design.description}</p>
-                        <div className="flex items-center space-x-4 text-sm text-gray-500 mb-4">
-                          <span className="bg-gray-100 px-2 py-1 rounded">
-                            {design.category}
-                          </span>
-                          <Link 
-                            to={`/creator/${design.userName}`}
-                            className="hover:text-purple-600 transition-colors"
-                          >
-                            by {design.userName}
-                          </Link>
-                          <div className="flex items-center space-x-1">
-                            <Download className="h-3 w-3" />
-                            <span>{design.downloads}</span>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            <Heart className="h-3 w-3" />
-                            <span>{design.likes}</span>
-                          </div>
-                        </div>
+                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                          {design.category}
+                        </span>
                       </div>
-                      <div className="text-right ml-6">
-                        <div className="text-2xl font-bold text-purple-600 mb-3">
-                          ${design.price}
-                        </div>
-                        <div className="space-y-2">
-                          <Button 
-                            size="sm"
-                            className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold min-w-[140px] shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
-                            onClick={() => handleBuyNow(design)}
-                          >
-                            <Printer className="h-4 w-4 mr-2" />
-                            Get it Printed
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            className="border-gray-300 text-gray-700 hover:bg-gray-50 min-w-[140px]"
-                            onClick={() => handleDownloadOnly(design)}
-                          >
-                            <Download className="h-3 w-3 mr-1" />
-                            Files Only ${design.price}
-                          </Button>
-                        </div>
+                      <div className="ml-6">
+                        <Button
+                          size="sm"
+                          className="bg-brand-primary hover:bg-brand-primary-dark text-white font-semibold min-w-[140px] shadow-sm hover:shadow-md transform hover:scale-105 transition-all duration-200"
+                          onClick={() => handleGetPrinted(design)}
+                        >
+                          <Printer className="h-4 w-4 mr-2" />
+                          Get it Printed
+                        </Button>
                       </div>
                     </div>
                   </div>

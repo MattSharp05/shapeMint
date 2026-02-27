@@ -119,7 +119,7 @@ export function ContactSubmissions({ className = '' }: ContactSubmissionsProps) 
     return (
       <div className={`flex items-center justify-center py-12 ${className}`}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary mx-auto mb-4"></div>
           <p className="text-gray-600">Loading contact submissions...</p>
         </div>
       </div>
@@ -164,7 +164,7 @@ export function ContactSubmissions({ className = '' }: ContactSubmissionsProps) 
                 placeholder="Search submissions..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
               />
             </div>
           </div>
@@ -174,7 +174,7 @@ export function ContactSubmissions({ className = '' }: ContactSubmissionsProps) 
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
             >
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
@@ -189,7 +189,7 @@ export function ContactSubmissions({ className = '' }: ContactSubmissionsProps) 
             <select
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
             >
               <option value="all">All Priorities</option>
               <option value="high">High</option>

@@ -124,8 +124,8 @@ export const US_STATES = [
 export interface OrderRecord {
   id: string;
   order_number: string;
-  vendor: 'shapeways';
-  status: 'pending' | 'submitted' | 'in_production' | 'shipped' | 'delivered' | 'failed' | 'cancelled';
+  vendor: 'shapeways' | 'slant3d' | 'treatstock' | 'craftcloud';
+  status: 'pending' | 'pending_payment' | 'submitted' | 'in_production' | 'shipped' | 'delivered' | 'failed' | 'cancelled';
   total_price: number;
   currency: string;
   quantity: number;

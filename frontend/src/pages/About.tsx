@@ -1,35 +1,8 @@
 import React from 'react';
-import { Sparkles, Zap, Users, Shield, Award, Target, Heart, Lightbulb } from 'lucide-react';
+import { Sparkles, Zap, Users, Shield, Target, Heart, Lightbulb } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
-
-const teamMembers = [
-  {
-    name: 'Matthew Sharp',
-    role: 'Team Lead & Product Manager'
-  },
-  {
-    name: 'Subhan Shaikh',
-    role: 'Applied AI Engineer'
-  },
-  {
-    name: 'Krish Kumar',
-    role: 'Software Architect & Engineer'
-  },
-  {
-    name: 'Kelly Chan',
-    role: 'UX/UI Designer & Frontend Developer'
-  },
-  {
-    name: 'Arjun Pramanik',
-    role: 'Software Developer'
-  },
-  {
-    name: 'Surabhi Kalaka',
-    role: 'Marketing'
-  }
-];
 
 const values = [
   {
@@ -61,10 +34,10 @@ export function About() {
         {/* Hero Section */}
         <div className="text-center mb-16">
           <div className="flex items-center justify-center space-x-2 mb-6">
-            <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-3 rounded-lg">
+            <div className="bg-brand-primary p-3 rounded-lg">
               <Sparkles className="h-8 w-8 text-white" />
             </div>
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+            <h1 className="text-5xl font-bold text-brand-primary">
               ShapeMint
             </h1>
           </div>
@@ -72,7 +45,7 @@ export function About() {
             Transforming Ideas into 3D Reality
           </h2>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-            We're on a mission to democratize 3D design creation through the power of artificial intelligence. 
+            We're on a mission to democratize 3D design creation through the power of artificial intelligence.
             From concept to creation in under 60 seconds, we're making 3D design accessible to everyone.
           </p>
         </div>
@@ -81,24 +54,24 @@ export function About() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-16">
           <Card className="p-8">
             <div className="flex items-center space-x-3 mb-4">
-              <Target className="h-6 w-6 text-purple-600" />
+              <Target className="h-6 w-6 text-brand-primary" />
               <h3 className="text-2xl font-bold text-gray-900">Our Mission</h3>
             </div>
             <p className="text-gray-600 leading-relaxed">
-              To empower creators, entrepreneurs, and dreamers worldwide by making 3D design creation as simple as 
-              describing an idea. We believe that everyone should have the tools to bring their imagination to life, 
+              To empower creators, entrepreneurs, and dreamers worldwide by making 3D design creation as simple as
+              describing an idea. We believe that everyone should have the tools to bring their imagination to life,
               regardless of their technical background or design experience.
             </p>
           </Card>
 
           <Card className="p-8">
             <div className="flex items-center space-x-3 mb-4">
-              <Zap className="h-6 w-6 text-blue-600" />
+              <Zap className="h-6 w-6 text-brand-accent" />
               <h3 className="text-2xl font-bold text-gray-900">Our Vision</h3>
             </div>
             <p className="text-gray-600 leading-relaxed">
-              A world where physical products can be created as easily as digital content. Where anyone with an idea 
-              can instantly generate, customize, and manufacture physical objects, fostering a new era of creativity 
+              A world where physical products can be created as easily as digital content. Where anyone with an idea
+              can instantly generate, customize, and manufacture physical objects, fostering a new era of creativity
               and innovation in product design.
             </p>
           </Card>
@@ -112,8 +85,8 @@ export function About() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {values.map((value, index) => (
               <Card key={index} className="p-6 text-center hover">
-                <div className="bg-gradient-to-r from-purple-100 to-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <value.icon className="h-8 w-8 text-purple-600" />
+                <div className="bg-brand-light w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <value.icon className="h-8 w-8 text-brand-primary" />
                 </div>
                 <h4 className="text-lg font-semibold text-gray-900 mb-2">
                   {value.title}
@@ -126,37 +99,18 @@ export function About() {
           </div>
         </div>
 
-        {/* Team */}
-        <div className="mb-16">
-          <h3 className="text-3xl font-bold text-gray-900 text-center mb-12">
-            Meet Our Team
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {teamMembers.map((member, index) => (
-              <Card key={index} className="p-6 text-center hover">
-                <h4 className="text-lg font-semibold text-gray-900 mb-1">
-                  {member.name}
-                </h4>
-                <p className="text-purple-600 text-sm font-medium mb-3">
-                  {member.role}
-                </p>
-              </Card>
-            ))}
-          </div>
-        </div>
-
         {/* CTA */}
         <div className="text-center">
-          <Card className="p-12 bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+          <Card className="p-12 bg-brand-primary text-white">
             <h3 className="text-3xl font-bold mb-4">
               Ready to Start Creating?
             </h3>
             <p className="text-xl mb-8 opacity-90">
-              Join thousands of creators who are already bringing their ideas to life with ShapeMint.
+              Join creators who are already bringing their ideas to life with ShapeMint.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link to="/register">
-                <Button className="bg-white text-purple-600 hover:bg-gray-100 px-8 py-3">
+                <Button className="bg-brand-accent text-gray-900 hover:bg-brand-accent-dark px-8 py-3">
                   Get Started Free
                 </Button>
               </Link>

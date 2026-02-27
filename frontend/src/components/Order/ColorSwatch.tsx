@@ -5,6 +5,7 @@ interface ColorSwatchProps {
     id: string;
     name: string;
     swatchUrl?: string;
+    hex?: string;
   };
   isSelected: boolean;
   onSelect: () => void;
@@ -20,27 +21,12 @@ export function ColorSwatch({ color, isSelected, onSelect }: ColorSwatchProps) {
       }`}
       onClick={onSelect}
     >
-      <div className="text-center">
-        <div className="mb-3">
-          {color.swatchUrl ? (
-            <img
-              src={color.swatchUrl}
-              alt={`${color.name} swatch`}
-              className="w-20 h-20 rounded-lg mx-auto object-cover border"
-              style={{ aspectRatio: '1/1' }}
-              onError={(e) => {
-                // Fallback for broken images
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-                target.nextElementSibling?.classList.remove('hidden');
-              }}
-            />
-          ) : null}
-          <div className={`w-20 h-20 rounded-lg mx-auto bg-gray-200 flex items-center justify-center text-xs text-gray-500 border ${color.swatchUrl ? 'hidden' : ''}`}>
-            No Image
-          </div>
-        </div>
-        <div className="text-sm font-medium text-gray-900 truncate" title={color.name}>
+      <div className="flex flex-col items-center justify-center">
+        <div
+          className="w-12 h-12 rounded-full border-2 border-gray-200 mb-2"
+          style={{ backgroundColor: color.hex || '#cccccc' }}
+        />
+        <div className="text-sm font-medium text-gray-900 truncate w-full text-center" title={color.name}>
           {color.name}
         </div>
       </div>

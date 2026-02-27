@@ -140,7 +140,7 @@ export function Explore() {
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const navigate = useNavigate();
 
-  const filteredPrompts = trendingPrompts.filter(prompt => 
+  const filteredPrompts = trendingPrompts.filter(prompt =>
     selectedCategory === 'All' || prompt.category === selectedCategory
   );
 
@@ -163,7 +163,6 @@ export function Explore() {
       mode = 'text';
     }
 
-    // Navigate to generate page with the customized prompt
     navigate('/generate', {
       state: {
         prefilledPrompt: finalPrompt,
@@ -180,7 +179,7 @@ export function Explore() {
         {/* Header */}
         <div className="text-center mb-12">
           <div className="flex items-center justify-center space-x-2 mb-4">
-            <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-2 rounded-lg">
+            <div className="bg-brand-primary p-2 rounded-lg">
               <Sparkles className="h-6 w-6 text-white" />
             </div>
             <h1 className="text-4xl font-bold text-gray-900">
@@ -200,7 +199,7 @@ export function Explore() {
               onClick={() => setSelectedCategory(category)}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
                 selectedCategory === category
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-brand-primary text-white'
                   : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
               }`}
             >
@@ -212,15 +211,15 @@ export function Explore() {
         {/* Trending Prompts Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
           {filteredPrompts.map((prompt) => (
-            <Card 
-              key={prompt.id} 
+            <Card
+              key={prompt.id}
               className="p-6 hover cursor-pointer transition-all"
               onClick={() => setSelectedPrompt(prompt)}
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center space-x-3">
-                  <div className="bg-gradient-to-r from-purple-100 to-blue-100 p-2 rounded-lg">
-                    <prompt.icon className="h-5 w-5 text-purple-600" />
+                  <div className="bg-brand-light p-2 rounded-lg">
+                    <prompt.icon className="h-5 w-5 text-brand-primary" />
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900">{prompt.title}</h3>
@@ -230,30 +229,30 @@ export function Explore() {
                   </div>
                 </div>
                 {prompt.trending && (
-                  <div className="flex items-center space-x-1 text-orange-500">
+                  <div className="flex items-center space-x-1 text-brand-accent-dark">
                     <TrendingUp className="h-4 w-4" />
                     <span className="text-xs font-medium">Trending</span>
                   </div>
                 )}
               </div>
-              
+
               <p className="text-gray-600 text-sm mb-4">{prompt.description}</p>
-              
+
               <div className="space-y-3">
                 <div className="text-xs text-gray-500">
                   <span className="font-medium">Social Tags:</span> {prompt.socialTag}
                 </div>
-                
+
                 <div className="flex flex-wrap gap-1">
                   {prompt.examples.slice(0, 2).map((example, index) => (
-                    <span key={index} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                    <span key={index} className="text-xs bg-brand-light text-brand-primary px-2 py-1 rounded">
                       {example}
                     </span>
                   ))}
                 </div>
-                
-                <Button 
-                  size="sm" 
+
+                <Button
+                  size="sm"
                   className="w-full"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -274,8 +273,8 @@ export function Explore() {
               <div className="p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center space-x-3">
-                    <div className="bg-gradient-to-r from-purple-100 to-blue-100 p-2 rounded-lg">
-                      <selectedPrompt.icon className="h-6 w-6 text-purple-600" />
+                    <div className="bg-brand-light p-2 rounded-lg">
+                      <selectedPrompt.icon className="h-6 w-6 text-brand-primary" />
                     </div>
                     <div>
                       <h2 className="text-2xl font-bold text-gray-900">{selectedPrompt.title}</h2>
@@ -286,7 +285,7 @@ export function Explore() {
                     onClick={() => setSelectedPrompt(null)}
                     className="text-gray-400 hover:text-gray-600"
                   >
-                    ✕
+                    X
                   </button>
                 </div>
 
@@ -306,7 +305,7 @@ export function Explore() {
                           }}
                           className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-lg border-2 transition-all ${
                             inputMode === 'text'
-                              ? 'border-purple-500 bg-purple-50 text-purple-700'
+                              ? 'border-brand-primary bg-brand-light text-brand-primary'
                               : 'border-gray-200 hover:border-gray-300'
                           }`}
                         >
@@ -321,7 +320,7 @@ export function Explore() {
                           }}
                           className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-lg border-2 transition-all ${
                             inputMode === 'image'
-                              ? 'border-purple-500 bg-purple-50 text-purple-700'
+                              ? 'border-brand-primary bg-brand-light text-brand-primary'
                               : 'border-gray-200 hover:border-gray-300'
                           }`}
                         >
@@ -343,7 +342,7 @@ export function Explore() {
                         value={customInput}
                         onChange={(e) => setCustomInput(e.target.value)}
                         placeholder={selectedPrompt.placeholder}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                       />
                       <p className="text-xs text-gray-500 mt-1">
                         Leave blank to use the example: "{selectedPrompt.placeholder}"
@@ -354,7 +353,7 @@ export function Explore() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Upload Your Photo
                       </label>
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-purple-400 transition-colors">
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-brand-primary transition-colors">
                         <input
                           type="file"
                           onChange={(e) => setUploadedImage(e.target.files?.[0] || null)}
@@ -388,16 +387,16 @@ export function Explore() {
                     </p>
                   </div>
 
-                  <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="bg-brand-light p-4 rounded-lg">
                     <h4 className="font-medium text-gray-900 mb-2 flex items-center">
                       <Heart className="h-4 w-4 mr-2 text-red-500" />
                       Perfect for Social Media!
                     </h4>
                     <p className="text-sm text-gray-700 mb-2">
-                      Share your creation with: <span className="font-mono text-blue-600">{selectedPrompt.socialTag}</span>
+                      Share your creation with: <span className="font-mono text-brand-primary">{selectedPrompt.socialTag}</span>
                     </p>
                     <p className="text-xs text-gray-600">
-                      💡 Tip: Film the generation process for TikTok/Instagram Reels!
+                      Tip: Film the generation process for TikTok/Instagram Reels!
                     </p>
                   </div>
 
@@ -445,25 +444,25 @@ export function Explore() {
         )}
 
         {/* Social Media CTA */}
-        <Card className="p-8 text-center bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+        <Card className="p-8 text-center bg-brand-light border-brand-neutral">
           <h3 className="text-2xl font-bold text-gray-900 mb-4">
             Share Your Creations!
           </h3>
           <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-            Tag us in your social media posts and use our trending hashtags. 
+            Tag us in your social media posts and use our trending hashtags.
             We love seeing what amazing 3D models our community creates!
           </p>
           <div className="flex flex-wrap justify-center gap-2">
-            <span className="bg-white px-3 py-1 rounded-full text-sm font-medium text-purple-600">
+            <span className="bg-white px-3 py-1 rounded-full text-sm font-medium text-brand-primary">
               #ShapeMint3D
             </span>
-            <span className="bg-white px-3 py-1 rounded-full text-sm font-medium text-purple-600">
+            <span className="bg-white px-3 py-1 rounded-full text-sm font-medium text-brand-primary">
               #AI3DModel
             </span>
-            <span className="bg-white px-3 py-1 rounded-full text-sm font-medium text-purple-600">
+            <span className="bg-white px-3 py-1 rounded-full text-sm font-medium text-brand-primary">
               #3DPrintable
             </span>
-            <span className="bg-white px-3 py-1 rounded-full text-sm font-medium text-purple-600">
+            <span className="bg-white px-3 py-1 rounded-full text-sm font-medium text-brand-primary">
               #CustomFigurine
             </span>
           </div>
@@ -471,4 +470,4 @@ export function Explore() {
       </div>
     </div>
   );
-} 
+}

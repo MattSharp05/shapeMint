@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
 
-async function handler(
+export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
@@ -85,5 +85,3 @@ async function handler(
     });
   }
 }
-
-module.exports = handler;

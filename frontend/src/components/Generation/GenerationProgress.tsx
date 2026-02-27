@@ -4,7 +4,7 @@ import { Card } from '../UI/Card';
 
 interface GenerationProgressProps {
   progress: number;
-  status: 'pending' | 'generating' | 'completed' | 'failed';
+  status: 'pending' | 'generating' | 'repairing' | 'completed' | 'failed';
   estimatedTime?: string;
 }
 
@@ -26,6 +26,8 @@ export function GenerationProgress({ progress, status, estimatedTime }: Generati
         return 'Initializing generation...';
       case 'generating':
         return 'Generating your 3D model...';
+      case 'repairing':
+        return 'Repairing mesh for 3D printing...';
       case 'completed':
         return 'Generation completed!';
       case 'failed':
@@ -42,17 +44,17 @@ export function GenerationProgress({ progress, status, estimatedTime }: Generati
         
         <div>
           <h3 className="text-lg font-medium text-gray-900">{getStatusText()}</h3>
-          {estimatedTime && status === 'generating' && (
+          {estimatedTime && (status === 'generating' || status === 'repairing') && (
             <p className="text-sm text-gray-500 mt-1">
               Estimated time: {estimatedTime}
             </p>
           )}
         </div>
 
-        {status === 'generating' && (
+        {(status === 'generating' || status === 'repairing') && (
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div
-              className="bg-gradient-to-r from-purple-600 to-blue-600 h-2 rounded-full transition-all duration-300"
+              className="bg-brand-primary h-2 rounded-full transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>

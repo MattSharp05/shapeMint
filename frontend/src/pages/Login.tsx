@@ -110,7 +110,7 @@ export function Login() {
 
   if (showSuccess) {
     return (
-      <div className="pt-16 min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+      <div className="pt-16 min-h-screen bg-brand-light flex items-center justify-center">
         <div className="max-w-md w-full mx-4">
           <Card className="p-8 text-center">
             <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -129,7 +129,7 @@ export function Login() {
   }
 
   return (
-    <div className="pt-16 min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+    <div className="pt-16 min-h-screen bg-brand-light flex items-center justify-center">
       <div className="max-w-md w-full mx-4">
         <Card className="p-8">
           {showForgotPassword ? (
@@ -178,7 +178,7 @@ export function Login() {
                     placeholder="Email address"
                     value={forgotEmail}
                     onChange={(e) => setForgotEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                     required
                   />
                 </div>
@@ -206,7 +206,7 @@ export function Login() {
                     placeholder="Email address"
                     value={email}
                     onChange={handleEmailChange}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                     required
                   />
                 </div>
@@ -218,7 +218,7 @@ export function Login() {
                     placeholder="Password"
                     value={password}
                     onChange={handlePasswordChange}
-                    className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                     required
                   />
                   <button
@@ -241,13 +241,13 @@ export function Login() {
 
                 <div className="flex items-center justify-between">
                   <label className="flex items-center">
-                    <input type="checkbox" className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded" />
+                    <input type="checkbox" className="h-4 w-4 text-brand-primary focus:ring-brand-primary border-gray-300 rounded" />
                     <span className="ml-2 text-sm text-gray-600">Remember me</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => setShowForgotPassword(true)}
-                    className="text-sm text-purple-600 hover:text-purple-500"
+                    className="text-sm text-brand-primary hover:text-brand-primary-dark"
                   >
                     Forgot password?
                   </button>
@@ -261,7 +261,7 @@ export function Login() {
               <div className="mt-6 text-center">
                 <p className="text-gray-600">
                   Don't have an account?{' '}
-                  <Link to="/register" className="text-purple-600 hover:text-purple-500 font-medium">
+                  <Link to="/register" className="text-brand-primary hover:text-brand-primary-dark font-medium">
                     Sign up
                   </Link>
                 </p>

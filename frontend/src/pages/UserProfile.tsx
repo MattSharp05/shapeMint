@@ -190,13 +190,13 @@ export function UserProfile() {
                         value={editForm.full_name}
                         onChange={(e) => setEditForm({...editForm, full_name: e.target.value})}
                         placeholder="Full Name"
-                        className="w-full text-2xl font-bold p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        className="w-full text-2xl font-bold p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                       />
                       <input
                         value={editForm.avatar_url}
                         onChange={(e) => setEditForm({...editForm, avatar_url: e.target.value})}
                         placeholder="Avatar URL (optional)"
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                       />
                     </div>
                   ) : (
@@ -251,7 +251,7 @@ export function UserProfile() {
                     onChange={(e) => setEditForm({...editForm, bio: e.target.value})}
                     placeholder="Tell us about yourself..."
                     rows={3}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                   />
                 ) : (
                   <p className="text-gray-700">
@@ -314,7 +314,7 @@ export function UserProfile() {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                 >
                   <option value="newest">Newest</option>
                   <option value="popular">Most Downloaded</option>
@@ -326,13 +326,13 @@ export function UserProfile() {
                 <div className="flex border border-gray-300 rounded-lg">
                   <button
                     onClick={() => setViewMode('grid')}
-                    className={`p-2 ${viewMode === 'grid' ? 'bg-purple-50 text-purple-600' : 'text-gray-400'}`}
+                    className={`p-2 ${viewMode === 'grid' ? 'bg-brand-light text-brand-primary' : 'text-gray-400'}`}
                   >
                     <Grid className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setViewMode('list')}
-                    className={`p-2 ${viewMode === 'list' ? 'bg-purple-50 text-purple-600' : 'text-gray-400'}`}
+                    className={`p-2 ${viewMode === 'list' ? 'bg-brand-light text-brand-primary' : 'text-gray-400'}`}
                   >
                     <List className="h-4 w-4" />
                   </button>
@@ -357,7 +357,7 @@ export function UserProfile() {
                           className="w-full h-48 object-cover"
                         />
                         {design.featured && (
-                          <div className="absolute top-2 left-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-2 py-1 rounded-md text-xs font-medium">
+                          <div className="absolute top-2 left-2 bg-brand-primary text-white px-2 py-1 rounded-md text-xs font-medium">
                             Featured
                           </div>
                         )}
@@ -369,11 +369,11 @@ export function UserProfile() {
                         <div className="flex justify-between items-start mb-2">
                           <Link 
                             to={`/design/${design.id}`}
-                            className="text-lg font-semibold text-gray-900 hover:text-purple-600 transition-colors"
+                            className="text-lg font-semibold text-gray-900 hover:text-brand-primary transition-colors"
                           >
                             {design.title}
                           </Link>
-                          <span className="text-2xl font-bold text-purple-600">
+                          <span className="text-2xl font-bold text-brand-primary">
                             ${design.price}
                           </span>
                         </div>
@@ -416,12 +416,12 @@ export function UserProfile() {
                             <div className="flex items-center space-x-2 mb-2">
                               <Link 
                                 to={`/design/${design.id}`}
-                                className="text-lg font-semibold text-gray-900 hover:text-purple-600 transition-colors"
+                                className="text-lg font-semibold text-gray-900 hover:text-brand-primary transition-colors"
                               >
                                 {design.title}
                               </Link>
                               {design.featured && (
-                                <span className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-2 py-1 rounded-md text-xs font-medium">
+                                <span className="bg-brand-primary text-white px-2 py-1 rounded-md text-xs font-medium">
                                   Featured
                                 </span>
                               )}
@@ -446,7 +446,7 @@ export function UserProfile() {
                             </div>
                           </div>
                           <div className="text-right ml-6">
-                            <div className="text-2xl font-bold text-purple-600">
+                            <div className="text-2xl font-bold text-brand-primary">
                               ${design.price}
                             </div>
                           </div>

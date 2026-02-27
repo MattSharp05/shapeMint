@@ -49,12 +49,7 @@ export function MaterialSelection({
     <div className="space-y-6">
       <div className="text-center">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Select Material, Color & Finish</h2>
-        <p className="text-gray-600 mb-2">Choose your material and available options</p>
-        <div className="bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg p-3 max-w-2xl mx-auto">
-          <p className="text-sm text-purple-800">
-            <span className="font-semibold">💡 Tip:</span> Choose <strong>Full Color Nylon 12 (MJF)</strong> if your model has multiple colors, textures, or detailed designs. For single-color prints, select from the other options below.
-          </p>
-        </div>
+        <p className="text-gray-600">Choose your material and available options</p>
       </div>
 
       <div className="space-y-4">
@@ -68,12 +63,12 @@ export function MaterialSelection({
               key={material.id} 
               className={`overflow-hidden ${
                 isFullColor 
-                  ? 'ring-2 ring-gradient-to-r ring-purple-500 bg-gradient-to-r from-purple-50 to-blue-50' 
+                  ? 'ring-2 ring-brand-primary bg-brand-light'
                   : ''
               }`}
             >
               {isFullColor && (
-                <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 text-center">
+                <div className="bg-brand-primary text-white px-4 py-2 text-center">
                   <div className="flex items-center justify-center gap-2">
                     <span className="text-yellow-300">⭐</span>
                     <span className="font-bold text-sm">RECOMMENDED FOR MULTI-COLOR MODELS</span>
@@ -86,7 +81,7 @@ export function MaterialSelection({
                   isSelected
                     ? 'bg-blue-50 border-blue-200'
                     : isFullColor
-                    ? 'hover:bg-purple-50'
+                    ? 'hover:bg-brand-light'
                     : 'hover:bg-gray-50'
                 }`}
                 onClick={() => handleMaterialClick(material.id)}

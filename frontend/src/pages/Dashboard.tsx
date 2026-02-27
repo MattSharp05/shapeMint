@@ -5,6 +5,7 @@ import { Button } from '../components/UI/Button';
 import { Modal } from '../components/UI/Modal';
 import { AutoThumbnailProgress } from '../components/UI/AutoThumbnailProgress';
 import { useAuth } from '../hooks/useAuth';
+import { logger } from '../utils/logger';
 import { useAutoThumbnail } from '../hooks/useAutoThumbnail';
 import { supabase } from '../supabaseClient';
 import { autoThumbnailService } from '../services/autoThumbnailService';
@@ -36,81 +37,23 @@ interface Order {
   created_at: string;
 }
 
-const mockUserDesigns = [
-  {
-    id: '1',
-    title: 'My Coffee Mug Design',
-    thumbnail: 'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=400',
-    status: 'listed',
-    price: 15.99,
-    downloads: 23,
-    earnings: 184.77,
-    createdAt: '2025-01-15'
-  },
-  {
-    id: '2',
-    title: 'Abstract Sculpture',
-    thumbnail: 'https://images.pexels.com/photos/1094767/pexels-photo-1094767.jpeg?auto=compress&cs=tinysrgb&w=400',
-    status: 'draft',
-    price: 0,
-    downloads: 0,
-    earnings: 0,
-    createdAt: '2025-01-12'
-  }
-];
-
-const mockPurchases = [
-  {
-    id: '1',
-    title: 'Geometric Vase',
-    thumbnail: 'https://images.pexels.com/photos/1094767/pexels-photo-1094767.jpeg?auto=compress&cs=tinysrgb&w=400',
-    price: 18.50,
-    purchasedAt: '2025-01-14',
-    seller: 'ArtisticMind'
-  }
-];
-
-// (Removed commented-out code block)
-
 export function Dashboard() {
   const [activeTab, setActiveTab] = useState('designs');
 
-  // Fetch current user
   const { user } = useAuth();
-  
-  // Auto-thumbnail generation
+
   const {
     progress: autoThumbnailProgress,
     triggerAutoGeneration,
     stopGeneration
-  } = useAutoThumbnail({ 
-    triggerOnMount: true  // Automatically start when dashboard loads
+  } = useAutoThumbnail({
+    triggerOnMount: true
   });
 
-  // Debug function to manually trigger thumbnail generation
-  const handleManualThumbnailGeneration = async () => {
-    console.log('🔧 [Dashboard] Manual thumbnail generation triggered');
-    console.log('🔧 [Dashboard] Current user:', user);
-    console.log('🔧 [Dashboard] Auto-thumbnail progress:', autoThumbnailProgress);
-    
-    if (!user) {
-      console.log('❌ [Dashboard] No user found for manual generation');
-      return;
-    }
-
-    try {
-      // Use the hook's trigger function
-      await triggerAutoGeneration();
-      console.log('✅ [Dashboard] Manual generation completed');
-    } catch (error) {
-      console.error('❌ [Dashboard] Manual generation failed:', error);
-    }
-  };
-  
   const [generatedModels, setGeneratedModels] = useState<GeneratedModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
-  
+
   // Order state
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -120,19 +63,11 @@ export function Dashboard() {
 
   const tabs = [
     { id: 'designs', label: 'My Designs', count: generatedModels.length },
-    //{ id: 'purchases', label: 'Purchases', count: mockPurchases.length },
     { id: 'orders', label: 'Orders', count: orders.length }
-    //{ id: 'analytics', label: 'Analytics' },
-    //{ id: 'settings' }
   ];
 
   React.useEffect(() => {
-    console.log('👤 Dashboard: User state check:', { user: user?.id || 'null/undefined', timestamp: new Date().toISOString() });
-    if (!user) {
-      console.log('⚠️ Dashboard: No user found, skipping model fetch');
-      return;
-    }
-    console.log('🔍 Dashboard: Fetching models for user:', user.id);
+    if (!user) return;
     setLoadingModels(true);
     setModelsError(null);
     supabase
@@ -141,106 +76,37 @@ export function Dashboard() {
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
-        console.log('📊 Dashboard: Query result:', { data, error, count: data?.length });
         if (error) {
-          console.error('❌ Dashboard: Query error:', error);
           setModelsError(error.message);
           setGeneratedModels([]);
         } else {
-          console.log('✅ Dashboard: Setting models:', data);
           setGeneratedModels(data as GeneratedModel[]);
         }
         setLoadingModels(false);
       });
   }, [user?.id]);
 
-  // Manual test function to debug database query
-  const testModelsFetch = async () => {
-    if (!user) {
-      console.log('❌ No user for manual test');
-      return;
-    }
-    console.log('🧪 Manual test: Fetching models for user:', user.id);
-    
-    // Add timeout to prevent hanging
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Query timeout after 10 seconds')), 10000)
-    );
-    
-    try {
-      console.log('🕰️ Starting query with 10s timeout...');
-      const queryPromise = supabase
-        .from('generated_models')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-      
-      const result = await Promise.race([queryPromise, timeoutPromise]) as any;
-      const { data, error } = result;
-      console.log('🧪 Manual test result:', { data, error, count: data?.length });
-      
-      if (!error && data) {
-        console.log('✅ Query succeeded! Found', data.length, 'models');
-        if (data.length > 0) {
-          console.log('📊 First model:', data[0]);
-        }
-      }
-      
-    } catch (err) {
-      console.error('❌ Manual test error:', err);
-      console.log('🔍 Trying simpler query without user filter...');
-      
-      try {
-        const allResult = await Promise.race([
-          supabase.from('generated_models').select('id, user_id, prompt, status, created_at').limit(5),
-          timeoutPromise
-        ]) as any;
-        const { data: allData, error: allError } = allResult;
-        console.log('🔍 All models query result:', { allData, allError, count: allData?.length });
-      } catch (allErr) {
-        console.error('❌ All models query also failed:', allErr);
-      }
-    }
-  };
-
   // Function to fetch orders filtered by user email
   const fetchOrders = useCallback(async () => {
     if (!user?.email) return;
-    
+
     setLoadingOrders(true);
     setOrdersError(null);
-    
-    console.log('🔍 [Dashboard] Fetching orders for user email:', user.email);
-    
+
     try {
       const { data, error } = await supabase
         .from('orders')
         .select('*')
         .eq('customer_email', user.email)
         .order('created_at', { ascending: false });
-      
+
       if (error) {
-        console.error('❌ [Dashboard] Error fetching orders:', error);
         setOrdersError(error.message);
         setOrders([]);
       } else {
-        console.log('✅ [Dashboard] Orders fetched successfully:', {
-          count: data?.length || 0,
-          userEmail: user.email,
-          orders: data?.map(o => ({
-            id: o.id,
-            user_id: o.user_id,
-            slant_order_id: o.slant_order_id,
-            filename: o.filename,
-            customer_email: o.customer_email,
-            created_at: o.created_at,
-            status: o.status
-          }))
-        });
         setOrders(data as Order[]);
       }
     } catch (err) {
-      console.error('❌ [Dashboard] Exception fetching orders:', err);
       setOrdersError('Failed to fetch orders');
       setOrders([]);
     } finally {
@@ -248,28 +114,20 @@ export function Dashboard() {
     }
   }, [user?.email]);
 
-  // Fetch orders filtered by email on mount
+  // Fetch orders on mount
   useEffect(() => {
-    console.log('👤 [Dashboard] Current user:', user ? {
-      id: user.id,
-      email: user.email,
-      name: user.name
-    } : 'No user');
     fetchOrders();
   }, [user, fetchOrders]);
 
-  // Refresh orders when page comes into focus (e.g., when returning from order creation)
+  // Refresh orders when page comes into focus
   useEffect(() => {
     const handleFocus = () => {
-      console.log('🔄 Dashboard focused - refreshing orders');
       fetchOrders();
     };
 
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [user, fetchOrders]);
-
-
 
   return (
     <div className="pt-16 min-h-screen bg-gray-50">
@@ -281,82 +139,28 @@ export function Dashboard() {
                 Dashboard
               </h1>
               <p className="text-xl text-gray-600">
-                Manage your designs, purchases, and manufacturing orders
+                Manage your designs and manufacturing orders
               </p>
-              {/* Temporary debug button */}
-              <button 
-                onClick={testModelsFetch}
-                className="mt-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-              >
-                🧪 Test Models Fetch
-              </button>
             </div>
-            
-                          {/* Debug: Manual Thumbnail Generation */}
-              <div className="flex flex-col items-end space-y-2">
-                <Button 
-                  onClick={handleManualThumbnailGeneration}
-                  disabled={autoThumbnailProgress.isGenerating}
-                  variant="outline"
-                  className="text-sm"
-                >
-                  {autoThumbnailProgress.isGenerating ? 'Generating...' : 'Generate Thumbnails'}
-                </Button>
-                {autoThumbnailProgress.total > 0 && (
-                  <span className="text-xs text-gray-500">
-                    {autoThumbnailProgress.processed}/{autoThumbnailProgress.total} processed
-                  </span>
-                )}
-              </div>
+
+            {/* Thumbnail Generation */}
+            <div className="flex flex-col items-end space-y-2">
+              <Button
+                onClick={triggerAutoGeneration}
+                disabled={autoThumbnailProgress.isGenerating}
+                variant="outline"
+                className="text-sm"
+              >
+                {autoThumbnailProgress.isGenerating ? 'Generating...' : 'Generate Thumbnails'}
+              </Button>
+              {autoThumbnailProgress.total > 0 && (
+                <span className="text-xs text-gray-500">
+                  {autoThumbnailProgress.processed}/{autoThumbnailProgress.total} processed
+                </span>
+              )}
+            </div>
           </div>
         </div>
-
-        {/* Stats Cards */}
-        {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Designs</p>
-                <p className="text-2xl font-bold text-gray-900">{mockUserDesigns.length}</p>
-              </div>
-              <Upload className="h-8 w-8 text-purple-600" />
-            </div>
-          </Card>
-          
-          <Card className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Downloads</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {mockUserDesigns.reduce((sum, design) => sum + design.downloads, 0)}
-                </p>
-              </div>
-              <Download className="h-8 w-8 text-blue-600" />
-            </div>
-          </Card>
-          
-          <Card className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Earnings</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  ${mockUserDesigns.reduce((sum, design) => sum + design.earnings, 0).toFixed(2)}
-                </p>
-              </div>
-              <DollarSign className="h-8 w-8 text-green-600" />
-            </div>
-          </Card>
-          
-          <Card className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Profile Views</p>
-                <p className="text-2xl font-bold text-gray-900">1,234</p>
-              </div>
-              <Eye className="h-8 w-8 text-orange-600" />
-            </div>
-          </Card>
-        </div> */}
 
         {/* Tabs */}
         <div className="border-b border-gray-200 mb-8">
@@ -367,7 +171,7 @@ export function Dashboard() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
                   activeTab === tab.id
-                    ? 'border-purple-500 text-purple-600'
+                    ? 'border-brand-primary text-brand-primary'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
@@ -385,7 +189,7 @@ export function Dashboard() {
                 onClick={() => setActiveTab('contact-submissions')}
                 className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
                   activeTab === 'contact-submissions'
-                    ? 'border-purple-500 text-purple-600'
+                    ? 'border-brand-primary text-brand-primary'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
@@ -398,63 +202,7 @@ export function Dashboard() {
         {/* Tab Content */}
         {activeTab === 'designs' && (
           <div className="space-y-6">
-            {/* <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-gray-900">Published Designs</h2>
-              <Button>Upload New Design</Button>
-            </div>
-            
-            Demo content grid (keep unchanged)
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {mockUserDesigns.map((design) => (
-                <Card key={design.id} className="overflow-hidden">
-                  <img
-                    src={design.thumbnail}
-                    alt={design.title}
-                    className="w-full h-48 object-cover"
-                  />
-                  <div className="p-6">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {design.title}
-                      </h3>
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        design.status === 'listed' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {design.status}
-                      </span>
-                    </div>
-                    <div className="space-y-2 text-sm text-gray-600">
-                      <div className="flex justify-between">
-                        <span>Price:</span>
-                        <span>${design.price}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Downloads:</span>
-                        <span>{design.downloads}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Earnings:</span>
-                        <span>${design.earnings.toFixed(2)}</span>
-                      </div>
-                    </div>
-                    <div className="flex space-x-2 mt-4">
-                      <Button size="sm" variant="outline" className="flex-1">
-                        <Eye className="h-3 w-3 mr-1" />
-                        View
-                      </Button>
-                      <Button size="sm" variant="outline" className="flex-1">
-                        <Settings className="h-3 w-3 mr-1" />
-                        Edit
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div> */}
-            {/* User's Generated Models Section */}
-            <div className="mt-10">
+            <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Designs</h3>
               {loadingModels ? (
                 <div className="text-gray-500">Loading your generated models...</div>
@@ -498,7 +246,6 @@ export function Dashboard() {
                         <div className="text-sm text-gray-600 mb-2">
                           <span>Created: {new Date(model.created_at).toLocaleString()}</span>
                         </div>
-                        {/* Add more model info/actions here as needed */}
                       </div>
                     </Card>
                   ))}
@@ -508,52 +255,11 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* {activeTab === 'purchases' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">My Purchases</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {mockPurchases.map((purchase) => (
-                <Card key={purchase.id} className="overflow-hidden">
-                  <img
-                    src={purchase.thumbnail}
-                    alt={purchase.title}
-                    className="w-full h-48 object-cover"
-                  />
-                  <div className="p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      {purchase.title}
-                    </h3>
-                    <div className="space-y-1 text-sm text-gray-600 mb-4">
-                      <div className="flex justify-between">
-                        <span>Price:</span>
-                        <span>${purchase.price}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Seller:</span>
-                        <span>{purchase.seller}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Purchased:</span>
-                        <span>{purchase.purchasedAt}</span>
-                      </div>
-                    </div>
-                    <Button size="sm" className="w-full">
-                      <Download className="h-3 w-3 mr-1" />
-                      Download Files
-                    </Button>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )} */}
-
         {activeTab === 'orders' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-semibold text-gray-900">Your Manufacturing Orders</h2>
-              <Button 
+              <Button
                 onClick={fetchOrders}
                 disabled={loadingOrders}
                 variant="outline"
@@ -562,10 +268,10 @@ export function Dashboard() {
                 {loadingOrders ? 'Refreshing...' : 'Refresh Orders'}
               </Button>
             </div>
-            
+
             {loadingOrders ? (
               <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary mx-auto mb-4"></div>
                 <p className="text-gray-500">Loading your orders...</p>
               </div>
             ) : ordersError ? (
@@ -585,9 +291,9 @@ export function Dashboard() {
             ) : (
               <div className="space-y-4">
                 {orders.map((order) => (
-                  <Card 
-                    key={order.id} 
-                    className="p-6 cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-green-500"
+                  <Card
+                    key={order.id}
+                    className="p-6 cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-brand-primary"
                     onClick={() => {
                       setSelectedOrder(order);
                       setIsOrderModalOpen(true);
@@ -599,22 +305,16 @@ export function Dashboard() {
                           <h3 className="text-lg font-semibold text-gray-900">
                             {order.filename}
                           </h3>
-                          {/* User ownership indicator */}
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                            Your Order
-                          </span>
                         </div>
                         <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
                           <div>
                             <div>Vendor: Slant3D</div>
                             <div>Order Date: {new Date(order.created_at).toLocaleDateString()}</div>
                             <div>Quantity: {order.quantity}</div>
-                            <div>Email: {order.customer_email}</div>
                           </div>
                           <div>
                             <div>Material: {order.profile}</div>
                             <div>Color: {order.color}</div>
-                            <div>User ID: {order.user_id || 'None'}</div>
                             {order.tracking_numbers && order.tracking_numbers.length > 0 && (
                               <div className="flex items-center space-x-1">
                                 <Truck className="h-3 w-3" />
@@ -633,7 +333,7 @@ export function Dashboard() {
                             : 'bg-blue-100 text-blue-800'
                         }`}>
                           {order.shipping_status === 'shipped' || (order.tracking_numbers && order.tracking_numbers.length > 0) ? 'Shipped' :
-                           order.shipping_status === 'awaiting_shipment' ? 'Processing' : 
+                           order.shipping_status === 'awaiting_shipment' ? 'Processing' :
                            order.status}
                         </span>
                         <div className="text-lg font-bold text-gray-900 mt-2">
@@ -648,33 +348,7 @@ export function Dashboard() {
           </div>
         )}
 
-        {/* Analytics Tab Contents
-        {activeTab === 'analytics' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Analytics</h2>
-            <Card className="p-6">
-              <div className="text-center py-12">
-                <p className="text-gray-500">Analytics dashboard coming soon...</p>
-              </div>
-            </Card>
-          </div>
-        )}
-        */}
-
-        {/* Settings Tab Contents
-        {activeTab === 'settings' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Account Settings</h2>
-            <Card className="p-6">
-              <div className="text-center py-12">
-                <p className="text-gray-500">Settings panel coming soon...</p>
-              </div>
-            </Card>
-          </div>
-        )}
-        */}
-
-        {/* Contact Submissions Tab Contents */}
+        {/* Contact Submissions Tab */}
         {activeTab === 'contact-submissions' && (
           <div className="space-y-6">
             <ContactSubmissions />
@@ -683,9 +357,9 @@ export function Dashboard() {
 
         {/* Order Detail Modal */}
         {selectedOrder && (
-          <Modal 
-            isOpen={isOrderModalOpen} 
-            onClose={() => setIsOrderModalOpen(false)} 
+          <Modal
+            isOpen={isOrderModalOpen}
+            onClose={() => setIsOrderModalOpen(false)}
             title={`Order #${selectedOrder.slant_order_id}`}
           >
             <div className="space-y-6">
@@ -740,18 +414,18 @@ export function Dashboard() {
                       Shipping Status
                     </span>
                   </div>
-                  
+
                   {selectedOrder.tracking_numbers && selectedOrder.tracking_numbers.length > 0 ? (
                     <div className="space-y-2">
                       <div className="text-sm text-gray-600">Tracking Numbers:</div>
                       {selectedOrder.tracking_numbers.map((trackingNumber, index) => (
                         <div key={index} className="flex items-center justify-between bg-white p-2 rounded border">
                           <code className="text-sm">{trackingNumber}</code>
-                          <a 
+                          <a
                             href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingNumber}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center space-x-1 text-blue-600 hover:text-blue-800 text-sm"
+                            className="flex items-center space-x-1 text-brand-primary hover:text-brand-primary-dark text-sm"
                           >
                             <span>Track with USPS</span>
                             <ExternalLink className="h-3 w-3" />
@@ -764,22 +438,20 @@ export function Dashboard() {
                       Your order is being prepared for shipment. Tracking information will be available once shipped.
                     </p>
                   )}
-
-
                 </div>
               </div>
 
               {/* Actions */}
               <div className="flex space-x-3">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => setIsOrderModalOpen(false)}
                   className="flex-1"
                 >
                   Close
                 </Button>
                 {selectedOrder.tracking_numbers && selectedOrder.tracking_numbers.length > 0 && (
-                  <Button 
+                  <Button
                     onClick={() => window.open(`https://tools.usps.com/go/TrackConfirmAction?tLabels=${selectedOrder.tracking_numbers![0]}`, '_blank')}
                     className="flex-1"
                   >
@@ -791,7 +463,7 @@ export function Dashboard() {
             </div>
           </Modal>
         )}
-        
+
         {/* Auto-Thumbnail Progress */}
         <AutoThumbnailProgress
           progress={autoThumbnailProgress}

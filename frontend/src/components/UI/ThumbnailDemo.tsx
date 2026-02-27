@@ -56,7 +56,7 @@ export function ThumbnailDemo({ modelUrl, modelId }: ThumbnailDemoProps) {
             value={testUrl}
             onChange={(e) => setTestUrl(e.target.value)}
             placeholder="https://example.com/model.glb"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
           />
         </div>
         
@@ -69,7 +69,7 @@ export function ThumbnailDemo({ modelUrl, modelId }: ThumbnailDemoProps) {
             value={testId}
             onChange={(e) => setTestId(e.target.value)}
             placeholder="test-model-id"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-primary"
           />
         </div>
         

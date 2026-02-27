@@ -11,7 +11,7 @@ interface ShippingFormProps {
   onGetQuote: () => void;
   isQuoteLoading?: boolean;
   quoteError?: string;
-  quoteData?: { quoteId: string; priceTotal: number; currency: string; reused?: boolean; expiresAt?: string; itemTotal?: number; surcharge?: number };
+  quoteData?: { quoteId: string; priceTotal: number; currency: string; reused?: boolean; expiresAt?: string; itemTotal?: number; surcharge?: number; shippingTotal?: number };
   onPlaceOrder?: () => void;
   isOrderLoading?: boolean;
   orderError?: string;
@@ -214,10 +214,6 @@ export function ShippingForm({
         </div>
       </Card>
 
-      <div className="mt-3 text-sm text-yellow-700 bg-yellow-50 p-3 rounded">
-        <strong>Note:</strong> A minimum order surcharge applies to items subtotal. If your items subtotal is less than $25.00, a surcharge will be added to bring the items subtotal up to $25.00 (shipping is added after).
-      </div>
-
       {/* Error Messages */}
       {quoteError && (
         <div className="bg-red-50 border border-red-200 rounded-md p-4">
@@ -252,6 +248,13 @@ export function ShippingForm({
       )}
 
       {/* Quote Success */}
+      {quoteData && (() => {
+        // Debug: Log quote data to see what we're receiving
+        console.log('📊 Quote Data:', quoteData);
+        console.log('📊 Shipping Total:', quoteData.shippingTotal, 'Type:', typeof quoteData.shippingTotal);
+        console.log('📊 Surcharge:', quoteData.surcharge, 'Type:', typeof quoteData.surcharge);
+        return null;
+      })()}
       {quoteData && (
         <div className="bg-green-50 border border-green-200 rounded-md p-4">
           <div className="flex">
@@ -262,10 +265,33 @@ export function ShippingForm({
             </div>
             <div className="ml-3 flex-1">
               <h3 className="text-sm font-medium text-green-800">Quote Ready</h3>
-              <div className="mt-1">
-                <p className="text-sm text-green-700">
-                  Total Price: <span className="font-semibold">${quoteData.priceTotal.toFixed(2)} {quoteData.currency}</span>
-                </p>
+              <div className="mt-2 space-y-1">
+                {/* Price Breakdown */}
+                <div className="text-sm text-green-700 space-y-1">
+                  {quoteData.itemTotal !== undefined && (
+                    <div className="flex justify-between">
+                      <span>Item Cost:</span>
+                      <span className="font-medium">${quoteData.itemTotal.toFixed(2)} {quoteData.currency}</span>
+                    </div>
+                  )}
+                  {quoteData.surcharge !== undefined && quoteData.surcharge > 0 && (
+                    <div className="flex justify-between">
+                      <span>Surcharge:</span>
+                      <span className="font-medium">${quoteData.surcharge.toFixed(2)} {quoteData.currency}</span>
+                    </div>
+                  )}
+                  {/* Always show shipping if we have the data, even if 0 */}
+                  {(quoteData.shippingTotal !== undefined && quoteData.shippingTotal !== null) && (
+                    <div className="flex justify-between">
+                      <span>Shipping:</span>
+                      <span className="font-medium">${quoteData.shippingTotal.toFixed(2)} {quoteData.currency}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between pt-1 border-t border-green-200">
+                    <span className="font-semibold">Total Price:</span>
+                    <span className="font-semibold text-green-800">${quoteData.priceTotal.toFixed(2)} {quoteData.currency}</span>
+                  </div>
+                </div>
                 {quoteData.reused && (
                   <p className="text-xs text-green-600 mt-1">(Using recent quote)</p>
                 )}

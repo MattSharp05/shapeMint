@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { X, Upload, Trash2, Check } from 'lucide-react';
 import { Button } from './Button';
 import { Modal } from './Modal';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../../supabaseClient';
 
 interface ThumbnailSelectorProps {
   modelId: string;
@@ -185,7 +185,7 @@ export function ThumbnailSelector({
                 key={angle}
                 className={`relative cursor-pointer border-2 rounded-lg overflow-hidden transition-all ${
                   selectedAngle === angle && !isCustom
-                    ? 'border-purple-500 ring-2 ring-purple-200'
+                    ? 'border-brand-primary ring-2 ring-brand-light'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
                 onClick={() => handleAngleSelect(angle)}
@@ -201,7 +201,7 @@ export function ThumbnailSelector({
                   </p>
                 </div>
                 {selectedAngle === angle && !isCustom && (
-                  <div className="absolute top-2 right-2 bg-purple-500 text-white rounded-full p-1">
+                  <div className="absolute top-2 right-2 bg-brand-primary text-white rounded-full p-1">
                     <Check className="h-3 w-3" />
                   </div>
                 )}

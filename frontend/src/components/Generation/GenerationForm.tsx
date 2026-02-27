@@ -81,11 +81,6 @@ export function GenerationForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) {
-      setError('Please log in to generate models');
-      return;
-    }
-
     // Validate inputs based on mode
     if (mode === 'text' && !prompt.trim()) {
       setError('Please enter a prompt');
@@ -121,7 +116,7 @@ export function GenerationForm({
         modelData = await modelService.generate3DModel({
           ...baseParams,
           prompt: `${prompt}${prefilledData?.socialTag ? ` #${prefilledData.socialTag}` : ''}`,
-          userId: user.id
+          userId: user?.id
         });
 
       } else {
@@ -134,7 +129,7 @@ export function GenerationForm({
           ...baseParams,
           prompt: imageFile ? imageFile.name : 'Image-to-3D generation',
           image: imagePreview,
-          userId: user.id
+          userId: user?.id
         });
       }
 

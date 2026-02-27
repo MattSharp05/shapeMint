@@ -86,13 +86,9 @@ export const modelService: ModelService = {
   // Calls the generate-3d-model edge function
   async generate3DModel(params: Generate3DModelParams): Promise<GenerationResponse> {
     try {
-      if (!params.userId) {
-        throw new Error('You must be logged in to generate models.');
-      }
-
       const payload: GenerateModelPayload = {
         prompt: params.prompt,
-        user_id: params.userId,
+        user_id: params.userId || '00000000-0000-0000-0000-000000000000',
         type: params.type,
         mode: params.mode || 'preview'
       };

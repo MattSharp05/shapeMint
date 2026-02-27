@@ -126,11 +126,6 @@ export function Generate() {
     modelId: string,
     dimensions: ModelDimensions
   ): Promise<{ scaledUrl: string; scaleResult: ScaleResult } | null> => {
-    if (!user) {
-      console.error('❌ Cannot scale model: user not authenticated');
-      return null;
-    }
-
     try {
       console.log('📐 Starting model scaling...', dimensions);
       setStatus('scaling');
@@ -140,7 +135,7 @@ export function Generate() {
         body: {
           glbUrl,
           modelId,
-          userId: user.id,
+          userId: user?.id || '00000000-0000-0000-0000-000000000000',
           targetValue: dimensions.value,
           unit: dimensions.unit,
           target: dimensions.target
@@ -222,8 +217,6 @@ export function Generate() {
 
   // Handle user selecting a transformed image variation
   const handleVariationSelect = async (selectedImageUrl: string) => {
-    if (!user) return;
-
     console.log('User selected variation, sending to Meshy for 3D generation...');
 
     // Clear the variation picker
@@ -239,7 +232,7 @@ export function Generate() {
         mode: 'preview',
         prompt: imagePrompt || 'AI-transformed image',
         image: selectedImageUrl,
-        userId: user.id,
+        userId: user?.id,
       });
 
       // Clear form

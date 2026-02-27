@@ -30,7 +30,7 @@ serve(async (req) => {
       throw new Error('Missing environment variables.')
     }
 
-    if (!userId) throw new Error('User ID is required.')
+    const effectiveUserId = userId || '00000000-0000-0000-0000-000000000000'
     if (!type) throw new Error('Generation type is required.')
     if (!prompt && !imageData) throw new Error('Either prompt or image is required.')
 
@@ -82,8 +82,17 @@ serve(async (req) => {
       throw new Error('Failed to get task ID from Meshy.')
     }
 
+    // Ensure user exists in the users table (satisfies foreign key constraint)
+    const { error: userError } = await supabase
+      .from('users')
+      .upsert({ id: effectiveUserId }, { onConflict: 'id', ignoreDuplicates: true })
+
+    if (userError) {
+      console.warn('⚠️ Could not ensure user record:', userError.message)
+    }
+
     const taskRecord = {
-      user_id: userId,
+      user_id: effectiveUserId,
       prompt: prompt || 'Image-to-3D generation',
       type: type,
       status: 'processing',

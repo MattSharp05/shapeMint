@@ -15,6 +15,13 @@ dist-ssr
 # Environment variables
 .env
 .env.*
+*.env
+.env.local
+.env.*.local
+
+# Files that may contain credentials (DO NOT COMMIT WITH REAL VALUES)
+*real-env*
+update-real-env.mjs
 
 # Editor directories and files
 .vscode/*

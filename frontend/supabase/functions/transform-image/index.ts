@@ -7,9 +7,10 @@ declare const Deno: {
   serve(handler: (req: Request) => Promise<Response>): void;
 };
 
-const FAL_MODEL_ID = 'fal-ai/nano-banana-pro/edit';
+const FAL_EDIT_MODEL = 'fal-ai/nano-banana-pro/edit';   // Image editing (requires input image)
+const FAL_TEXT_MODEL = 'fal-ai/nano-banana-pro';         // Text-to-image (no input image needed)
 
-const SYSTEM_PROMPT = `You are an expert 3D modeling assistant. Transform the provided image according to the user's prompt, producing an output image that is optimized for conversion into a 3D-printable model.
+const SYSTEM_PROMPT = `You are an expert 3D modeling assistant. Generate or transform the image according to the user's prompt, producing an output image that is optimized for conversion into a 3D-printable model.
 
 Follow these rules strictly:
 - Show the FULL object from a clear 3/4 perspective angle — no cropping, no partial views
@@ -38,34 +39,45 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { image, prompt } = await req.json();
+    const { image, prompt, systemPrompt, numImages, resolution, aspectRatio, outputFormat } = await req.json();
 
-    if (!image || !prompt) {
+    if (!prompt) {
       return new Response(
-        JSON.stringify({ error: 'Both image and prompt are required' }),
+        JSON.stringify({ error: 'Prompt is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Starting image transformation via fal.ai (synchronous)');
-    const combinedPrompt = `${SYSTEM_PROMPT}\n\nUser request: ${prompt}`;
+    const hasImage = !!image;
+    const modelId = hasImage ? FAL_EDIT_MODEL : FAL_TEXT_MODEL;
+    console.log(`Starting ${hasImage ? 'image editing' : 'text-to-image'} via fal.ai (${modelId})`);
 
-    // Use synchronous fal.ai endpoint — blocks until result is ready
-    // Data URIs work directly in image_urls (confirmed from queue test)
-    const falResponse = await fetch(`https://fal.run/${FAL_MODEL_ID}`, {
+    // Use custom system prompt if provided, otherwise use default
+    const effectiveSystemPrompt = systemPrompt || SYSTEM_PROMPT;
+    const combinedPrompt = `${effectiveSystemPrompt}\n\nUser request: ${prompt}`;
+
+    // Build request body — image editing vs text-to-image have different schemas
+    // Allow overrides for testing; defaults match production values
+    const falBody: Record<string, any> = {
+      prompt: combinedPrompt,
+      num_images: numImages || 4,
+      output_format: outputFormat || 'png',
+      resolution: resolution || '1K',
+      aspect_ratio: aspectRatio || '1:1',
+    };
+
+    if (hasImage) {
+      // Image editing: pass the source image
+      falBody.image_urls = [image];
+    }
+
+    const falResponse = await fetch(`https://fal.run/${modelId}`, {
       method: 'POST',
       headers: {
         'Authorization': `Key ${falApiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        prompt: combinedPrompt,
-        image_urls: [image],
-        num_images: 4,
-        output_format: 'png',
-        resolution: '1K',
-        aspect_ratio: '1:1',
-      }),
+      body: JSON.stringify(falBody),
     });
 
     if (!falResponse.ok) {

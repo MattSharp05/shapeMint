@@ -51,8 +51,8 @@ export interface MarkCompleteParams {
 // Type for the parameters sent to generate3DModel
 interface Generate3DModelParams {
   prompt: string;
-  type: 'text-to-3d' | 'image-to-3d';
-  image?: string | File;
+  type: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d';
+  image?: string | string[] | File;
   mode?: 'preview' | 'refine';
   userId: string;
 }
@@ -61,14 +61,14 @@ interface Generate3DModelParams {
 interface GenerateModelPayload {
   prompt: string;
   user_id: string;
-  type: 'text-to-3d' | 'image-to-3d';
+  type: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d';
   mode: 'preview' | 'refine';
-  image?: string;
+  image?: string | string[];
 }
 
 export interface ModelService {
   generate3DModel(params: Generate3DModelParams): Promise<GenerationResponse>;
-  checkModelStatus(taskId: string, type: 'text-to-3d' | 'image-to-3d'): Promise<StatusResponse>;
+  checkModelStatus(taskId: string, type: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d'): Promise<StatusResponse>;
   markModelComplete(params: MarkCompleteParams): Promise<GenerationResponse>;
   publishToMarketplace(params: {
     modelId: string;
@@ -93,9 +93,12 @@ export const modelService: ModelService = {
         mode: params.mode || 'preview'
       };
 
-      // Add image for image-to-3d type
-      if (params.type === 'image-to-3d' && params.image) {
-        if (typeof params.image === 'string') {
+      // Add image for image-to-3d or multi-image-to-3d type
+      if ((params.type === 'image-to-3d' || params.type === 'multi-image-to-3d') && params.image) {
+        if (Array.isArray(params.image)) {
+          // Multi-image: pass array of URLs directly
+          payload.image = params.image;
+        } else if (typeof params.image === 'string') {
           payload.image = params.image;
         } else {
           // Convert File to data URL
@@ -134,7 +137,7 @@ export const modelService: ModelService = {
   },
 
   // Calls the check-model-status edge function
-  async checkModelStatus(taskId: string, type: 'text-to-3d' | 'image-to-3d'): Promise<StatusResponse> {
+  async checkModelStatus(taskId: string, type: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d'): Promise<StatusResponse> {
     try {
       const { data, error } = await supabase.functions.invoke('check-model-status', {
         body: { taskId, type }

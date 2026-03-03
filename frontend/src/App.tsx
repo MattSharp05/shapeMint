@@ -22,6 +22,7 @@ import { OrderSuccess } from './pages/OrderSuccess';
 import { ThumbnailTest } from './pages/ThumbnailTest';
 import { About } from './pages/About';
 import { ContactUs } from './pages/ContactUs';
+import { TestingEnv } from './pages/TestingEnv';
 import { AuthProvider } from './hooks/useAuth';
 
 function App() {
@@ -52,6 +53,7 @@ function App() {
               <Route path="/thumbnail-test" element={<ThumbnailTest />} />
               <Route path="/about" element={<About />} />
               <Route path="/contact" element={<ContactUs />} />
+              <Route path="/testing-env" element={<TestingEnv />} />
             </Routes>
           </main>
           <Footer />

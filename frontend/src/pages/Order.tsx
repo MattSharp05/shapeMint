@@ -118,64 +118,20 @@ export function Order() {
     }
   }, [wizardState.vendorId, slant3DFilaments.length, loadingFilaments]);
 
-  // STL readiness — check DB for stl_url set by Modal after repair
+  // STL readiness — use STL if passed from Marketplace, otherwise use GLB directly
   const [confirmedStlUrl, setConfirmedStlUrl] = useState<string | null>(null);
   const [stlChecking, setStlChecking] = useState(true);
 
-  // Poll DB for confirmed STL URL (set by Modal after upload completes)
   useEffect(() => {
-    const modelId = modelData?.id;
-    console.log('🔍 STL polling: modelData?.id =', modelId, 'stlUrl from nav =', stlUrl);
-
-    if (!modelId) {
-      console.warn('⚠️ STL polling skipped: no modelData.id');
-      // Even without an ID, check if stlUrl was passed from Generate page
-      if (stlUrl) {
-        console.log('✅ Using STL URL from navigation state:', stlUrl);
-        setConfirmedStlUrl(stlUrl);
-      }
-      setStlChecking(false);
-      return;
+    // If a confirmed STL URL was passed (e.g. from Marketplace), use it immediately
+    if (stlUrl) {
+      console.log('✅ Using STL URL from navigation state:', stlUrl);
+      setConfirmedStlUrl(stlUrl);
+    } else {
+      console.log('ℹ️ No STL URL passed — will use GLB for quoting');
     }
-
-    let cancelled = false;
-    const poll = async () => {
-      for (let attempt = 0; attempt < 60; attempt++) {
-        if (cancelled) return;
-        try {
-          const { data: record, error: queryError } = await supabase
-            .from('generated_models')
-            .select('stl_url')
-            .eq('id', modelId)
-            .single();
-
-          if (queryError) {
-            console.warn(`⚠️ STL poll attempt ${attempt + 1} error:`, queryError.message, queryError.code);
-          }
-
-          if (record?.stl_url) {
-            console.log('✅ STL file confirmed in DB:', record.stl_url);
-            setConfirmedStlUrl(record.stl_url);
-            setStlChecking(false);
-            return;
-          }
-        } catch (e: any) {
-          console.warn(`⚠️ STL poll attempt ${attempt + 1} exception:`, e?.message);
-        }
-        await new Promise(r => setTimeout(r, attempt < 6 ? 5000 : 10000));
-      }
-      // Polling exhausted — use stlUrl from navigation state if available
-      if (stlUrl) {
-        console.log('⏰ Polling exhausted, using STL URL from navigation:', stlUrl);
-        setConfirmedStlUrl(stlUrl);
-      } else {
-        console.warn('⚠️ STL not available after polling — will use GLB as fallback');
-      }
-      setStlChecking(false);
-    };
-    poll();
-    return () => { cancelled = true; };
-  }, [modelData?.id, stlUrl]);
+    setStlChecking(false);
+  }, [stlUrl]);
 
   // Returns the model URL to send to manufacturers (STL preferred)
   const getModelUrlForPrinting = useCallback(async (): Promise<string> => {
@@ -290,7 +246,8 @@ export function Order() {
 
   // Craftcloud: multiple vendor quotes for user to pick from
   const [craftcloudVendorOptions, setCraftcloudVendorOptions] = useState<CraftcloudVendorOption[]>([]);
-  const [selectedCraftcloudVendor, setSelectedCraftcloudVendor] = useState<number>(-1); // index into vendorOptions
+  const [selectedCraftcloudVendor, setSelectedCraftcloudVendor] = useState<number>(-1);
+  const [showVendorModal, setShowVendorModal] = useState(false);
 
   const handleGetQuote = async () => {
     if (!wizardState.vendorId) return;
@@ -399,15 +356,16 @@ export function Order() {
           setQuoteState({ loading: false, error: 'No print vendors returned quotes for this material and model.' });
           return;
         }
-        // Store all vendor options for selection UI
+        // Store all vendor options for selection UI and show modal
         setCraftcloudVendorOptions(data.vendorOptions);
         setSelectedCraftcloudVendor(0); // Default to cheapest
+        setShowVendorModal(true);
         // Set quote state with cheapest option as default
         const cheapest = data.vendorOptions[0];
         setQuoteState({
           loading: false,
           data: {
-            quoteId: `cc-${data.craftcloudPriceId}`,
+            quoteId: data.craftcloudPriceId,
             priceTotal: cheapest.totalPrice,
             currency: data.currency,
             itemTotal: cheapest.itemPrice,
@@ -548,7 +506,8 @@ export function Order() {
             shippingTotal: quoteState.data.shippingTotal,
             total: quoteState.data.priceTotal
           } : undefined,
-          quoteId: quoteState.data.quoteId
+          quoteId: quoteState.data.quoteId,
+          modelUrl: printModelUrl,
         });
         setOrderState({ loading: false, data: { orderId: resp.orderId, orderNumber: resp.orderNumber, status: resp.status, totalPrice: resp.totalPrice } });
         // Redirect to Stripe checkout for payment
@@ -760,70 +719,79 @@ export function Order() {
                     orderError={orderState.error}
                   />
 
-                  {/* Craftcloud vendor options — shown after getting quotes */}
-                  {wizardState.vendorId === 'craftcloud' && craftcloudVendorOptions.length > 0 && quoteState.data && (
-                    <div className="bg-white border border-gray-200 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-1">Select a Print Vendor</h3>
-                      <p className="text-sm text-gray-500 mb-4">
-                        {craftcloudVendorOptions.length} vendor{craftcloudVendorOptions.length !== 1 ? 's' : ''} quoted — sorted by lowest total price
-                      </p>
-                      <div className="space-y-3 max-h-96 overflow-y-auto">
-                        {craftcloudVendorOptions.map((option, idx) => (
-                          <button
-                            key={option.craftcloudQuoteId}
-                            onClick={() => {
-                              setSelectedCraftcloudVendor(idx);
-                              setQuoteState(prev => ({
-                                ...prev,
-                                data: prev.data ? {
-                                  ...prev.data,
-                                  priceTotal: option.totalPrice,
-                                  itemTotal: option.itemPrice,
-                                  shippingTotal: option.shippingPrice,
-                                  craftcloudQuoteId: option.craftcloudQuoteId,
-                                  craftcloudShippingId: option.craftcloudShippingId,
-                                  vendorName: option.vendorId,
-                                  productionTime: `${option.productionTimeFast}-${option.productionTimeSlow} business days`,
-                                } : prev.data,
-                              }));
-                            }}
-                            className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
-                              selectedCraftcloudVendor === idx
-                                ? 'border-blue-500 bg-blue-50'
-                                : 'border-gray-200 hover:border-gray-300 bg-white'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-gray-900">{option.vendorId}</span>
-                                  {idx === 0 && (
-                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                                      Best Price
-                                    </span>
-                                  )}
+                  {/* Craftcloud vendor selection modal */}
+                  {showVendorModal && craftcloudVendorOptions.length > 0 && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 p-6">
+                        <h3 className="text-xl font-semibold text-gray-900 mb-1">Select a Print Vendor</h3>
+                        <p className="text-sm text-gray-500 mb-4">
+                          {craftcloudVendorOptions.length} vendor{craftcloudVendorOptions.length !== 1 ? 's' : ''} quoted — sorted by lowest price
+                        </p>
+                        <div className="space-y-3 max-h-80 overflow-y-auto mb-6">
+                          {craftcloudVendorOptions.map((option, idx) => (
+                            <button
+                              key={option.craftcloudQuoteId}
+                              onClick={() => {
+                                setSelectedCraftcloudVendor(idx);
+                                setQuoteState(prev => ({
+                                  ...prev,
+                                  data: prev.data ? {
+                                    ...prev.data,
+                                    priceTotal: option.totalPrice,
+                                    itemTotal: option.itemPrice,
+                                    shippingTotal: option.shippingPrice,
+                                    craftcloudQuoteId: option.craftcloudQuoteId,
+                                    craftcloudShippingId: option.craftcloudShippingId,
+                                    vendorName: option.vendorId,
+                                    productionTime: `${option.productionTimeFast}-${option.productionTimeSlow} business days`,
+                                  } : prev.data,
+                                }));
+                              }}
+                              className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
+                                selectedCraftcloudVendor === idx
+                                  ? 'border-blue-500 bg-blue-50'
+                                  : 'border-gray-200 hover:border-gray-300 bg-white'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-gray-900">{option.vendorId}</span>
+                                    {idx === 0 && (
+                                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                                        Best Price
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-sm text-gray-500 mt-1">
+                                    Production: {option.productionTimeFast}-{option.productionTimeSlow} days
+                                    {option.shippingName && ` · ${option.shippingName}`}
+                                    {option.shippingDeliveryTime && ` (${option.shippingDeliveryTime} days delivery)`}
+                                  </div>
                                 </div>
-                                <div className="text-sm text-gray-500 mt-1">
-                                  Production: {option.productionTimeFast}-{option.productionTimeSlow} days
-                                  {option.shippingName && ` · ${option.shippingName}`}
-                                  {option.shippingDeliveryTime && ` (${option.shippingDeliveryTime} days delivery)`}
+                                <div className="text-right">
+                                  <div className="text-lg font-bold text-gray-900">
+                                    ${option.totalPrice.toFixed(2)}
+                                  </div>
+                                  <div className="text-xs text-gray-500 space-y-0.5">
+                                    <div>${option.itemPrice.toFixed(2)} item</div>
+                                    <div>${option.shippingPrice.toFixed(2)} shipping</div>
+                                    {option.minimumFee != null && option.minimumFee > 0 && (
+                                      <div className="text-amber-600">+${option.minimumFee.toFixed(2)} order minimum</div>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                              <div className="text-right">
-                                <div className="text-lg font-bold text-gray-900">
-                                  ${option.totalPrice.toFixed(2)}
-                                </div>
-                                <div className="text-xs text-gray-500 space-y-0.5">
-                                  <div>${option.itemPrice.toFixed(2)} item</div>
-                                  <div>${option.shippingPrice.toFixed(2)} shipping</div>
-                                  {option.minimumFee != null && option.minimumFee > 0 && (
-                                    <div className="text-amber-600">+${option.minimumFee.toFixed(2)} order minimum</div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </button>
-                        ))}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => setShowVendorModal(false)}
+                          disabled={selectedCraftcloudVendor < 0}
+                          className="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        >
+                          Confirm Selection
+                        </button>
                       </div>
                     </div>
                   )}

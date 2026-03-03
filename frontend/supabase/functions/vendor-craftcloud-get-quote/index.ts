@@ -272,19 +272,13 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // Extract user ID from JWT
-  let userId: string | undefined;
+  // Extract user ID from JWT (optional — allow anonymous users)
+  let userId: string = '00000000-0000-0000-0000-000000000000';
   try {
     const jwt = authHeader.replace('Bearer ', '');
     const payload = JSON.parse(atob(jwt.split('.')[1] || 'e30='));
-    userId = payload.sub;
+    if (payload.sub) userId = payload.sub;
   } catch { /* ignore */ }
-  if (!userId) {
-    return new Response(
-      JSON.stringify({ error: 'unauthorized' }),
-      { status: 401, headers: corsHeaders }
-    );
-  }
 
   const { modelUrl, materialConfigId, quantity, shippingAddress } = body;
 

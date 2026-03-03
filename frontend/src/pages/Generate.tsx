@@ -18,6 +18,7 @@ import { useAuth } from '../hooks/useAuth';
 
 export function Generate() {
   const [status, setStatus] = useState<'pending' | 'generating' | 'scaling' | 'repairing' | 'completed' | 'failed'>('pending');
+  const [generationProgress, setGenerationProgress] = useState(0);
   const [generatedModel, setGeneratedModel] = useState<any>(null);
   const [repairReport, setRepairReport] = useState<any>(null);
   const [showThumbnailSelector, setShowThumbnailSelector] = useState(false);
@@ -186,20 +187,22 @@ export function Generate() {
     }
   };
 
-  // Handle image transform request from GenerationForm
-  const handleImageTransformRequest = async (image: string, transformPrompt: string) => {
+  // Handle image/text transform request from GenerationForm
+  // All generation paths now go through fal.ai first for 2D previews
+  const handleImageTransformRequest = async (image: string | null, transformPrompt: string, dimensions: ModelDimensions) => {
     setIsTransforming(true);
     setTransformError(null);
     setTransformedImages(null);
-    lastTransformInputs.current = { image, prompt: transformPrompt };
+    setPendingDimensions(dimensions);
+    lastTransformInputs.current = { image: image || '', prompt: transformPrompt };
 
     try {
-      console.log('Starting image transformation via fal.ai...');
-      const result = await falImageService.transformImage(image, transformPrompt);
+      console.log(`Starting ${image ? 'image transformation' : 'text-to-image generation'} via fal.ai...`);
+      const result = await falImageService.transformImage(transformPrompt, image);
       setTransformedImages(result.images);
     } catch (err: any) {
-      console.error('Image transformation failed:', err);
-      setTransformError(err.message || 'Failed to transform image. Please try again.');
+      console.error('fal.ai generation failed:', err);
+      setTransformError(err.message || 'Failed to generate previews. Please try again.');
     } finally {
       setIsTransforming(false);
     }
@@ -209,8 +212,9 @@ export function Generate() {
   const handleRegenerateVariations = () => {
     if (lastTransformInputs.current) {
       handleImageTransformRequest(
-        lastTransformInputs.current.image,
-        lastTransformInputs.current.prompt
+        lastTransformInputs.current.image || null,
+        lastTransformInputs.current.prompt,
+        pendingDimensions || { value: 10, unit: 'cm', target: 'longest' }
       );
     }
   };
@@ -244,7 +248,7 @@ export function Generate() {
         ...modelData,
         prompt: imagePrompt || 'AI-transformed image',
         style: 'realistic',
-        dimensions: null,
+        dimensions: pendingDimensions,
       });
     } catch (err: any) {
       console.error('3D generation from selected variation failed:', err);
@@ -271,6 +275,7 @@ export function Generate() {
       const type = modelData.data.type;
 
       setStatus('generating');
+      setGenerationProgress(0);
 
       // Start polling for completion using check-model-status edge function
       const pollForCompletion = async (taskId: string, type: 'text-to-3d' | 'image-to-3d', dimensions: ModelDimensions | null) => {
@@ -384,6 +389,7 @@ export function Generate() {
             } else if (statusResponse?.status === 'processing') {
               if (typeof statusResponse.progress === 'number') {
                 console.log(`⏳ Model generation is ${statusResponse.progress}% complete.`);
+                setGenerationProgress(statusResponse.progress);
               } else {
                 console.log('⏳ Model is still processing...');
               }
@@ -573,13 +579,11 @@ export function Generate() {
               />
             )}
 
-            {status !== 'pending' && (
-              <GenerationProgress
-                progress={status === 'completed' ? 100 : status === 'repairing' ? 92 : status === 'scaling' ? 85 : 50}
-                status={status === 'scaling' ? 'generating' : status}
-                estimatedTime={status === 'scaling' ? 'Scaling model...' : status === 'repairing' ? 'Preparing for 3D printing...' : '45 seconds'}
-              />
-            )}
+            <GenerationProgress
+              progress={status === 'completed' ? 100 : status === 'repairing' ? 95 : status === 'scaling' ? 90 : generationProgress}
+              status={status === 'scaling' ? 'generating' : status}
+              estimatedTime={status === 'scaling' ? 'Scaling model...' : status === 'repairing' ? 'Preparing for 3D printing...' : undefined}
+            />
           </div>
 
           {/* Preview/Results */}
@@ -619,7 +623,6 @@ export function Generate() {
                       state: {
                         modelData: generatedModel,
                         modelUrl: generatedModel?.urls?.glb,
-                        stlUrl: generatedModel?.urls?.stl
                       }
                     })}
                     size="lg"

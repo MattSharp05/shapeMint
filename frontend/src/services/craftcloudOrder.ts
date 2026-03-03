@@ -24,6 +24,7 @@ interface CraftcloudOrderParams {
     total: number;
   };
   quoteId?: string;
+  modelUrl?: string;
 }
 
 export interface CraftcloudOrderResponse {
@@ -61,14 +62,6 @@ export async function createOrder(params: CraftcloudOrderParams): Promise<Craftc
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-
-    if (response.status === 401) {
-      throw new Error(
-        session
-          ? 'Session expired. Please refresh the page or log in again.'
-          : 'Authentication required. Please log in.'
-      );
-    }
 
     const errMsg = errorData.message || errorData.error || `HTTP ${response.status}`;
     throw new Error(errMsg);

@@ -1,0 +1,3 @@
+# For local testing only — Modal uses image.pip_install() for deployment
+trimesh
+numpy

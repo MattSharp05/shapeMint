@@ -326,7 +326,7 @@ export function ShippingForm({
               disabled={isOrderLoading}
               className="px-6 py-2"
             >
-              {isOrderLoading ? 'Placing Order...' : 'Place Order'}
+              {isOrderLoading ? 'Processing...' : 'Continue to Payment'}
             </Button>
           )}
         </div>

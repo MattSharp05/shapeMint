@@ -46,6 +46,13 @@ serve(async (req) => {
         enable_pbr: true,
       }
       console.log('🎯 Using v1 Image-to-3D API.')
+    } else if (type === 'multi-image-to-3d') {
+      apiUrl = 'https://api.meshy.ai/openapi/v1/multi-image-to-3d'
+      requestBody = {
+        image_urls: imageData, // imageData is string[] for multi-image
+        enable_pbr: true,
+      }
+      console.log('🎯 Using Multi-Image-to-3D API with', Array.isArray(imageData) ? imageData.length : 0, 'images.')
     } else if (type === 'text-to-3d') {
       apiUrl = 'https://api.meshy.ai/v2/text-to-3d' // Use v2 for Text-to-3D
       requestBody = {

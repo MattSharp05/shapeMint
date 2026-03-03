@@ -31,6 +31,7 @@ interface CreateOrderInput {
     total: number;
   };
   quoteId?: string; // Our internal quote ID for reference
+  modelUrl?: string; // URL of the model file (STL/GLB)
 }
 
 async function fetchWithTimeout(
@@ -104,19 +105,13 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // Extract user ID from JWT
-  let userId: string | undefined;
+  // Extract user ID from JWT (optional — allow anonymous users)
+  let userId: string = '00000000-0000-0000-0000-000000000000';
   try {
     const jwt = authHeader.replace('Bearer ', '');
     const payload = JSON.parse(atob(jwt.split('.')[1] || 'e30='));
-    userId = payload.sub;
+    if (payload.sub) userId = payload.sub;
   } catch { /* ignore */ }
-  if (!userId) {
-    return new Response(
-      JSON.stringify({ error: 'unauthorized' }),
-      { status: 401, headers: corsHeaders }
-    );
-  }
 
   const {
     craftcloudQuoteId,
@@ -266,7 +261,8 @@ Deno.serve(async (req: Request) => {
       .insert({
         user_id: userId,
         vendor: 'craftcloud',
-        quote_id: body.quoteId || null,
+        file_url: body.modelUrl || 'unknown',
+        quote_id: null, // CraftCloud quotes are not stored in our quotes table
         material_id: body.craftcloudQuoteId, // Store Craftcloud quote ID for reference
         selections: {
           craftcloudQuoteId,

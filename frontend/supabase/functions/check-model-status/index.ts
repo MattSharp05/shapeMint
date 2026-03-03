@@ -124,6 +124,8 @@ serve(async (req) => {
     let apiUrl;
     if (type === 'image-to-3d') {
       apiUrl = `https://api.meshy.ai/v1/image-to-3d/${meshyTaskId}`;
+    } else if (type === 'multi-image-to-3d') {
+      apiUrl = `https://api.meshy.ai/openapi/v1/multi-image-to-3d/${meshyTaskId}`;
     } else if (type === 'text-to-3d') {
       apiUrl = `https://api.meshy.ai/v2/text-to-3d/${meshyTaskId}`; // Use v2 for text-to-3d tasks
     } else {

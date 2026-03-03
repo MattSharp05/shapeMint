@@ -70,14 +70,6 @@ export async function getQuote(params: CraftcloudQuoteParams): Promise<Craftclou
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
 
-    if (response.status === 401) {
-      throw new Error(
-        session
-          ? 'Session expired. Please refresh the page or log in again.'
-          : 'Authentication required. Please log in to get a quote.'
-      );
-    }
-
     const errMsg = errorData.message || errorData.error || `HTTP ${response.status}`;
     throw new Error(errMsg);
   }

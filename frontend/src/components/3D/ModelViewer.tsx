@@ -1,5 +1,5 @@
 import { Suspense, useState, useEffect, useRef, useMemo } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import { Loader2, AlertCircle, Package, RefreshCw } from 'lucide-react';
 import * as THREE from 'three';
@@ -47,13 +47,14 @@ const checkProxyHealth = async (): Promise<boolean> => {
 
 
 
-function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }: { 
-  url: string; 
+function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }: {
+  url: string;
   debug?: boolean;
   onLoadStart?: () => void;
   onLoadComplete?: () => void;
   onLoadError?: (error: string) => void;
 }) {
+  const { camera } = useThree();
   const [hasErrored, setHasErrored] = useState(false);
   const [isValidating, setIsValidating] = useState(true);
   const errorReported = useRef(false);
@@ -136,7 +137,31 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
       onLoadError?.(loadError.message || 'Failed to load 3D model');
     }
   }, [gltfScene, loadError, onLoadComplete, onLoadError]);
-  
+
+  // Auto-frame: center model and position camera to fit bounding box
+  useEffect(() => {
+    if (!gltfScene) return;
+
+    const box = new THREE.Box3().setFromObject(gltfScene);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+
+    // Center the model at origin
+    gltfScene.position.sub(center);
+
+    // Calculate camera distance from bounding sphere
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const perspCam = camera as THREE.PerspectiveCamera;
+    const fov = perspCam.fov * (Math.PI / 180);
+    const distance = maxDim / (2 * Math.tan(fov / 2)) * 1.5; // 1.5x padding
+
+    camera.position.set(0, size.y * 0.3, distance);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+
+    if (debug) console.log('📐 Auto-framed model:', { size, distance });
+  }, [gltfScene, camera, debug]);
+
   useEffect(() => {
     // Cleanup function to dispose of resources when the component unmounts
     return () => {

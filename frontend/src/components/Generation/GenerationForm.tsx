@@ -14,7 +14,7 @@ export interface ModelDimensions {
 
 interface GenerationFormProps {
   onSuccess: (data: any) => void;
-  onImageTransformRequest?: (image: string, prompt: string) => void;
+  onImageTransformRequest?: (image: string | null, prompt: string, dimensions: ModelDimensions) => void;
   mode: 'text' | 'image';
   setMode: (mode: 'text' | 'image') => void;
   prompt: string;
@@ -86,7 +86,7 @@ export function GenerationForm({
       setError('Please enter a prompt');
       return;
     }
-    
+
     if (mode === 'image' && !imageFile) {
       setError('Please select an image');
       return;
@@ -94,37 +94,41 @@ export function GenerationForm({
 
     setError(null);
 
-    try {
-      // Image mode with a prompt: route through fal.ai transform first
-      if (mode === 'image' && imagePrompt.trim() && onImageTransformRequest && imagePreview) {
-        console.log('Routing to image transform with prompt:', imagePrompt.trim());
-        onImageTransformRequest(imagePreview, imagePrompt.trim());
-        return;
+    // ALL paths go through fal.ai first to generate 2D previews
+    if (onImageTransformRequest) {
+      if (mode === 'text') {
+        // Text-to-image: no source image, just the prompt
+        const fullPrompt = `${prompt.trim()}${prefilledData?.socialTag ? ` #${prefilledData.socialTag}` : ''}`;
+        console.log('Routing text prompt to fal.ai for 2D previews:', fullPrompt);
+        onImageTransformRequest(null, fullPrompt, dimensions);
+      } else if (imagePrompt.trim()) {
+        // Image + transform prompt
+        console.log('Routing image + prompt to fal.ai for 2D previews:', imagePrompt.trim());
+        onImageTransformRequest(imagePreview, imagePrompt.trim(), dimensions);
+      } else {
+        // Image only — use system prompt to optimize for 3D printing
+        console.log('Routing image to fal.ai for 3D-optimized previews');
+        onImageTransformRequest(imagePreview, 'Transform this image into a 3D-printable model', dimensions);
       }
+      return;
+    }
 
+    // Fallback: direct generation if onImageTransformRequest is not provided
+    try {
       let modelData;
-
-      // Prepare generation parameters with explicit type
       const baseParams = {
         type: mode === 'image' ? ('image-to-3d' as const) : ('text-to-3d' as const),
-        mode: 'preview' as const // Always use preview mode for now
+        mode: 'preview' as const
       };
 
       if (mode === 'text') {
-        // Text-to-3D generation
-        console.log('Starting text-to-3D generation with prompt:', prompt.trim());
         modelData = await modelService.generate3DModel({
           ...baseParams,
           prompt: `${prompt}${prefilledData?.socialTag ? ` #${prefilledData.socialTag}` : ''}`,
           userId: user?.id
         });
-
       } else {
-        // Image-to-3D generation (no transform prompt — direct to Meshy)
-        if (!imagePreview) {
-          throw new Error('No image data available');
-        }
-        console.log('Starting image-to-3D generation with file:', imageFile!.name);
+        if (!imagePreview) throw new Error('No image data available');
         modelData = await modelService.generate3DModel({
           ...baseParams,
           prompt: imageFile ? imageFile.name : 'Image-to-3D generation',
@@ -133,7 +137,6 @@ export function GenerationForm({
         });
       }
 
-      // Clear form based on mode
       if (mode === 'text') {
         setPrompt('');
       } else {
@@ -147,7 +150,7 @@ export function GenerationForm({
           ...modelData,
           prompt: mode === 'text' ? prompt.trim() : `Image: ${imageFile?.name}`,
           style: settings.style,
-          dimensions: dimensions // Pass dimensions for post-generation scaling
+          dimensions: dimensions
         });
       }
     } catch (err) {
@@ -411,13 +414,11 @@ export function GenerationForm({
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Generating...
               </>
-            ) : mode === 'image' && imagePrompt.trim() ? (
+            ) : (
               <>
                 <Wand2 className="mr-2 h-4 w-4" />
-                Transform & Preview
+                Generate Previews
               </>
-            ) : (
-              'Generate'
             )}
           </Button>
         </form>

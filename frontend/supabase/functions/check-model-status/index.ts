@@ -108,16 +108,19 @@ serve(async (req) => {
 
     console.log('📊 Database lookup result:', { modelRecord, lookupError });
 
+    // If DB lookup fails, treat taskId as a raw Meshy task ID (unauthenticated flow)
+    let meshyTaskId: string;
+    let userId: string | null;
+
     if (lookupError || !modelRecord?.meshy_task_id) {
-      console.error('❌ Model record not found or missing Meshy task ID:', { lookupError, modelRecord });
-      return new Response(JSON.stringify({ error: 'Model record not found or missing Meshy task ID.' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 404,
-      });
+      console.log('ℹ️ No DB record found — treating taskId as raw Meshy task ID');
+      meshyTaskId = taskId;
+      userId = null;
+    } else {
+      meshyTaskId = modelRecord.meshy_task_id;
+      userId = modelRecord.user_id;
     }
 
-    const meshyTaskId = modelRecord.meshy_task_id;
-    const userId = modelRecord.user_id;
     console.log(`Looking up Meshy task: ${meshyTaskId} for database record: ${taskId}`);
 
     // Use the correct API version based on the generation type

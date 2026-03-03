@@ -89,46 +89,49 @@ serve(async (req) => {
       throw new Error('Failed to get task ID from Meshy.')
     }
 
+    // Try to save to database (requires a valid user record for FK constraint)
+    let recordId: string | null = null
+
     // Ensure user exists in the users table (satisfies foreign key constraint)
     const { error: userError } = await supabase
       .from('users')
-      .upsert(
-        { id: effectiveUserId, email: `${effectiveUserId}@placeholder.local` },
-        { onConflict: 'id', ignoreDuplicates: true }
-      )
+      .upsert({ id: effectiveUserId }, { onConflict: 'id', ignoreDuplicates: true })
 
     if (userError) {
       console.warn('⚠️ Could not ensure user record:', userError.message)
     }
 
-    const taskRecord = {
-      user_id: effectiveUserId,
-      prompt: prompt || 'Image-to-3D generation',
-      type: type,
-      status: 'processing',
-      mode: mode,
-      meshy_task_id: taskId,
-      notes: `Meshy task: ${taskId}`,
-      is_marketplace_listed: true // Default to true for all generated models
+    if (!userError) {
+      const taskRecord = {
+        user_id: effectiveUserId,
+        prompt: prompt || 'Image-to-3D generation',
+        type: type,
+        status: 'processing',
+        mode: mode,
+        meshy_task_id: taskId,
+        notes: `Meshy task: ${taskId}`,
+        is_marketplace_listed: true
+      }
+
+      const { data: insertedRecord, error: dbError } = await supabase
+        .from('generated_models')
+        .insert(taskRecord)
+        .select('id')
+        .single()
+
+      if (dbError) {
+        console.warn('⚠️ Database save failed (non-critical):', dbError.message)
+      } else {
+        recordId = insertedRecord?.id
+        console.log('✅ Model saved to database with ID:', recordId)
+      }
     }
 
-    const { data: insertedRecord, error: dbError } = await supabase
-      .from('generated_models')
-      .insert(taskRecord)
-      .select('id')
-      .single()
-
-    if (dbError) {
-      console.error('⚠️ Database save error (critical):', dbError)
-      throw new Error(`Failed to save model to database: ${dbError.message}`)
-    }
-
-    const recordId = insertedRecord?.id
+    // Use DB record ID if available, otherwise fall back to raw Meshy task ID
+    const responseId = recordId || taskId
     if (!recordId) {
-      throw new Error('Failed to get database record ID')
+      console.log('ℹ️ No DB record — returning raw Meshy task ID:', taskId)
     }
-
-    console.log('✅ Model saved to database with ID:', recordId)
 
     // Fire-and-forget: pre-warm the Blender repair container
     // so it's ready by the time Meshy finishes (1-5 minutes later)
@@ -141,7 +144,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, data: { taskId: recordId, id: recordId, meshyTaskId: taskId, status: 'processing', type: type } }),
+      JSON.stringify({ success: true, data: { taskId: responseId, id: responseId, meshyTaskId: taskId, status: 'processing', type: type } }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 202, // Accepted

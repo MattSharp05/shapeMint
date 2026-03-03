@@ -43,7 +43,7 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !serviceKey) return new Response(JSON.stringify({ error: 'server_misconfigured' }), { status: 500, headers: corsHeaders });
-  const client = createClient(supabaseUrl, serviceKey, { global: { headers: { Authorization: authHeader } } });
+  const client = createClient(supabaseUrl, serviceKey);
 
   let userId: string | undefined;
   try { const jwt = authHeader.replace('Bearer ',''); const payload = JSON.parse(atob(jwt.split('.')[1] || 'e30=')); userId = payload.sub; } catch {}

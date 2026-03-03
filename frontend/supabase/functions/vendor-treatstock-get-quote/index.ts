@@ -229,7 +229,7 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: 'treatstock_api_key_missing' }), { status: 500, headers: corsHeaders });
   }
 
-  const client = createClient(supabaseUrl, serviceKey, { global: { headers: { Authorization: authHeader } } });
+  const client = createClient(supabaseUrl, serviceKey);
 
   let body: GetQuoteInput;
   try {

@@ -349,7 +349,7 @@ Deno.serve(async (req: Request) => {
     console.error(JSON.stringify({ evt: 'config_error', missing: !supabaseUrl ? 'SUPABASE_URL' : 'SUPABASE_SERVICE_ROLE_KEY' }));
     return new Response(JSON.stringify({ error: 'server_misconfigured' }), { status: 500, headers: corsHeaders });
   }
-  const supabaseClient = createClient(supabaseUrl, serviceKey, { global: { headers: { Authorization: authHeader } } });
+  const supabaseClient = createClient(supabaseUrl, serviceKey);
 
   let body: QuoteInput;
   try {

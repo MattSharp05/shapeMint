@@ -30,7 +30,7 @@ serve(async (req) => {
       throw new Error('Missing environment variables.')
     }
 
-    const effectiveUserId = userId || '00000000-0000-0000-0000-000000000000'
+    const effectiveUserId = userId || null
     if (!type) throw new Error('Generation type is required.')
     if (!prompt && !imageData) throw new Error('Either prompt or image is required.')
 
@@ -89,42 +89,42 @@ serve(async (req) => {
       throw new Error('Failed to get task ID from Meshy.')
     }
 
-    // Try to save to database (requires a valid user record for FK constraint)
+    // Try to save to database
     let recordId: string | null = null
 
-    // Ensure user exists in the users table (satisfies foreign key constraint)
-    const { error: userError } = await supabase
-      .from('users')
-      .upsert({ id: effectiveUserId }, { onConflict: 'id', ignoreDuplicates: true })
+    // If we have a real user, ensure they exist in users table (FK constraint)
+    if (effectiveUserId) {
+      const { error: userError } = await supabase
+        .from('users')
+        .upsert({ id: effectiveUserId }, { onConflict: 'id', ignoreDuplicates: true })
 
-    if (userError) {
-      console.warn('⚠️ Could not ensure user record:', userError.message)
+      if (userError) {
+        console.warn('⚠️ Could not ensure user record:', userError.message)
+      }
     }
 
-    if (!userError) {
-      const taskRecord = {
-        user_id: effectiveUserId,
-        prompt: prompt || 'Image-to-3D generation',
-        type: type,
-        status: 'processing',
-        mode: mode,
-        meshy_task_id: taskId,
-        notes: `Meshy task: ${taskId}`,
-        is_marketplace_listed: true
-      }
+    const taskRecord = {
+      user_id: effectiveUserId, // null for anonymous users
+      prompt: prompt || 'Image-to-3D generation',
+      type: type,
+      status: 'processing',
+      mode: mode,
+      meshy_task_id: taskId,
+      notes: `Meshy task: ${taskId}`,
+      is_marketplace_listed: true
+    }
 
-      const { data: insertedRecord, error: dbError } = await supabase
-        .from('generated_models')
-        .insert(taskRecord)
-        .select('id')
-        .single()
+    const { data: insertedRecord, error: dbError } = await supabase
+      .from('generated_models')
+      .insert(taskRecord)
+      .select('id')
+      .single()
 
-      if (dbError) {
-        console.warn('⚠️ Database save failed (non-critical):', dbError.message)
-      } else {
-        recordId = insertedRecord?.id
-        console.log('✅ Model saved to database with ID:', recordId)
-      }
+    if (dbError) {
+      console.warn('⚠️ Database save failed (non-critical):', dbError.message)
+    } else {
+      recordId = insertedRecord?.id
+      console.log('✅ Model saved to database with ID:', recordId)
     }
 
     // Use DB record ID if available, otherwise fall back to raw Meshy task ID

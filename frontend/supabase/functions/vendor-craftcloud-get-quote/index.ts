@@ -258,9 +258,7 @@ Deno.serve(async (req: Request) => {
       { status: 500, headers: corsHeaders }
     );
   }
-  const supabase = createClient(supabaseUrl, serviceKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
+  const supabase = createClient(supabaseUrl, serviceKey);
 
   let body: QuoteInput;
   try {
@@ -273,7 +271,7 @@ Deno.serve(async (req: Request) => {
   }
 
   // Extract user ID from JWT (optional — allow anonymous users)
-  let userId: string = '00000000-0000-0000-0000-000000000000';
+  let userId: string | null = null;
   try {
     const jwt = authHeader.replace('Bearer ', '');
     const payload = JSON.parse(atob(jwt.split('.')[1] || 'e30='));

@@ -263,7 +263,7 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !serviceKey) return new Response(JSON.stringify({ error: 'server_misconfigured' }), { status: 500, headers: corsHeaders });
-  const client = createClient(supabaseUrl, serviceKey, { global: { headers: { Authorization: authHeader } } });
+  const client = createClient(supabaseUrl, serviceKey);
 
   let body: CreateOrderInput;
   try { body = validateInput(await req.json()); } catch (e) { return new Response(JSON.stringify({ error: 'validation_failed', message: (e as Error).message }), { status: 400, headers: corsHeaders }); }

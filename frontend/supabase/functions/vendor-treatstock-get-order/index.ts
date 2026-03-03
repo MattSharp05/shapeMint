@@ -27,7 +27,7 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: 'server_misconfigured' }), { status: 500, headers: corsHeaders });
   }
 
-  const client = createClient(supabaseUrl, serviceKey, { global: { headers: { Authorization: authHeader } } });
+  const client = createClient(supabaseUrl, serviceKey);
 
   let userId: string | undefined;
   try {

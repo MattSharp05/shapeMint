@@ -379,7 +379,7 @@ export function TestingEnv() {
   const isGeneratingAngles = status === 'generating-angles';
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="pt-16 min-h-screen bg-white text-gray-900">
       {/* Header */}
       <div className="border-b border-gray-200 px-6 py-3 flex items-center justify-between bg-white">
         <div className="flex items-center gap-3">
@@ -392,7 +392,7 @@ export function TestingEnv() {
         </button>
       </div>
 
-      <div className="flex h-[calc(100vh-49px)]">
+      <div className="flex h-[calc(100vh-49px-4rem)]">
         {/* ── Left Panel: Controls ── */}
         <div className="w-[420px] min-w-[420px] overflow-y-auto border-r border-gray-200 p-4 space-y-5 bg-gray-50">
 

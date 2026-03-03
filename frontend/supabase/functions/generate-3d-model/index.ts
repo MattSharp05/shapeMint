@@ -92,7 +92,10 @@ serve(async (req) => {
     // Ensure user exists in the users table (satisfies foreign key constraint)
     const { error: userError } = await supabase
       .from('users')
-      .upsert({ id: effectiveUserId }, { onConflict: 'id', ignoreDuplicates: true })
+      .upsert(
+        { id: effectiveUserId, email: `${effectiveUserId}@placeholder.local` },
+        { onConflict: 'id', ignoreDuplicates: true }
+      )
 
     if (userError) {
       console.warn('⚠️ Could not ensure user record:', userError.message)

@@ -16,21 +16,21 @@ export function ColorSwatch({ color, isSelected, onSelect }: ColorSwatchProps) {
     <Card
       className={`cursor-pointer transition-all duration-200 p-4 ${
         isSelected
-          ? 'ring-2 ring-blue-500 border-blue-500'
-          : 'hover:border-gray-300 hover:shadow-sm'
+          ? 'ring-2 ring-brand-accent/50 border-brand-accent/50'
+          : 'hover:border-white/20'
       }`}
       onClick={onSelect}
     >
       <div className="flex flex-col items-center justify-center">
         <div
-          className="w-12 h-12 rounded-full border-2 border-gray-200 mb-2"
+          className="w-12 h-12 rounded-full border-2 border-white/10 mb-2"
           style={
             color.name === 'Multicolor'
               ? { background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }
               : { backgroundColor: color.hex || '#cccccc' }
           }
         />
-        <div className="text-sm font-medium text-gray-900 truncate w-full text-center" title={color.name}>
+        <div className="text-sm font-medium text-white truncate w-full text-center" title={color.name}>
           {color.name}
         </div>
       </div>

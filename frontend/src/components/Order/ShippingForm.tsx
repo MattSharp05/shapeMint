@@ -33,7 +33,6 @@ export function ShippingForm({
 
   const handleInputChange = (field: keyof ShippingInfo, value: string) => {
     onShippingInfoChange({ ...shippingInfo, [field]: value });
-    // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
@@ -41,11 +40,11 @@ export function ShippingForm({
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!shippingInfo.firstName?.trim()) newErrors.firstName = 'First name is required';
     if (!shippingInfo.lastName?.trim()) newErrors.lastName = 'Last name is required';
-  if (!shippingInfo.address1?.trim()) newErrors.address1 = 'Address is required';
-  if (!shippingInfo.email?.trim()) newErrors.email = 'Email is required';
+    if (!shippingInfo.address1?.trim()) newErrors.address1 = 'Address is required';
+    if (!shippingInfo.email?.trim()) newErrors.email = 'Email is required';
     if (!shippingInfo.city?.trim()) newErrors.city = 'City is required';
     if (!shippingInfo.state?.trim()) newErrors.state = 'State is required';
     if (!shippingInfo.postalCode?.trim()) newErrors.postalCode = 'Postal code is required';
@@ -62,114 +61,83 @@ export function ShippingForm({
   };
 
   const isFormValid = () => {
-  return shippingInfo.firstName && shippingInfo.lastName && shippingInfo.address1 && 
-       shippingInfo.city && shippingInfo.state && shippingInfo.postalCode && shippingInfo.phone && shippingInfo.email;
+    return shippingInfo.firstName && shippingInfo.lastName && shippingInfo.address1 &&
+      shippingInfo.city && shippingInfo.state && shippingInfo.postalCode && shippingInfo.phone && shippingInfo.email;
   };
 
   return (
     <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Shipping Information</h2>
-        <p className="text-gray-600">Enter your shipping details to get an accurate quote</p>
+      <div>
+        <h2 className="text-lg font-bold text-white mb-1">Shipping Information</h2>
+        <p className="text-sm text-white/40">Enter your shipping details to get an accurate quote</p>
       </div>
 
-      <Card className="p-6">
+      <div className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Input
-              label="First Name *"
-              value={shippingInfo.firstName || ''}
-              onChange={(e) => handleInputChange('firstName', e.target.value)}
-              placeholder="Enter first name"
-              error={errors.firstName}
-            />
-          </div>
+          <Input
+            label="First Name *"
+            value={shippingInfo.firstName || ''}
+            onChange={(e) => handleInputChange('firstName', e.target.value)}
+            placeholder="Enter first name"
+            error={errors.firstName}
+          />
+          <Input
+            label="Last Name *"
+            value={shippingInfo.lastName || ''}
+            onChange={(e) => handleInputChange('lastName', e.target.value)}
+            placeholder="Enter last name"
+            error={errors.lastName}
+          />
+        </div>
 
-          <div>
-            <Input
-              label="Last Name *"
-              value={shippingInfo.lastName || ''}
-              onChange={(e) => handleInputChange('lastName', e.target.value)}
-              placeholder="Enter last name"
-              error={errors.lastName}
-            />
-          </div>
+        <Input
+          label="Email *"
+          value={shippingInfo.email || ''}
+          onChange={(e) => handleInputChange('email' as any, e.target.value)}
+          placeholder="Enter email"
+          error={errors.email}
+        />
 
-          <div className="md:col-span-2">
-            <Input
-              label="Middle Name"
-              value={shippingInfo.middleName || ''}
-              onChange={(e) => handleInputChange('middleName', e.target.value)}
-              placeholder="Enter middle name (optional)"
-            />
-          </div>
+        <Input
+          label="Address Line 1 *"
+          value={shippingInfo.address1 || ''}
+          onChange={(e) => handleInputChange('address1', e.target.value)}
+          placeholder="Enter street address"
+          error={errors.address1}
+        />
 
-          <div className="md:col-span-2">
-            <Input
-              label="Company"
-              value={shippingInfo.company || ''}
-              onChange={(e) => handleInputChange('company', e.target.value)}
-              placeholder="Enter company name (optional)"
-            />
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="Address Line 2"
+            value={shippingInfo.address2 || ''}
+            onChange={(e) => handleInputChange('address2', e.target.value)}
+            placeholder="Apt, suite, etc. (optional)"
+          />
+          <Input
+            label="Company"
+            value={shippingInfo.company || ''}
+            onChange={(e) => handleInputChange('company', e.target.value)}
+            placeholder="Company (optional)"
+          />
+        </div>
 
-          <div className="md:col-span-2">
-            <Input
-              label="Email *"
-              value={shippingInfo.email || ''}
-              onChange={(e) => handleInputChange('email' as any, e.target.value)}
-              placeholder="Enter email"
-              error={errors.email}
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <Input
-              label="Address Line 1 *"
-              value={shippingInfo.address1 || ''}
-              onChange={(e) => handleInputChange('address1', e.target.value)}
-              placeholder="Enter street address"
-              error={errors.address1}
-            />
-          </div>
-
-          <div>
-            <Input
-              label="Address Line 2"
-              value={shippingInfo.address2 || ''}
-              onChange={(e) => handleInputChange('address2', e.target.value)}
-              placeholder="Apt, suite, etc. (optional)"
-            />
-          </div>
-
-          <div>
-            <Input
-              label="Address Line 3"
-              value={shippingInfo.address3 || ''}
-              onChange={(e) => handleInputChange('address3', e.target.value)}
-              placeholder="Additional address info (optional)"
-            />
-          </div>
-
-          <div>
-            <Input
-              label="City *"
-              value={shippingInfo.city || ''}
-              onChange={(e) => handleInputChange('city', e.target.value)}
-              placeholder="Enter city"
-              error={errors.city}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="City *"
+            value={shippingInfo.city || ''}
+            onChange={(e) => handleInputChange('city', e.target.value)}
+            placeholder="Enter city"
+            error={errors.city}
+          />
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-white/70">
               State *
             </label>
             <select
               value={shippingInfo.state || ''}
               onChange={(e) => handleInputChange('state', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                errors.state ? 'border-red-500' : 'border-gray-300'
+              className={`w-full px-3 py-2 bg-white/5 border rounded-lg text-white focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50 [&>option]:bg-brand-dark [&>option]:text-white ${
+                errors.state ? 'border-red-500/50' : 'border-white/10'
               }`}
             >
               <option value="">Select state</option>
@@ -179,124 +147,80 @@ export function ShippingForm({
                 </option>
               ))}
             </select>
-            {errors.state && <p className="text-red-500 text-xs mt-1">{errors.state}</p>}
-          </div>
-
-          <div>
-            <Input
-              label="Postal Code *"
-              value={shippingInfo.postalCode || ''}
-              onChange={(e) => handleInputChange('postalCode', e.target.value)}
-              placeholder="Enter ZIP code"
-              error={errors.postalCode}
-            />
-          </div>
-
-          <div>
-            <Input
-              label="Country"
-              value="United States"
-              disabled
-              className="bg-gray-50"
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <Input
-              label="Phone Number *"
-              value={shippingInfo.phone || ''}
-              onChange={(e) => handleInputChange('phone', e.target.value)}
-              placeholder="Enter phone number"
-              type="tel"
-              error={errors.phone}
-            />
+            {errors.state && <p className="text-red-400 text-xs mt-1">{errors.state}</p>}
           </div>
         </div>
-      </Card>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="Postal Code *"
+            value={shippingInfo.postalCode || ''}
+            onChange={(e) => handleInputChange('postalCode', e.target.value)}
+            placeholder="Enter ZIP code"
+            error={errors.postalCode}
+          />
+          <Input
+            label="Country"
+            value="United States"
+            disabled
+          />
+        </div>
+
+        <Input
+          label="Phone Number *"
+          value={shippingInfo.phone || ''}
+          onChange={(e) => handleInputChange('phone', e.target.value)}
+          placeholder="Enter phone number"
+          type="tel"
+          error={errors.phone}
+        />
+      </div>
 
       {/* Error Messages */}
       {quoteError && (
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <div className="flex">
-            <div className="text-red-600">
-              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Quote Error</h3>
-              <p className="mt-1 text-sm text-red-700">{quoteError}</p>
-            </div>
-          </div>
+        <div className="bg-red-900/20 border border-red-500/20 rounded-lg p-4">
+          <h3 className="text-sm font-medium text-red-400">Quote Error</h3>
+          <p className="mt-1 text-sm text-red-400/80">{quoteError}</p>
         </div>
       )}
 
       {orderError && (
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <div className="flex">
-            <div className="text-red-600">
-              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Order Error</h3>
-              <p className="mt-1 text-sm text-red-700">{orderError}</p>
-            </div>
-          </div>
+        <div className="bg-red-900/20 border border-red-500/20 rounded-lg p-4">
+          <h3 className="text-sm font-medium text-red-400">Order Error</h3>
+          <p className="mt-1 text-sm text-red-400/80">{orderError}</p>
         </div>
       )}
 
       {/* Quote Success */}
-      {quoteData && (() => {
-        // Debug: Log quote data to see what we're receiving
-        console.log('📊 Quote Data:', quoteData);
-        console.log('📊 Shipping Total:', quoteData.shippingTotal, 'Type:', typeof quoteData.shippingTotal);
-        console.log('📊 Surcharge:', quoteData.surcharge, 'Type:', typeof quoteData.surcharge);
-        return null;
-      })()}
       {quoteData && (
-        <div className="bg-green-50 border border-green-200 rounded-md p-4">
-          <div className="flex">
-            <div className="text-green-600">
-              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3 flex-1">
-              <h3 className="text-sm font-medium text-green-800">Quote Ready</h3>
-              <div className="mt-2 space-y-1">
-                {/* Price Breakdown */}
-                <div className="text-sm text-green-700 space-y-1">
-                  {quoteData.itemTotal !== undefined && (
-                    <div className="flex justify-between">
-                      <span>Item Cost:</span>
-                      <span className="font-medium">${quoteData.itemTotal.toFixed(2)} {quoteData.currency}</span>
-                    </div>
-                  )}
-                  {quoteData.surcharge !== undefined && quoteData.surcharge > 0 && (
-                    <div className="flex justify-between">
-                      <span>Surcharge:</span>
-                      <span className="font-medium">${quoteData.surcharge.toFixed(2)} {quoteData.currency}</span>
-                    </div>
-                  )}
-                  {/* Always show shipping if we have the data, even if 0 */}
-                  {(quoteData.shippingTotal !== undefined && quoteData.shippingTotal !== null) && (
-                    <div className="flex justify-between">
-                      <span>Shipping:</span>
-                      <span className="font-medium">${quoteData.shippingTotal.toFixed(2)} {quoteData.currency}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between pt-1 border-t border-green-200">
-                    <span className="font-semibold">Total Price:</span>
-                    <span className="font-semibold text-green-800">${quoteData.priceTotal.toFixed(2)} {quoteData.currency}</span>
-                  </div>
-                </div>
-                {quoteData.reused && (
-                  <p className="text-xs text-green-600 mt-1">(Using recent quote)</p>
-                )}
+        <div className="bg-green-900/20 border border-green-500/20 rounded-lg p-4">
+          <h3 className="text-sm font-medium text-green-400 mb-2">Quote Ready</h3>
+          <div className="text-sm text-white/60 space-y-1">
+            {quoteData.itemTotal !== undefined && (
+              <div className="flex justify-between">
+                <span>Item Cost:</span>
+                <span className="font-medium text-white">${quoteData.itemTotal.toFixed(2)} {quoteData.currency}</span>
               </div>
+            )}
+            {quoteData.surcharge !== undefined && quoteData.surcharge > 0 && (
+              <div className="flex justify-between">
+                <span>Surcharge:</span>
+                <span className="font-medium text-white">${quoteData.surcharge.toFixed(2)} {quoteData.currency}</span>
+              </div>
+            )}
+            {(quoteData.shippingTotal !== undefined && quoteData.shippingTotal !== null) && (
+              <div className="flex justify-between">
+                <span>Shipping:</span>
+                <span className="font-medium text-white">${quoteData.shippingTotal.toFixed(2)} {quoteData.currency}</span>
+              </div>
+            )}
+            <div className="flex justify-between pt-2 border-t border-green-500/20">
+              <span className="font-semibold text-white">Total Price:</span>
+              <span className="font-semibold text-green-400">${quoteData.priceTotal.toFixed(2)} {quoteData.currency}</span>
             </div>
+            {quoteData.reused && (
+              <p className="text-xs text-white/30 mt-1">(Using recent quote)</p>
+            )}
           </div>
         </div>
       )}
@@ -309,7 +233,7 @@ export function ShippingForm({
         >
           Back
         </Button>
-        
+
         <div className="flex space-x-3">
           <Button
             onClick={handleGetQuote}
@@ -319,7 +243,7 @@ export function ShippingForm({
           >
             {isQuoteLoading ? 'Getting Quote...' : 'Get Quote'}
           </Button>
-          
+
           {quoteData && onPlaceOrder && (
             <Button
               onClick={onPlaceOrder}

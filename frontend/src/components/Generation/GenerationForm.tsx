@@ -165,7 +165,7 @@ export function GenerationForm({
         }
         return 'Failed to generate model. Please try again.';
       })();
-      
+
       // Friendly error messages for common cases
       let userMessage: string;
       if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
@@ -179,7 +179,7 @@ export function GenerationForm({
       } else {
         userMessage = errorMessage;
       }
-      
+
       setError(userMessage);
     } finally {
     }
@@ -189,7 +189,7 @@ export function GenerationForm({
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setImageFile(file);
-      
+
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
@@ -197,6 +197,10 @@ export function GenerationForm({
       reader.readAsDataURL(file);
     }
   };
+
+  const inputClasses = "w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50";
+  const selectClasses = "w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50 [&>option]:bg-brand-dark [&>option]:text-white";
+  const labelClasses = "block text-sm font-medium text-white/70 mb-1";
 
   return (
     <Card className="p-6">
@@ -208,8 +212,8 @@ export function GenerationForm({
             onClick={() => setMode('text')}
             className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-lg border-2 transition-all ${
               mode === 'text'
-                ? 'border-brand-primary bg-brand-light text-brand-primary'
-                : 'border-gray-200 hover:border-gray-300'
+                ? 'border-brand-accent/50 bg-brand-accent/10 text-brand-accent'
+                : 'border-white/10 hover:border-white/20 text-white/50'
             }`}
           >
             <Type className="h-5 w-5" />
@@ -220,8 +224,8 @@ export function GenerationForm({
             onClick={() => setMode('image')}
             className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-lg border-2 transition-all ${
               mode === 'image'
-                ? 'border-brand-primary bg-brand-light text-brand-primary'
-                : 'border-gray-200 hover:border-gray-300'
+                ? 'border-brand-accent/50 bg-brand-accent/10 text-brand-accent'
+                : 'border-white/10 hover:border-white/20 text-white/50'
             }`}
           >
             <Upload className="h-5 w-5" />
@@ -233,24 +237,24 @@ export function GenerationForm({
           {/* Input Section */}
           {mode === 'text' ? (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className={labelClasses}>
                 Describe your 3D model
               </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="A futuristic coffee mug with geometric patterns..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-brand-primary focus:border-brand-primary resize-none"
+                className={`${inputClasses} resize-none`}
                 rows={4}
                 required
               />
             </div>
           ) : (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className={labelClasses}>
                 Upload reference image
               </label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-brand-primary transition-colors">
+              <div className="border-2 border-dashed border-white/10 rounded-lg p-6 text-center hover:border-brand-accent/30 transition-colors">
                 <input
                   type="file"
                   onChange={handleImageChange}
@@ -259,18 +263,18 @@ export function GenerationForm({
                   id="image-upload"
                 />
                 <label htmlFor="image-upload" className="cursor-pointer">
-                  <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">
+                  <Upload className="h-8 w-8 text-white/30 mx-auto mb-2" />
+                  <p className="text-sm text-white/50">
                     {imageFile ? imageFile.name : 'Click to upload or drag and drop'}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 10MB</p>
+                  <p className="text-xs text-white/30 mt-1">PNG, JPG up to 10MB</p>
                 </label>
                 {imagePreview && (
                   <div className="mt-4 relative">
                     <img src={imagePreview} alt="Preview" className="w-full h-auto rounded-lg" />
                     <button
                       onClick={() => { setImageFile(null); setImagePreview(null); }}
-                      className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-75"
+                      className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1 hover:bg-black/75"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -280,21 +284,21 @@ export function GenerationForm({
 
               {/* Image Transform Prompt */}
               <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className={labelClasses}>
                   <div className="flex items-center space-x-1">
                     <Wand2 className="h-4 w-4 text-brand-accent" />
                     <span>Describe how to transform this image</span>
-                    <span className="text-gray-400 font-normal">(optional)</span>
+                    <span className="text-white/30 font-normal">(optional)</span>
                   </div>
                 </label>
                 <textarea
                   value={imagePrompt}
                   onChange={(e) => setImagePrompt(e.target.value)}
                   placeholder="Make this look like a fantasy warrior, turn this into a robot, style it as a cartoon character..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-brand-primary focus:border-brand-primary resize-none"
+                  className={`${inputClasses} resize-none`}
                   rows={3}
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-white/30 mt-1">
                   {imagePrompt.trim()
                     ? 'Your image will be transformed with AI before 3D generation. You will choose from 4 variations.'
                     : 'Leave empty to convert the image directly to 3D.'}
@@ -306,29 +310,29 @@ export function GenerationForm({
           {/* Model Dimensions */}
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
-              <Ruler className="h-4 w-4 text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-700">Model Size</h3>
+              <Ruler className="h-4 w-4 text-white/30" />
+              <h3 className="text-sm font-medium text-white/70">Model Size</h3>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Size</label>
+                <label className={labelClasses}>Size</label>
                 <input
                   type="number"
                   min="1"
                   max="1000"
                   value={dimensions.value}
                   onChange={(e) => setDimensions({ ...dimensions, value: Math.max(1, Number(e.target.value)) })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                  className={inputClasses}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                <label className={labelClasses}>Unit</label>
                 <select
                   value={dimensions.unit}
                   onChange={(e) => setDimensions({ ...dimensions, unit: e.target.value as DimensionUnit })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                  className={selectClasses}
                 >
                   <option value="cm">cm</option>
                   <option value="mm">mm</option>
@@ -337,11 +341,11 @@ export function GenerationForm({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Dimension</label>
+                <label className={labelClasses}>Dimension</label>
                 <select
                   value={dimensions.target}
                   onChange={(e) => setDimensions({ ...dimensions, target: e.target.value as DimensionTarget })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                  className={selectClasses}
                 >
                   <option value="height">Height</option>
                   <option value="width">Width</option>
@@ -351,7 +355,7 @@ export function GenerationForm({
               </div>
             </div>
 
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-white/30">
               Your model will be scaled so the {dimensions.target} is {dimensions.value} {dimensions.unit}
             </p>
           </div>
@@ -359,17 +363,17 @@ export function GenerationForm({
           {/* Generation Settings */}
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
-              <Settings className="h-4 w-4 text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-700">Generation Settings</h3>
+              <Settings className="h-4 w-4 text-white/30" />
+              <h3 className="text-sm font-medium text-white/70">Generation Settings</h3>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Style</label>
+                <label className={labelClasses}>Style</label>
                 <select
                   value={settings.style}
                   onChange={(e) => setSettings({ ...settings, style: e.target.value as any })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                  className={selectClasses}
                 >
                   <option value="realistic">Realistic</option>
                   <option value="stylized">Stylized</option>
@@ -378,11 +382,11 @@ export function GenerationForm({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Quality</label>
+                <label className={labelClasses}>Quality</label>
                 <select
                   value={settings.quality}
                   onChange={(e) => setSettings({ ...settings, quality: e.target.value as any })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                  className={selectClasses}
                 >
                   <option value="draft">Draft</option>
                   <option value="standard">Standard</option>
@@ -393,8 +397,8 @@ export function GenerationForm({
           </div>
 
           {error && (
-            <div className="p-3 rounded-lg bg-red-50 border border-red-200">
-              <p className="text-sm text-red-600">{error}</p>
+            <div className="p-3 rounded-lg bg-red-900/20 border border-red-500/20">
+              <p className="text-sm text-red-400">{error}</p>
             </div>
           )}
 

@@ -39,50 +39,44 @@ export function MaterialSelection({
   const selectedMaterial = materials.find(m => m.id === selectedMaterialId);
   const hasColors = selectedMaterial?.colors && selectedMaterial.colors.length > 0;
   const hasFinishes = selectedMaterial?.finishes && selectedMaterial.finishes.length > 0;
-  
+
   // Check if we can proceed - need material, and if applicable, color and/or finish
-  const canProceed = selectedMaterialId && 
-    (!hasColors || selectedColorId) && 
+  const canProceed = selectedMaterialId &&
+    (!hasColors || selectedColorId) &&
     (!hasFinishes || selectedFinishId);
 
   return (
     <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Select Material, Color & Finish</h2>
-        <p className="text-gray-600">Choose your material and available options</p>
+      <div>
+        <h2 className="text-lg font-bold text-white mb-1">Select Material, Color & Finish</h2>
+        <p className="text-sm text-white/40">Choose your material and available options</p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {materials.map((material) => {
           const isExpanded = expandedMaterialId === material.id;
           const isSelected = selectedMaterialId === material.id;
           const isFullColor = material.id === 'full-color-nylon-12-mjf';
 
           return (
-            <Card 
-              key={material.id} 
+            <Card
+              key={material.id}
               className={`overflow-hidden ${
-                isFullColor 
-                  ? 'ring-2 ring-brand-primary bg-brand-light'
+                isFullColor
+                  ? 'ring-2 ring-brand-accent/50'
                   : ''
               }`}
             >
               {isFullColor && (
-                <div className="bg-brand-primary text-white px-4 py-2 text-center">
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="text-yellow-300">⭐</span>
-                    <span className="font-bold text-sm">RECOMMENDED FOR MULTI-COLOR MODELS</span>
-                    <span className="text-yellow-300">⭐</span>
-                  </div>
+                <div className="bg-brand-accent/20 text-brand-accent px-4 py-2 text-center">
+                  <span className="font-bold text-xs uppercase tracking-wider">Recommended for Multi-Color Models</span>
                 </div>
               )}
               <div
                 className={`cursor-pointer transition-all duration-200 p-4 ${
                   isSelected
-                    ? 'bg-blue-50 border-blue-200'
-                    : isFullColor
-                    ? 'hover:bg-brand-light'
-                    : 'hover:bg-gray-50'
+                    ? 'bg-brand-accent/10 border-brand-accent/30'
+                    : 'hover:bg-white/5'
                 }`}
                 onClick={() => handleMaterialClick(material.id)}
               >
@@ -92,16 +86,16 @@ export function MaterialSelection({
                       <img
                         src={material.swatchUrl}
                         alt={`${material.name} preview`}
-                        className="w-16 h-16 rounded-lg object-cover border"
+                        className="w-16 h-16 rounded-lg object-cover border border-white/10"
                         style={{ aspectRatio: '1/1' }}
                       />
                     )}
                     <div>
-                      <h3 className="font-semibold text-gray-900">{material.name}</h3>
+                      <h3 className="font-semibold text-white">{material.name}</h3>
                       {material.description && (
-                        <p className="text-sm text-gray-600">{material.description}</p>
+                        <p className="text-sm text-white/40">{material.description}</p>
                       )}
-                      <div className="flex items-center gap-4 text-xs text-gray-500 mt-1">
+                      <div className="flex items-center gap-4 text-xs text-white/30 mt-1">
                         {material.colors.length > 0 && (
                           <span>{material.colors.length} color{material.colors.length !== 1 ? 's' : ''}</span>
                         )}
@@ -112,23 +106,23 @@ export function MaterialSelection({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {isSelected && <div className="w-2 h-2 bg-blue-500 rounded-full" />}
+                    {isSelected && <div className="w-2 h-2 bg-brand-accent rounded-full" />}
                     {isExpanded ? (
-                      <ChevronUp className="w-5 h-5 text-gray-400" />
+                      <ChevronUp className="w-5 h-5 text-white/30" />
                     ) : (
-                      <ChevronDown className="w-5 h-5 text-gray-400" />
+                      <ChevronDown className="w-5 h-5 text-white/30" />
                     )}
                   </div>
                 </div>
               </div>
 
               {isExpanded && (
-                <div className="border-t bg-white p-4 space-y-6">
+                <div className="border-t border-white/5 bg-white/5 p-4 space-y-6">
                   {/* Colors Section */}
                   {material.colors.length > 0 && (
                     <div>
-                      <h4 className="text-sm font-medium text-gray-900 mb-3">Available Colors:</h4>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                      <h4 className="text-sm font-medium text-white/70 mb-3">Available Colors:</h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                         {material.colors.map((color) => (
                           <ColorSwatch
                             key={color.id}
@@ -144,10 +138,9 @@ export function MaterialSelection({
                   {/* Finishes Section */}
                   {material.finishes.length > 0 && (
                     <div>
-                      <h4 className="text-sm font-medium text-gray-900 mb-3">Materials/Finishes:</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <h4 className="text-sm font-medium text-white/70 mb-3">Materials/Finishes:</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {(
-                          // Hide 18K option unless the selected material is gold-casting and the selected color is gold-yellow
                           material.finishes
                             .filter((finish) => {
                               if (finish.id !== '18k') return true;
@@ -169,9 +162,9 @@ export function MaterialSelection({
 
                   {/* Selection Summary */}
                   {isSelected && (selectedColorId || selectedFinishId) && (
-                    <div className="bg-blue-50 rounded-lg p-3">
-                      <h5 className="text-sm font-medium text-blue-900 mb-2">Current Selection:</h5>
-                      <div className="text-sm text-blue-800 space-y-1">
+                    <div className="bg-brand-accent/10 border border-brand-accent/20 rounded-lg p-3">
+                      <h5 className="text-sm font-medium text-brand-accent mb-2">Current Selection:</h5>
+                      <div className="text-sm text-white/60 space-y-1">
                         <div>Material: {material.name}</div>
                         {selectedColorId && (
                           <div>Color: {material.colors.find(c => c.id === selectedColorId)?.name}</div>
@@ -208,7 +201,7 @@ export function MaterialSelection({
 
       {selectedMaterialId && !canProceed && (
         <div className="text-center">
-          <p className="text-sm text-gray-500 italic">
+          <p className="text-sm text-white/40 italic">
             {!selectedColorId && hasColors && "Please select a color"}
             {!selectedColorId && hasColors && !selectedFinishId && hasFinishes && " and "}
             {!selectedFinishId && hasFinishes && "Please select a finish"}

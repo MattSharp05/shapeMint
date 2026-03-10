@@ -2,6 +2,7 @@ export interface ModelUrls {
   glb?: string;
   obj?: string;
   stl?: string;
+  mtl?: string;
 }
 
 export interface ModelOutput {
@@ -30,6 +31,7 @@ export interface GeneratedModel {
   obj_url: string;
   stl_url: string;
   glb_url: string;
+  mtl_url?: string;
   thumbnail_url?: string;
   thumbnail_angles?: any[];
   thumbnail_selected?: number;

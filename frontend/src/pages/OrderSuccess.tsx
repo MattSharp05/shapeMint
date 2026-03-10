@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { CheckCircle, Package, Truck } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
+import { FadeIn, FadeInUp } from '../components/Motion';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../hooks/useAuth';
 
@@ -166,11 +167,11 @@ export function OrderSuccess() {
 
   if (loading) {
     return (
-      <div className="pt-16 min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto mb-4"></div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Processing Your Order</h2>
-          <p className="text-gray-600">Please wait while we verify your payment and create your order...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-accent mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-white mb-2">Processing Your Order</h2>
+          <p className="text-white/50">Please wait while we verify your payment and create your order...</p>
         </div>
       </div>
     );
@@ -178,14 +179,14 @@ export function OrderSuccess() {
 
   if (error) {
     return (
-      <div className="pt-16 min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center">
         <Card className="p-8 max-w-md w-full">
           <div className="text-center">
-            <div className="mx-auto flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-6">
-              <Package className="w-8 h-8 text-red-600" />
+            <div className="mx-auto flex items-center justify-center w-16 h-16 bg-red-900/30 rounded-full mb-6">
+              <Package className="w-8 h-8 text-red-400" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Order Error</h2>
-            <p className="text-gray-600 mb-6">{error}</p>
+            <h2 className="text-2xl font-bold text-white mb-4">Order Error</h2>
+            <p className="text-white/50 mb-6">{error}</p>
             <div className="space-y-3">
               <Button onClick={() => navigate('/dashboard')} className="w-full">
                 Go to Dashboard
@@ -202,9 +203,9 @@ export function OrderSuccess() {
 
   if (!orderData) {
     return (
-      <div className="pt-16 min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-600">No order data available.</p>
+          <p className="text-white/50">No order data available.</p>
         </div>
       </div>
     );
@@ -213,61 +214,64 @@ export function OrderSuccess() {
   const hasDetails = orderData.orderId && orderData.customerName;
 
   return (
-    <div className="pt-16 min-h-screen bg-gray-50 flex items-center justify-center">
-      <Card className="p-8 max-w-lg w-full mx-4">
-        <div className="text-center">
-          {/* Success Icon */}
-          <div className="mx-auto flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-6">
-            <CheckCircle className="w-8 h-8 text-green-600" />
-          </div>
+    <div className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center">
+      <FadeInUp className="max-w-lg w-full mx-4">
+        <Card className="p-8">
+          <div className="text-center">
+            {/* Success Icon */}
+            <FadeIn delay={0.15}>
+              <div className="mx-auto flex items-center justify-center w-16 h-16 bg-green-900/30 rounded-full mb-6">
+                <CheckCircle className="w-8 h-8 text-green-400" />
+              </div>
+            </FadeIn>
 
-          {/* Title */}
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Order Successful!
-          </h2>
+            {/* Title */}
+            <h2 className="text-2xl font-bold text-white mb-2">
+              Order Successful!
+            </h2>
 
-          <p className="text-gray-600 mb-6">
-            Your payment has been processed and your 3D print is now being manufactured.
-          </p>
+            <p className="text-white/50 mb-6">
+              Your payment has been processed and your 3D print is now being manufactured.
+            </p>
 
-          {/* Order details (if available) */}
-          {hasDetails && (
-            <div className="bg-gray-50 rounded-lg p-5 mb-6 text-left space-y-3">
-              {orderData.orderId && (
-                <div className="flex items-center space-x-3">
-                  <Package className="w-5 h-5 text-gray-400 shrink-0" />
-                  <div>
-                    <p className="text-sm text-gray-500">Order ID</p>
-                    <p className="font-medium text-gray-900">{orderData.orderId}</p>
+            {/* Order details (if available) */}
+            {hasDetails && (
+              <div className="bg-white/5 rounded-lg p-5 mb-6 text-left space-y-3">
+                {orderData.orderId && (
+                  <div className="flex items-center space-x-3">
+                    <Package className="w-5 h-5 text-white/30 shrink-0" />
+                    <div>
+                      <p className="text-sm text-white/40">Order ID</p>
+                      <p className="font-medium text-white">{orderData.orderId}</p>
+                    </div>
                   </div>
-                </div>
-              )}
-              {orderData.customerName && (
-                <div className="flex items-center space-x-3">
-                  <Truck className="w-5 h-5 text-gray-400 shrink-0" />
-                  <div>
-                    <p className="text-sm text-gray-500">Shipping to</p>
-                    <p className="font-medium text-gray-900">{orderData.customerName}</p>
-                    {orderData.shippingAddress.street && (
-                      <p className="text-sm text-gray-600">
-                        {orderData.shippingAddress.street}, {orderData.shippingAddress.city}, {orderData.shippingAddress.state} {orderData.shippingAddress.zip}
-                      </p>
-                    )}
+                )}
+                {orderData.customerName && (
+                  <div className="flex items-center space-x-3">
+                    <Truck className="w-5 h-5 text-white/30 shrink-0" />
+                    <div>
+                      <p className="text-sm text-white/40">Shipping to</p>
+                      <p className="font-medium text-white">{orderData.customerName}</p>
+                      {orderData.shippingAddress.street && (
+                        <p className="text-sm text-white/50">
+                          {orderData.shippingAddress.street}, {orderData.shippingAddress.city}, {orderData.shippingAddress.state} {orderData.shippingAddress.zip}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+            )}
+
+            {/* What's next */}
+            <div className="bg-brand-primary/10 border border-brand-primary/20 rounded-lg p-5 mb-6 text-left">
+              <h4 className="font-semibold text-white mb-2">What happens next?</h4>
+              <ul className="text-sm text-white/60 space-y-1.5">
+                <li>You'll receive a confirmation email with your order details</li>
+                <li>Your model will be manufactured and shipped to your address</li>
+                <li>You'll get shipping updates and tracking information via email</li>
+              </ul>
             </div>
-          )}
-
-          {/* What's next */}
-          <div className="bg-blue-50 rounded-lg p-5 mb-6 text-left">
-            <h4 className="font-semibold text-blue-900 mb-2">What happens next?</h4>
-            <ul className="text-sm text-blue-800 space-y-1.5">
-              <li>You'll receive a confirmation email with your order details</li>
-              <li>Your model will be manufactured and shipped to your address</li>
-              <li>You'll get shipping updates and tracking information via email</li>
-            </ul>
-          </div>
 
           {/* Actions */}
           <div className="space-y-3">
@@ -286,7 +290,8 @@ export function OrderSuccess() {
             </Button>
           </div>
         </div>
-      </Card>
+        </Card>
+      </FadeInUp>
     </div>
   );
 } 

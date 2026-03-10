@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { User, ShoppingBag, LogOut, CheckCircle } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Menu, X, User, LogOut, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import { Card } from '../UI/Card';
 
 export function Header() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [showLogoutSuccess, setShowLogoutSuccess] = useState(false);
 
   const handleLogout = async () => {
@@ -16,118 +17,160 @@ export function Header() {
       setTimeout(() => {
         setShowLogoutSuccess(false);
         navigate('/');
-      }, 2000);
+      }, 1500);
     } catch (error) {
       console.error('Logout failed:', error);
     }
   };
 
-  // Show logout success popup
   if (showLogoutSuccess) {
     return (
-      <div className="fixed inset-0 bg-brand-light flex items-center justify-center z-50">
-        <div className="max-w-md w-full mx-4">
-          <Card className="p-8 text-center">
-            <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="h-8 w-8 text-green-600" />
-            </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">
-              Successfully Signed Out!
-            </h1>
-            <p className="text-gray-600">
-              Redirecting you to the home page...
-            </p>
-          </Card>
+      <div className="fixed inset-0 bg-brand-dark flex items-center justify-center z-50">
+        <div className="text-center animate-fade-in">
+          <div className="bg-brand-accent/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="h-8 w-8 text-brand-accent" />
+          </div>
+          <p className="text-lg font-medium text-white">Signed out</p>
         </div>
       </div>
     );
   }
 
+  const isActive = (path: string) => location.pathname === path;
+
   return (
-    <header className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-lg border-b border-gray-200 z-50">
+    <header className="fixed top-0 left-0 right-0 bg-brand-dark/90 backdrop-blur-md border-b border-white/5 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
+          {/* Logo */}
           <Link to="/" className="flex items-center">
-            <img 
-              src="/images/shapemint-long-oneline.png" 
-              alt="ShapeMint" 
-              className="h-14 w-auto"
+            <img
+              src="/images/shapemint-long-oneline.png"
+              alt="ShapeMint"
+              className="h-10 w-auto"
             />
           </Link>
 
-          <nav className="hidden md:flex items-center space-x-8">
+          {/* Desktop nav */}
+          <nav className="hidden md:flex items-center gap-1">
             <Link
               to="/generate"
-              className="text-gray-700 hover:text-brand-primary font-medium transition-colors"
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                isActive('/generate')
+                  ? 'bg-white/10 text-brand-accent'
+                  : 'text-[#9ca3af] hover:text-white hover:bg-white/5'
+              }`}
             >
-              Generate
-            </Link>
-            <Link
-              to="/explore"
-              className="text-gray-700 hover:text-brand-primary font-medium transition-colors"
-            >
-              Explore
-            </Link>
-            <Link
-              to="/marketplace"
-              className="text-gray-700 hover:text-brand-primary font-medium transition-colors"
-            >
-              Marketplace
-            </Link>
-            <Link
-              to="/about"
-              className="text-gray-700 hover:text-brand-primary font-medium transition-colors"
-            >
-              About
-            </Link>
-            <Link
-              to="/contact"
-              className="text-gray-700 hover:text-brand-primary font-medium transition-colors"
-            >
-              Contact
+              Create
             </Link>
             {user && (
               <Link
                 to="/dashboard"
-                className="text-gray-700 hover:text-brand-primary font-medium transition-colors"
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  isActive('/dashboard')
+                    ? 'bg-white/10 text-brand-accent'
+                    : 'text-[#9ca3af] hover:text-white hover:bg-white/5'
+                }`}
               >
-                My Account
+                My Models
               </Link>
             )}
           </nav>
 
-          <div className="flex items-center space-x-4">
+          {/* Right side */}
+          <div className="hidden md:flex items-center gap-3">
             {user ? (
-              <div className="flex items-center space-x-4">
-                <span className="text-gray-700 hidden sm:inline">
-                  {user.name}
-                </span>
+              <>
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5">
+                  <User className="h-4 w-4 text-white/50" />
+                  <span className="text-sm font-medium text-white">{user.name}</span>
+                </div>
                 <button
                   onClick={handleLogout}
-                  className="flex items-center space-x-1 text-gray-700 hover:text-red-600 transition-colors"
+                  className="p-2 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors"
+                  title="Sign out"
                 >
                   <LogOut className="h-4 w-4" />
                 </button>
-              </div>
+              </>
             ) : (
-              <div className="flex items-center space-x-4">
-                <Link
-                  to="/login"
-                  className="text-gray-700 hover:text-brand-primary font-medium transition-colors"
-                >
-                  Sign In
-                </Link>
+              <>
+            <Link
+              to="/login"
+              className="px-4 py-2 text-sm font-medium text-[#9ca3af] hover:text-white transition-colors"
+            >
+              Sign In
+            </Link>
                 <Link
                   to="/register"
-                  className="bg-brand-primary text-white px-4 py-2 rounded-lg font-medium hover:bg-brand-primary-dark transition-all transform hover:scale-105"
+                  className="px-6 py-2.5 text-sm font-semibold bg-gradient-to-r from-brand-accent to-brand-accent-dark text-brand-dark rounded-full hover:shadow-[0_0_20px_rgba(237,174,73,0.4)] transition-all"
                 >
                   Get Started
                 </Link>
-              </div>
+              </>
             )}
           </div>
+
+          {/* Mobile hamburger */}
+          <button
+            className="md:hidden p-2 rounded-lg text-white/60 hover:bg-white/5"
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
       </div>
+
+      {/* Mobile menu */}
+      {mobileOpen && (
+        <div className="md:hidden border-t border-white/5 bg-brand-dark animate-fade-in">
+          <div className="px-4 py-3 space-y-1">
+            <Link
+              to="/generate"
+              onClick={() => setMobileOpen(false)}
+              className="block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white"
+            >
+              Create
+            </Link>
+            {user && (
+              <Link
+                to="/dashboard"
+                onClick={() => setMobileOpen(false)}
+                className="block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white"
+              >
+                My Models
+              </Link>
+            )}
+            <div className="border-t border-white/5 pt-2 mt-2">
+              {user ? (
+                <button
+                  onClick={() => { handleLogout(); setMobileOpen(false); }}
+                  className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5"
+                >
+                  Sign Out
+                </button>
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    onClick={() => setMobileOpen(false)}
+                    className="block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5"
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    to="/register"
+                    onClick={() => setMobileOpen(false)}
+                    className="block px-4 py-2.5 rounded-full text-sm font-semibold bg-gradient-to-r from-brand-accent to-brand-accent-dark text-brand-dark text-center mt-1"
+                  >
+                    Get Started
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

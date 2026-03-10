@@ -347,14 +347,14 @@ export function UserProfile() {
                 : 'grid-cols-1'
             }`}>
               {sortedDesigns.map((design) => (
-                <Card key={design.id} className="overflow-hidden hover">
+                <Card key={design.id} className="group overflow-hidden hover">
                   {viewMode === 'grid' ? (
                     <>
-                      <div className="relative">
+                      <div className="relative aspect-square overflow-hidden">
                         <img
                           src={design.thumbnail}
                           alt={design.title}
-                          className="w-full h-48 object-cover"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
                         {design.featured && (
                           <div className="absolute top-2 left-2 bg-brand-primary text-white px-2 py-1 rounded-md text-xs font-medium">
@@ -405,11 +405,13 @@ export function UserProfile() {
                     </>
                   ) : (
                     <div className="flex">
-                      <img
-                        src={design.thumbnail}
-                        alt={design.title}
-                        className="w-32 h-32 object-cover"
-                      />
+                      <div className="w-32 h-32 flex-shrink-0 overflow-hidden">
+                        <img
+                          src={design.thumbnail}
+                          alt={design.title}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
                       <div className="flex-1 p-6">
                         <div className="flex justify-between items-start">
                           <div className="flex-1">

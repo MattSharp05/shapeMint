@@ -24,7 +24,11 @@ export function ColorSwatch({ color, isSelected, onSelect }: ColorSwatchProps) {
       <div className="flex flex-col items-center justify-center">
         <div
           className="w-12 h-12 rounded-full border-2 border-gray-200 mb-2"
-          style={{ backgroundColor: color.hex || '#cccccc' }}
+          style={
+            color.name === 'Multicolor'
+              ? { background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }
+              : { backgroundColor: color.hex || '#cccccc' }
+          }
         />
         <div className="text-sm font-medium text-gray-900 truncate w-full text-center" title={color.name}>
           {color.name}

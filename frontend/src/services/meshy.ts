@@ -24,6 +24,7 @@ interface ExtendedMeshyResponse extends MeshyResponse {
     glb?: string;
     obj?: string;
     stl?: string;
+    mtl?: string;
   };
 }
 
@@ -204,17 +205,10 @@ export class MeshyService {
   async generateModel(params: MeshyGenerationParams): Promise<string> {
     try {
       const preview = await this.generatePreview(params);
-      
-      // Check if we already have model URLs from the preview
-      const statusResponse = await this.checkTaskStatus(preview.taskId);
-      const previewData = statusResponse.data as ExtendedMeshyResponse;
-      if (previewData.model_urls?.glb) {
-        console.log('Model URLs found in preview response, skipping refine step');
-        return previewData.model_urls.glb;
-      }
 
+      // Always run the refine step — preview models are untextured geometry only.
+      // The refine step adds textures/colors to the model.
       console.log('Sending refine request to Meshy API...');
-      console.log('Using headers for refine:', this.headers);
       const refineResponse = await axios.post(`${MESHY_API_BASE}/text-to-3d`, {
         mode: 'refine',
         preview_task_id: preview.taskId,
@@ -228,56 +222,17 @@ export class MeshyService {
       }
 
       const response = await this.waitForTaskCompletion(refineTaskId);
-      if (response.status === 'SUCCEEDED' && response.model_url) {
-        return response.model_url;
+      if (response.status === 'SUCCEEDED') {
+        // Prefer model_urls.glb (textured) over model_url (may be untextured)
+        const responseData = response as any;
+        const glbUrl = responseData.model_urls?.glb || response.model_url;
+        if (glbUrl) return glbUrl;
       }
 
       throw new Error('Refine task incomplete');
     } catch (error) {
       console.error('Error in generate model:', error);
       throw new Error('Failed to generate model');
-    }
-  }
-
-  async generateAndStoreModelFromImage(imageFile: File, userId: string, options: Partial<ImageGenerationParams> = {}): Promise<any> {
-    console.log('Starting image-to-3D model generation with file:', imageFile.name);
-    try {
-      const glbUrl = await this.generateModelFromImage(imageFile, options);
-      
-      // Generate other format URLs based on GLB URL pattern
-      const objUrl = glbUrl.replace('.glb', '.obj');
-      const stlUrl = glbUrl.replace('.glb', '.stl');
-      
-      // Store in Supabase with correct schema
-      const modelData = {
-        name: `Image: ${imageFile.name}`,
-        prompt: `Image: ${imageFile.name}`,
-        style: 'image-to-3d',
-        obj_url: objUrl,
-        stl_url: stlUrl,
-        glb_url: glbUrl,
-        thumbnail_url: '',
-        user_id: userId,
-        status: 'completed' as const
-      };
-      
-      console.log('Storing image-to-3D model in Supabase:', modelData);
-      const createdModel = await modelService.createModel(modelData);
-      console.log('✅ Image-to-3D model stored successfully:', createdModel);
-      
-      // Return the model data with URLs for UI display
-      return {
-        ...createdModel,
-        urls: {
-          glb: glbUrl,
-          obj: objUrl,
-          stl: stlUrl
-        }
-      };
-      
-    } catch (error) {
-      console.error('Error in image-to-3D generate and store flow:', error);
-      throw error;
     }
   }
 
@@ -365,10 +320,13 @@ export class MeshyService {
       const response = await this.waitForImageTaskCompletion(taskId);
       console.log('✅ Image-to-3D generation completed:', response);
       
-      if (response.status === 'SUCCEEDED' && response.model_url) {
-        return response.model_url;
+      if (response.status === 'SUCCEEDED') {
+        // Prefer model_urls.glb (textured) over model_url
+        const responseData = response as any;
+        const glbUrl = responseData.model_urls?.glb || response.model_url;
+        if (glbUrl) return glbUrl;
       }
-      
+
       throw new Error('Image-to-3D generation failed: No model URL returned');
     } catch (error) {
       console.error('❌ Error in image-to-3D generation:', error);
@@ -380,11 +338,12 @@ export class MeshyService {
     console.log('Starting image-to-3D model generation with file:', imageFile.name);
     try {
       const glbUrl = await this.generateModelFromImage(imageFile, options);
-      
-      // Generate other format URLs based on GLB URL pattern
+
+      // Derive format URLs from GLB URL pattern (Meshy hosts all formats at the same base path)
       const objUrl = glbUrl.replace('.glb', '.obj');
       const stlUrl = glbUrl.replace('.glb', '.stl');
-      
+      const mtlUrl = glbUrl.replace('.glb', '.mtl');
+
       // Store in Supabase with correct schema
       const modelData = {
         name: `Image: ${imageFile.name}`,
@@ -393,25 +352,27 @@ export class MeshyService {
         obj_url: objUrl,
         stl_url: stlUrl,
         glb_url: glbUrl,
+        mtl_url: mtlUrl,
         thumbnail_url: '',
         user_id: userId,
         status: 'completed' as const
       };
-      
+
       console.log('Storing image-to-3D model in Supabase:', modelData);
       const createdModel = await modelService.createModel(modelData);
       console.log('✅ Image-to-3D model stored successfully:', createdModel);
-      
+
       // Return the model data with URLs for UI display
       return {
         ...createdModel,
         urls: {
           glb: glbUrl,
           obj: objUrl,
-          stl: stlUrl
+          stl: stlUrl,
+          mtl: mtlUrl
         }
       };
-      
+
     } catch (error) {
       console.error('Error in image-to-3D generate and store flow:', error);
       throw error;

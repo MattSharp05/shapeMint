@@ -336,6 +336,21 @@ export function Order() {
           setQuoteState({ loading: false, error: 'This material/color/finish combination is not available. Please select a different option.' });
           return;
         }
+
+        // For multicolor materials, fetch OBJ+MTL URLs from DB
+        const isMulticolor = ['cc-multicolor-pla', 'cc-full-color', 'cc-mjf-multicolor'].includes(wizardState.materialId!);
+        let objUrl: string | undefined;
+        let mtlUrl: string | undefined;
+        if (isMulticolor && modelData?.id) {
+          const { data: record } = await supabase
+            .from('generated_models')
+            .select('obj_url, mtl_url')
+            .eq('id', modelData.id)
+            .single();
+          objUrl = record?.obj_url || undefined;
+          mtlUrl = record?.mtl_url || undefined;
+        }
+
         const data = await getCraftcloudQuote({
           modelUrl: printModelUrl,
           materialConfigId,
@@ -350,7 +365,8 @@ export function Order() {
             zipCode: shippingInfo.postalCode!,
             country: 'US',
             phone: shippingInfo.phone!
-          }
+          },
+          ...(isMulticolor && objUrl && { objUrl, mtlUrl }),
         });
         if (!data.vendorOptions || data.vendorOptions.length === 0) {
           setQuoteState({ loading: false, error: 'No print vendors returned quotes for this material and model.' });

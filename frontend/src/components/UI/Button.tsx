@@ -2,10 +2,11 @@ import React from 'react';
 import { DivideIcon as LucideIcon } from 'lucide-react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'accent';
   size?: 'sm' | 'md' | 'lg';
   icon?: LucideIcon;
   loading?: boolean;
+  fullWidth?: boolean;
   children: React.ReactNode;
 }
 
@@ -14,29 +15,31 @@ export function Button({
   size = 'md',
   icon: Icon,
   loading,
+  fullWidth,
   className = '',
   children,
   disabled,
   ...props
 }: ButtonProps) {
-  const baseClasses = 'inline-flex items-center justify-center font-medium transition-all duration-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+  const baseClasses = 'inline-flex items-center justify-center font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-brand-dark disabled:opacity-40 disabled:cursor-not-allowed';
 
   const variants = {
-    primary: 'bg-brand-primary text-white hover:bg-brand-primary-dark focus:ring-brand-primary transform hover:scale-105',
-    secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200 focus:ring-gray-500',
-    outline: 'border border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-gray-500',
-    ghost: 'text-gray-700 hover:bg-gray-100 focus:ring-gray-500'
+    primary: 'bg-gradient-to-r from-brand-accent to-brand-accent-dark text-brand-dark hover:shadow-[0_0_20px_rgba(237,174,73,0.4)] focus:ring-brand-accent rounded-full font-semibold',
+    secondary: 'bg-white/10 text-white hover:bg-white/15 focus:ring-white/30 rounded-full',
+    outline: 'border border-white/15 text-[#9ca3af] hover:border-white/30 hover:text-white focus:ring-white/20 rounded-full',
+    ghost: 'text-[#9ca3af] hover:bg-white/5 hover:text-white focus:ring-white/20 rounded-full',
+    accent: 'bg-gradient-to-r from-brand-accent to-brand-accent-dark text-brand-dark hover:shadow-[0_0_20px_rgba(237,174,73,0.4)] focus:ring-brand-accent font-semibold rounded-full',
   };
 
   const sizes = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-sm',
-    lg: 'px-6 py-3 text-base'
+    sm: 'px-4 py-2 text-xs',
+    md: 'px-6 py-2.5 text-sm',
+    lg: 'px-10 py-4 text-sm tracking-wider uppercase',
   };
 
   return (
     <button
-      className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${fullWidth ? 'w-full' : ''} ${className}`}
       disabled={disabled || loading}
       {...props}
     >

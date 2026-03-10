@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Upload, Download, DollarSign, Eye, Settings, Package, Truck, ExternalLink } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
@@ -39,7 +40,7 @@ interface Order {
 
 export function Dashboard() {
   const [activeTab, setActiveTab] = useState('designs');
-
+  const navigate = useNavigate();
   const { user } = useAuth();
 
   const {
@@ -130,15 +131,15 @@ export function Dashboard() {
   }, [user, fetchOrders]);
 
   return (
-    <div className="pt-16 min-h-screen bg-gray-50">
+    <div className="pt-16 min-h-screen bg-brand-dark">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">
             <div>
-              <h1 className="text-4xl font-bold text-gray-900 mb-2">
+              <h1 className="text-4xl font-bold text-white mb-2">
                 Dashboard
               </h1>
-              <p className="text-xl text-gray-600">
+              <p className="text-xl text-white/40">
                 Manage your designs and manufacturing orders
               </p>
             </div>
@@ -154,7 +155,7 @@ export function Dashboard() {
                 {autoThumbnailProgress.isGenerating ? 'Generating...' : 'Generate Thumbnails'}
               </Button>
               {autoThumbnailProgress.total > 0 && (
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-white/40">
                   {autoThumbnailProgress.processed}/{autoThumbnailProgress.total} processed
                 </span>
               )}
@@ -163,7 +164,7 @@ export function Dashboard() {
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-gray-200 mb-8">
+        <div className="border-b border-white/10 mb-8">
           <nav className="-mb-px flex space-x-8">
             {tabs.map((tab) => (
               <button
@@ -171,13 +172,13 @@ export function Dashboard() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
                   activeTab === tab.id
-                    ? 'border-brand-primary text-brand-primary'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-brand-accent text-brand-accent'
+                    : 'border-transparent text-white/40 hover:text-white/70 hover:border-white/20'
                 }`}
               >
                 {tab.label}
                 {tab.count !== undefined && (
-                  <span className="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2 rounded-full text-xs">
+                  <span className="ml-2 bg-white/10 text-white/70 py-0.5 px-2 rounded-full text-xs">
                     {tab.count}
                   </span>
                 )}
@@ -189,8 +190,8 @@ export function Dashboard() {
                 onClick={() => setActiveTab('contact-submissions')}
                 className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
                   activeTab === 'contact-submissions'
-                    ? 'border-brand-primary text-brand-primary'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-brand-accent text-brand-accent'
+                    : 'border-transparent text-white/40 hover:text-white/70 hover:border-white/20'
                 }`}
               >
                 Contact Submissions
@@ -203,51 +204,74 @@ export function Dashboard() {
         {activeTab === 'designs' && (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Designs</h3>
+              <h3 className="text-lg font-semibold text-white mb-4">Your Designs</h3>
               {loadingModels ? (
-                <div className="text-gray-500">Loading your generated models...</div>
+                <div className="text-white/40">Loading your generated models...</div>
               ) : modelsError ? (
-                <div className="text-red-500">Error: {modelsError}</div>
+                <div className="text-red-400">Error: {modelsError}</div>
               ) : generatedModels.length === 0 ? (
-                <div className="text-gray-500">You have not generated any models yet.</div>
+                <div className="text-white/40">You have not generated any models yet.</div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {generatedModels.map((model) => (
-                    <Card key={model.id} className="overflow-hidden">
+                    <div
+                      key={model.id}
+                      className="group card-glow rounded-2xl overflow-hidden bg-brand-dark-card cursor-pointer"
+                      onClick={() => {
+                        if (model.status === 'completed' && model.glb_url) {
+                          navigate('/generate', {
+                            state: {
+                              existingModel: {
+                                id: model.id,
+                                prompt: model.prompt || model.name,
+                                modelUrl: model.glb_url,
+                                urls: {
+                                  glb: model.glb_url,
+                                  stl: model.stl_url || undefined,
+                                  obj: model.obj_url || undefined,
+                                },
+                              },
+                            },
+                          });
+                        }
+                      }}
+                    >
                       {model.thumbnail_url ? (
-                        <img
-                          src={model.thumbnail_url}
-                          alt={model.name || 'Generated Model'}
-                          className="w-full h-48 object-cover bg-gray-100"
-                        />
+                        <div className="aspect-square overflow-hidden bg-brand-dark-lighter">
+                          <img
+                            src={model.thumbnail_url}
+                            alt={model.name || 'Generated Model'}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          />
+                        </div>
                       ) : (
-                        <div className="w-full h-48 flex items-center justify-center bg-gray-100 text-gray-400">
+                        <div className="aspect-square flex items-center justify-center bg-brand-dark-lighter text-white/20">
                           <div className="text-center">
                             <div className="text-sm font-medium">No Thumbnail</div>
-                            <div className="text-xs text-gray-500">Generating...</div>
+                            <div className="text-xs text-white/15">Generating...</div>
                           </div>
                         </div>
                       )}
                       <div className="p-6">
                         <div className="flex justify-between items-start mb-2">
-                          <h4 className="text-md font-semibold text-gray-900">
+                          <h4 className="text-md font-semibold text-white">
                             {model.prompt || model.name || 'Untitled Model'}
                           </h4>
                           <span className={`text-xs px-2 py-1 rounded-full ${
                             model.status === 'completed'
-                              ? 'bg-green-100 text-green-800'
+                              ? 'bg-green-900/30 text-green-400'
                               : model.status === 'processing'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-red-100 text-red-800'
+                              ? 'bg-yellow-900/30 text-yellow-400'
+                              : 'bg-red-900/30 text-red-400'
                           }`}>
                             {model.status}
                           </span>
                         </div>
-                        <div className="text-sm text-gray-600 mb-2">
+                        <div className="text-sm text-white/30 mb-2">
                           <span>Created: {new Date(model.created_at).toLocaleString()}</span>
                         </div>
                       </div>
-                    </Card>
+                    </div>
                   ))}
                 </div>
               )}
@@ -258,7 +282,7 @@ export function Dashboard() {
         {activeTab === 'orders' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-gray-900">Your Manufacturing Orders</h2>
+              <h2 className="text-xl font-semibold text-white">Your Manufacturing Orders</h2>
               <Button
                 onClick={fetchOrders}
                 disabled={loadingOrders}
@@ -271,29 +295,29 @@ export function Dashboard() {
 
             {loadingOrders ? (
               <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary mx-auto mb-4"></div>
-                <p className="text-gray-500">Loading your orders...</p>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-accent mx-auto mb-4"></div>
+                <p className="text-white/40">Loading your orders...</p>
               </div>
             ) : ordersError ? (
-              <Card className="p-6">
-                <div className="text-center text-red-600">
+              <div className="card-glow rounded-2xl bg-brand-dark-card p-6">
+                <div className="text-center text-red-400">
                   Error loading orders: {ordersError}
                 </div>
-              </Card>
+              </div>
             ) : orders.length === 0 ? (
-              <Card className="p-6">
+              <div className="card-glow rounded-2xl bg-brand-dark-card p-6">
                 <div className="text-center py-8">
-                  <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No orders yet</h3>
-                  <p className="text-gray-500">Your manufacturing orders will appear here</p>
+                  <Package className="h-12 w-12 text-white/20 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-white mb-2">No orders yet</h3>
+                  <p className="text-white/40">Your manufacturing orders will appear here</p>
                 </div>
-              </Card>
+              </div>
             ) : (
               <div className="space-y-4">
                 {orders.map((order) => (
-                  <Card
+                  <div
                     key={order.id}
-                    className="p-6 cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-brand-primary"
+                    className="card-glow rounded-2xl bg-brand-dark-card p-6 cursor-pointer border-l-4 border-l-brand-accent"
                     onClick={() => {
                       setSelectedOrder(order);
                       setIsOrderModalOpen(true);
@@ -302,11 +326,11 @@ export function Dashboard() {
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <h3 className="text-lg font-semibold text-gray-900">
+                          <h3 className="text-lg font-semibold text-white">
                             {order.filename}
                           </h3>
                         </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                        <div className="grid grid-cols-2 gap-4 text-sm text-white/40">
                           <div>
                             <div>Vendor: Slant3D</div>
                             <div>Order Date: {new Date(order.created_at).toLocaleDateString()}</div>
@@ -327,21 +351,21 @@ export function Dashboard() {
                       <div className="text-right">
                         <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
                           order.shipping_status === 'shipped' || (order.tracking_numbers && order.tracking_numbers.length > 0)
-                            ? 'bg-green-100 text-green-800'
+                            ? 'bg-green-900/30 text-green-400'
                             : order.shipping_status === 'awaiting_shipment'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-blue-100 text-blue-800'
+                            ? 'bg-yellow-900/30 text-yellow-400'
+                            : 'bg-blue-900/30 text-blue-400'
                         }`}>
                           {order.shipping_status === 'shipped' || (order.tracking_numbers && order.tracking_numbers.length > 0) ? 'Shipped' :
                            order.shipping_status === 'awaiting_shipment' ? 'Processing' :
                            order.status}
                         </span>
-                        <div className="text-lg font-bold text-gray-900 mt-2">
+                        <div className="text-lg font-bold text-white mt-2">
                           Order #{order.slant_order_id}
                         </div>
                       </div>
                     </div>
-                  </Card>
+                  </div>
                 ))}
               </div>
             )}

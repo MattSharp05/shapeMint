@@ -4,8 +4,6 @@ import { Header } from './components/Layout/Header';
 import { Footer } from './components/Layout/Footer';
 import { Home } from './pages/Home';
 import { Generate } from './pages/Generate';
-import { Explore } from './pages/Explore';
-import { Marketplace } from './pages/Marketplace';
 import { Manufacturing } from './pages/Manufacturing';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
@@ -13,15 +11,12 @@ import { Register } from './pages/Register';
 import { ResetPassword } from './pages/ResetPassword';
 import { Order } from './pages/Order';
 import { DownloadCheckout } from './pages/DownloadCheckout';
-import { MarketplaceUpload } from './pages/MarketplaceUpload';
 import { DesignDetails } from './pages/DesignDetails';
 import { UserProfile } from './pages/UserProfile';
 import { PaymentSuccess } from './pages/PaymentSuccess';
 import { PaymentCancel } from './pages/PaymentCancel';
 import { OrderSuccess } from './pages/OrderSuccess';
 import { ThumbnailTest } from './pages/ThumbnailTest';
-import { About } from './pages/About';
-import { ContactUs } from './pages/ContactUs';
 import { TestingEnv } from './pages/TestingEnv';
 import { AuthProvider } from './hooks/useAuth';
 
@@ -35,8 +30,6 @@ function App() {
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/generate" element={<Generate />} />
-              <Route path="/explore" element={<Explore />} />
-              <Route path="/marketplace" element={<Marketplace />} />
               <Route path="/manufacturing" element={<Manufacturing />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/login" element={<Login />} />
@@ -44,15 +37,12 @@ function App() {
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/order" element={<Order />} />
               <Route path="/download-checkout" element={<DownloadCheckout />} />
-              <Route path="/marketplace-upload" element={<MarketplaceUpload />} />
               <Route path="/design/:id" element={<DesignDetails />} />
               <Route path="/creator/:username" element={<UserProfile />} />
               <Route path="/success" element={<PaymentSuccess />} />
               <Route path="/cancel" element={<PaymentCancel />} />
               <Route path="/order-success" element={<OrderSuccess />} />
               <Route path="/thumbnail-test" element={<ThumbnailTest />} />
-              <Route path="/about" element={<About />} />
-              <Route path="/contact" element={<ContactUs />} />
               <Route path="/testing-env" element={<TestingEnv />} />
             </Routes>
           </main>

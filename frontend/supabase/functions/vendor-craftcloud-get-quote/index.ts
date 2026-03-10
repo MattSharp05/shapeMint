@@ -22,6 +22,9 @@ interface QuoteInput {
     country: string;
     phone: string;
   };
+  // For multicolor: OBJ+MTL URLs to bundle into a ZIP
+  objUrl?: string;
+  mtlUrl?: string;
 }
 
 async function fetchWithTimeout(
@@ -53,6 +56,99 @@ function validateInput(body: any): QuoteInput {
   const required = ['firstName', 'lastName', 'email', 'address1', 'city', 'state', 'zipCode', 'country', 'phone'];
   for (const f of required) if (!sa?.[f]) throw new Error(`missing_${f}`);
   return body as QuoteInput;
+}
+
+// Minimal ZIP builder for bundling OBJ+MTL files (no external dependencies)
+// Creates a valid ZIP with Store (no compression) method
+function buildZip(files: { name: string; data: Uint8Array }[]): Uint8Array {
+  const encoder = new TextEncoder();
+  const localHeaders: Uint8Array[] = [];
+  const centralHeaders: Uint8Array[] = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const nameBytes = encoder.encode(file.name);
+    const crc = crc32(file.data);
+
+    // Local file header (30 bytes + name + data)
+    const local = new Uint8Array(30 + nameBytes.length + file.data.length);
+    const lv = new DataView(local.buffer);
+    lv.setUint32(0, 0x04034b50, true);   // local file header signature
+    lv.setUint16(4, 20, true);            // version needed
+    lv.setUint16(6, 0, true);             // flags
+    lv.setUint16(8, 0, true);             // compression: Store
+    lv.setUint16(10, 0, true);            // mod time
+    lv.setUint16(12, 0, true);            // mod date
+    lv.setUint32(14, crc, true);          // crc-32
+    lv.setUint32(18, file.data.length, true); // compressed size
+    lv.setUint32(22, file.data.length, true); // uncompressed size
+    lv.setUint16(26, nameBytes.length, true); // file name length
+    lv.setUint16(28, 0, true);            // extra field length
+    local.set(nameBytes, 30);
+    local.set(file.data, 30 + nameBytes.length);
+    localHeaders.push(local);
+
+    // Central directory header (46 bytes + name)
+    const central = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(central.buffer);
+    cv.setUint32(0, 0x02014b50, true);   // central directory signature
+    cv.setUint16(4, 20, true);            // version made by
+    cv.setUint16(6, 20, true);            // version needed
+    cv.setUint16(8, 0, true);             // flags
+    cv.setUint16(10, 0, true);            // compression: Store
+    cv.setUint16(12, 0, true);            // mod time
+    cv.setUint16(14, 0, true);            // mod date
+    cv.setUint32(16, crc, true);          // crc-32
+    cv.setUint32(20, file.data.length, true); // compressed size
+    cv.setUint32(24, file.data.length, true); // uncompressed size
+    cv.setUint16(28, nameBytes.length, true); // file name length
+    cv.setUint16(30, 0, true);            // extra field length
+    cv.setUint16(32, 0, true);            // file comment length
+    cv.setUint16(34, 0, true);            // disk number start
+    cv.setUint16(36, 0, true);            // internal file attributes
+    cv.setUint32(38, 0, true);            // external file attributes
+    cv.setUint32(42, offset, true);       // relative offset of local header
+    central.set(nameBytes, 46);
+    centralHeaders.push(central);
+
+    offset += local.length;
+  }
+
+  const centralDirOffset = offset;
+  let centralDirSize = 0;
+  for (const c of centralHeaders) centralDirSize += c.length;
+
+  // End of central directory (22 bytes)
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);           // EOCD signature
+  ev.setUint16(4, 0, true);                     // disk number
+  ev.setUint16(6, 0, true);                     // disk with central dir
+  ev.setUint16(8, files.length, true);           // entries on this disk
+  ev.setUint16(10, files.length, true);          // total entries
+  ev.setUint32(12, centralDirSize, true);        // central dir size
+  ev.setUint32(16, centralDirOffset, true);      // central dir offset
+  ev.setUint16(20, 0, true);                     // comment length
+
+  const totalSize = offset + centralDirSize + 22;
+  const result = new Uint8Array(totalSize);
+  let pos = 0;
+  for (const l of localHeaders) { result.set(l, pos); pos += l.length; }
+  for (const c of centralHeaders) { result.set(c, pos); pos += c.length; }
+  result.set(eocd, pos);
+  return result;
+}
+
+// CRC-32 (used by ZIP format)
+function crc32(data: Uint8Array): number {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i];
+    for (let j = 0; j < 8; j++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 
 // Step 1: Upload model to Craftcloud (multipart form-data)
@@ -278,15 +374,66 @@ Deno.serve(async (req: Request) => {
     if (payload.sub) userId = payload.sub;
   } catch { /* ignore */ }
 
-  const { modelUrl, materialConfigId, quantity, shippingAddress } = body;
+  const { modelUrl, materialConfigId, quantity, shippingAddress, objUrl, mtlUrl } = body;
 
   try {
-    // 1. Download the STL from Supabase storage
-    console.log(JSON.stringify({ evt: 'cc_downloading_model', modelUrl }));
-    const fileResp = await fetchWithTimeout(modelUrl, { timeoutMs: 30000 });
-    if (!fileResp.ok) throw new Error(`Failed to download model (${fileResp.status})`);
-    const fileBytes = new Uint8Array(await fileResp.arrayBuffer());
-    const fileName = modelUrl.split('/').pop()?.split('?')[0] || 'model.stl';
+    let fileBytes: Uint8Array;
+    let fileName: string;
+
+    if (objUrl) {
+      // Multicolor: download OBJ + MTL (+ textures referenced in MTL), bundle into ZIP
+      console.log(JSON.stringify({ evt: 'cc_downloading_multicolor', objUrl, mtlUrl }));
+
+      const objResp = await fetchWithTimeout(objUrl, { timeoutMs: 30000 });
+      if (!objResp.ok) throw new Error(`Failed to download OBJ (${objResp.status})`);
+      const objBytes = new Uint8Array(await objResp.arrayBuffer());
+      const objName = objUrl.split('/').pop()?.split('?')[0] || 'model.obj';
+
+      const zipFiles: { name: string; data: Uint8Array }[] = [
+        { name: objName, data: objBytes },
+      ];
+
+      if (mtlUrl) {
+        const mtlResp = await fetchWithTimeout(mtlUrl, { timeoutMs: 30000 });
+        if (mtlResp.ok) {
+          const mtlBytes = new Uint8Array(await mtlResp.arrayBuffer());
+          const mtlName = mtlUrl.split('/').pop()?.split('?')[0] || 'model.mtl';
+          zipFiles.push({ name: mtlName, data: mtlBytes });
+
+          // Parse MTL to find texture map files (map_Kd, map_Ka, map_Ks, etc.)
+          const mtlText = new TextDecoder().decode(mtlBytes);
+          const texturePattern = /\bmap_\w+\s+(.+)/g;
+          const baseUrl = mtlUrl.substring(0, mtlUrl.lastIndexOf('/') + 1);
+          let match;
+          while ((match = texturePattern.exec(mtlText)) !== null) {
+            const texFile = match[1].trim();
+            if (!texFile) continue;
+            const texUrl = texFile.startsWith('http') ? texFile : baseUrl + texFile;
+            try {
+              console.log(JSON.stringify({ evt: 'cc_downloading_texture', texFile }));
+              const texResp = await fetchWithTimeout(texUrl, { timeoutMs: 30000 });
+              if (texResp.ok) {
+                const texBytes = new Uint8Array(await texResp.arrayBuffer());
+                zipFiles.push({ name: texFile, data: texBytes });
+              }
+            } catch (texErr: any) {
+              console.warn(JSON.stringify({ evt: 'cc_texture_download_failed', texFile, error: texErr.message }));
+            }
+          }
+        }
+      }
+
+      console.log(JSON.stringify({ evt: 'cc_building_zip', fileCount: zipFiles.length, files: zipFiles.map(f => f.name) }));
+      fileBytes = buildZip(zipFiles);
+      fileName = objName.replace('.obj', '.zip');
+    } else {
+      // Standard single-color: download STL/GLB as before
+      console.log(JSON.stringify({ evt: 'cc_downloading_model', modelUrl }));
+      const fileResp = await fetchWithTimeout(modelUrl, { timeoutMs: 30000 });
+      if (!fileResp.ok) throw new Error(`Failed to download model (${fileResp.status})`);
+      fileBytes = new Uint8Array(await fileResp.arrayBuffer());
+      fileName = modelUrl.split('/').pop()?.split('?')[0] || 'model.stl';
+    }
 
     // 2. Upload to Craftcloud
     const modelId = await uploadModel(fileBytes, fileName);

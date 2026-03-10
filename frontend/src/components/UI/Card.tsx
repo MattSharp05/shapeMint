@@ -8,9 +8,9 @@ interface CardProps {
 }
 
 export function Card({ children, className = '', hover = false, onClick }: CardProps) {
-  const baseClasses = 'bg-white rounded-xl shadow-sm border border-gray-200';
-  const hoverClasses = hover ? 'hover:shadow-lg hover:scale-105 transition-all duration-200 cursor-pointer' : '';
-  
+  const baseClasses = 'bg-brand-dark-card rounded-2xl border border-white/5';
+  const hoverClasses = hover ? 'card-glow cursor-pointer' : '';
+
   return (
     <div
       className={`${baseClasses} ${hoverClasses} ${className}`}

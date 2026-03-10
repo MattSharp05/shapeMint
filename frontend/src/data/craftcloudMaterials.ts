@@ -41,6 +41,21 @@ const CC_FINISHES: Record<string, Finish> = {
     name: 'Standard',
     description: 'Standard FDM PETG finish with visible layer lines.',
   },
+  'cc-multicolor-pla-standard': {
+    id: 'cc-multicolor-pla-standard',
+    name: 'Standard',
+    description: 'Standard FDM multicolor PLA finish.',
+  },
+  'cc-full-color-standard': {
+    id: 'cc-full-color-standard',
+    name: 'Standard',
+    description: 'High definition full color PolyJet finish.',
+  },
+  'cc-mjf-multicolor-standard': {
+    id: 'cc-mjf-multicolor-standard',
+    name: 'Standard',
+    description: 'HP Multi Jet Fusion multicolor finish.',
+  },
 };
 
 // --- Color definitions ---
@@ -56,6 +71,8 @@ const CC_COLORS: Record<string, Color> = {
   'cc-gray': { id: 'cc-gray', name: 'Gray', hex: '#A1A1A1' },
   'cc-yellow': { id: 'cc-yellow', name: 'Yellow', hex: '#f2d70e' },
   'cc-pink': { id: 'cc-pink', name: 'Pink', hex: '#ffbaec' },
+  // Multicolor
+  'cc-multicolor': { id: 'cc-multicolor', name: 'Multicolor', hex: '#ff0000' },
   // Resin-specific colors
   'cc-resin-white': { id: 'cc-resin-white', name: 'White', hex: '#FEFFEB' },
   'cc-resin-black': { id: 'cc-resin-black', name: 'Black', hex: '#393937' },
@@ -146,6 +163,39 @@ export const CRAFTCLOUD_MATERIALS: Material[] = [
       CC_FINISHES['cc-petg-standard'],
     ],
   },
+  {
+    id: 'cc-multicolor-pla',
+    name: 'Multicolor PLA',
+    description: 'Multicolor FDM prints using two or more PLA filaments. Vibrant, visually striking results with precise color transitions.',
+    colors: [
+      CC_COLORS['cc-multicolor'],
+    ],
+    finishes: [
+      CC_FINISHES['cc-multicolor-pla-standard'],
+    ],
+  },
+  {
+    id: 'cc-full-color',
+    name: 'High Definition Full Color',
+    description: 'High quality full color printing for detailed, vibrant multicolor models.',
+    colors: [
+      CC_COLORS['cc-multicolor'],
+    ],
+    finishes: [
+      CC_FINISHES['cc-full-color-standard'],
+    ],
+  },
+  {
+    id: 'cc-mjf-multicolor',
+    name: 'HP MJF Multicolor',
+    description: 'HP Multi Jet Fusion with full color. Industrial-grade multicolor printing with strong, functional parts.',
+    colors: [
+      CC_COLORS['cc-multicolor'],
+    ],
+    finishes: [
+      CC_FINISHES['cc-mjf-multicolor-standard'],
+    ],
+  },
 ];
 
 // --- materialConfigId mapping ---
@@ -200,6 +250,15 @@ const CRAFTCLOUD_CONFIG_MAP: ConfigMapEntry[] = [
   // ── PETG — Standard ──
   { baseMaterialId: 'cc-petg', finishId: 'cc-petg-standard', colorId: 'cc-petg-white', materialConfigId: '9f0ebf71-1059-5aac-9e5f-7a696f4fcbdb' },
   { baseMaterialId: 'cc-petg', finishId: 'cc-petg-standard', colorId: 'cc-petg-black', materialConfigId: '26d219f7-8e2b-5a80-894d-a7aaa9acb1ed' },
+
+  // ── Multicolor PLA — Standard ──
+  { baseMaterialId: 'cc-multicolor-pla', finishId: 'cc-multicolor-pla-standard', colorId: 'cc-multicolor', materialConfigId: '6935719d-f4c3-4490-8ace-3a974c5f8b75' },
+
+  // ── High Definition Full Color — Standard ──
+  { baseMaterialId: 'cc-full-color', finishId: 'cc-full-color-standard', colorId: 'cc-multicolor', materialConfigId: 'a69b05d8-39b9-5f3e-bd47-9df42b4b84c3' },
+
+  // ── HP MJF Multicolor — Standard ──
+  { baseMaterialId: 'cc-mjf-multicolor', finishId: 'cc-mjf-multicolor-standard', colorId: 'cc-multicolor', materialConfigId: '2ceb1286-10b8-4ed6-b40a-9c2042979b28' },
 ];
 
 /**

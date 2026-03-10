@@ -102,7 +102,7 @@ serve(async (req) => {
 
     const { data: modelRecord, error: lookupError } = await supabase
       .from('generated_models')
-      .select('meshy_task_id, user_id')
+      .select('meshy_task_id, meshy_refine_task_id, user_id')
       .eq('id', taskId)
       .single();
 
@@ -121,16 +121,21 @@ serve(async (req) => {
       userId = modelRecord.user_id;
     }
 
-    console.log(`Looking up Meshy task: ${meshyTaskId} for database record: ${taskId}`);
+    // For text-to-3d: if a refine task was already started, poll that instead of the preview
+    const refineTaskId = modelRecord?.meshy_refine_task_id;
+    const isTextTo3D = type === 'text-to-3d';
+    const taskToCheck = (isTextTo3D && refineTaskId) ? refineTaskId : meshyTaskId;
+
+    console.log(`Looking up Meshy task: ${taskToCheck} for database record: ${taskId} (refine: ${!!refineTaskId})`);
 
     // Use the correct API version based on the generation type
     let apiUrl;
     if (type === 'image-to-3d') {
-      apiUrl = `https://api.meshy.ai/v1/image-to-3d/${meshyTaskId}`;
+      apiUrl = `https://api.meshy.ai/v1/image-to-3d/${taskToCheck}`;
     } else if (type === 'multi-image-to-3d') {
-      apiUrl = `https://api.meshy.ai/openapi/v1/multi-image-to-3d/${meshyTaskId}`;
+      apiUrl = `https://api.meshy.ai/openapi/v1/multi-image-to-3d/${taskToCheck}`;
     } else if (type === 'text-to-3d') {
-      apiUrl = `https://api.meshy.ai/v2/text-to-3d/${meshyTaskId}`; // Use v2 for text-to-3d tasks
+      apiUrl = `https://api.meshy.ai/v2/text-to-3d/${taskToCheck}`;
     } else {
       throw new Error(`Unsupported task type: ${type}`);
     }
@@ -151,6 +156,54 @@ serve(async (req) => {
 
     const meshyData = await meshyResponse.json();
 
+    // Text-to-3D: when the preview completes, kick off a refine task for textures
+    if (isTextTo3D && !refineTaskId && meshyData.status === 'SUCCEEDED') {
+      console.log('🎨 Text-to-3D preview complete — starting refine for textures...');
+
+      const refineResponse = await fetch('https://api.meshy.ai/v2/text-to-3d', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${MESHY_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode: 'refine',
+          preview_task_id: meshyTaskId,
+          enable_pbr: true,
+        }),
+      });
+
+      if (refineResponse.ok) {
+        const refineData = await refineResponse.json();
+        const newRefineTaskId = refineData?.result;
+        if (newRefineTaskId) {
+          console.log('✅ Refine task started:', newRefineTaskId);
+          // Save the refine task ID so subsequent polls check it
+          await supabase
+            .from('generated_models')
+            .update({
+              meshy_refine_task_id: newRefineTaskId,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', taskId);
+
+          // Return "still processing" — frontend will poll again and hit the refine task
+          return new Response(JSON.stringify({
+            data: {
+              status: 'PENDING',
+              progress: 50,
+            }
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          });
+        }
+      } else {
+        console.error('❌ Failed to start refine task:', await refineResponse.text());
+        // Fall through to return the untextured preview as a fallback
+      }
+    }
+
     // If the task is complete, download GLB and store in Supabase storage
     if (meshyData.status === 'SUCCEEDED') {
       const meshyGlbUrl = meshyData.model_urls?.glb;
@@ -169,6 +222,7 @@ serve(async (req) => {
           glb_url: storedGlbUrl,
           obj_url: meshyData.model_urls?.obj,
           stl_url: meshyData.model_urls?.stl,
+          mtl_url: meshyData.model_urls?.mtl,
           thumbnail_url: meshyData.thumbnail_url,
           notes: meshyGlbUrl !== storedGlbUrl
             ? `Original Meshy URL: ${meshyGlbUrl}`

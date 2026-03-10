@@ -44,6 +44,7 @@ serve(async (req) => {
       requestBody = {
         image_url: imageData,
         enable_pbr: true,
+        should_texture: true,
       }
       console.log('🎯 Using v1 Image-to-3D API.')
     } else if (type === 'multi-image-to-3d') {

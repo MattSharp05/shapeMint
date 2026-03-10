@@ -2,11 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom animations for enhanced marketplace experience */
+@layer base {
+  body {
+    @apply font-sans text-white antialiased bg-brand-dark;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-extrabold tracking-tight;
+  }
+}
+
+/* Custom animations */
 @keyframes fade-in {
   from {
     opacity: 0;
-    transform: translateY(-10px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -14,41 +24,146 @@
   }
 }
 
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 20px rgba(48, 89, 127, 0.3);
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
   }
-  50% {
-    box-shadow: 0 0 30px rgba(48, 89, 127, 0.5);
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-@keyframes gradient-shift {
+@keyframes shimmer {
   0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
+    background-position: -200% 0;
   }
   100% {
-    background-position: 0% 50%;
+    background-position: 200% 0;
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(237, 174, 73, 0.3), 0 0 60px rgba(237, 174, 73, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(237, 174, 73, 0.5), 0 0 80px rgba(237, 174, 73, 0.2);
   }
 }
 
 .animate-fade-in {
-  animation: fade-in 0.6s ease-out;
+  animation: fade-in 0.4s ease-out;
 }
 
-.animate-pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out;
 }
 
-.animate-gradient {
-  background-size: 200% 200%;
-  animation: gradient-shift 6s ease infinite;
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
 }
 
-/* Smooth scrolling and performance optimizations */
+/* Glow CTA button */
+.btn-glow {
+  position: relative;
+  box-shadow: 0 0 20px rgba(237, 174, 73, 0.3), 0 0 60px rgba(237, 174, 73, 0.1);
+  animation: glow-pulse 3s ease-in-out infinite;
+  transition: all 0.3s ease;
+}
+
+.btn-glow:hover {
+  box-shadow: 0 0 30px rgba(237, 174, 73, 0.6), 0 0 80px rgba(237, 174, 73, 0.25);
+  transform: translateY(-1px);
+}
+
+/* Card with hover glow */
+.card-glow {
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.card-glow:hover {
+  border-color: rgba(48, 89, 120, 0.5);
+  box-shadow: 0 0 20px rgba(48, 89, 120, 0.15), 0 4px 20px rgba(0, 0, 0, 0.3);
+  transform: translateY(-2px);
+}
+
+/* Subtle noise texture overlay */
+.bg-noise {
+  position: relative;
+}
+
+.bg-noise::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.05'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  mix-blend-mode: overlay;
+}
+
+/* Gradient text effect */
+.gradient-text {
+  background: linear-gradient(90deg, #f5c978 0%, #EDAE49 50%, #d49a3a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Cinematic dark background with radial gradient */
+.bg-cinematic {
+  background: radial-gradient(
+    circle at top right,
+    rgba(237, 174, 73, 0.15) 0%,
+    rgba(237, 174, 73, 0.05) 30%,
+    transparent 60%
+  ),
+  #0b1d2e;
+}
+
+/* Utility class for cool grey text (use on dark backgrounds) */
+.text-cool-gray {
+  color: #9ca3af;
+}
+
+.text-cool-gray-light {
+  color: #6b7280;
+}
+
+/* Spotlight card group effect:
+   When hovering the grid, all cards dim+blur.
+   The individually hovered card restores itself. */
+.spotlight-cards > .card-glow {
+  transition: all 0.3s ease, filter 0.3s ease, opacity 0.3s ease;
+}
+
+.spotlight-cards:hover > .card-glow {
+  opacity: 0.45;
+  filter: blur(1.5px) saturate(0.85);
+}
+
+.spotlight-cards:hover > .card-glow:hover {
+  opacity: 1;
+  filter: blur(0) saturate(1);
+  transform: translateY(-4px) scale(1.015);
+  border-color: rgba(48, 89, 120, 0.6);
+  box-shadow: 0 0 25px rgba(48, 89, 120, 0.2), 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
+/* Disable spotlight blur on touch devices */
+@media (hover: none) {
+  .spotlight-cards:hover > .card-glow {
+    opacity: 1;
+    filter: none;
+  }
+}
+
+/* Smooth scrolling */
 * {
   scroll-behavior: smooth;
 }

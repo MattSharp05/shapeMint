@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../components/UI/Button';
 import { Card } from '../components/UI/Card';
+import { FadeInUp } from '../components/Motion';
 import { useAuth } from '../hooks/useAuth';
 
 export function Register() {
@@ -29,9 +30,9 @@ export function Register() {
       setConfirmPasswordError('Passwords do not match.');
       return;
     }
-    
+
     setLoading(true);
-    
+
     try {
       await register(email, password, name);
       navigate('/dashboard');
@@ -42,94 +43,96 @@ export function Register() {
     }
   };
 
+  const inputClasses = "w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50";
+
   return (
-    <div className="pt-16 min-h-screen bg-brand-light flex items-center justify-center">
-      <div className="max-w-md w-full mx-4">
+    <div className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center">
+      <FadeInUp className="max-w-md w-full mx-4">
         <Card className="p-8">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            <h1 className="text-3xl font-bold text-white mb-2">
               Create Account
             </h1>
-            <p className="text-gray-600">
+            <p className="text-white/50">
               Join ShapeMint and start creating amazing 3D designs
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="relative">
-              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/30" />
               <input
                 type="text"
                 placeholder="Full name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                className={inputClasses}
                 required
               />
             </div>
 
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/30" />
               <input
                 type="email"
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                className={inputClasses}
                 required
               />
             </div>
 
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/30" />
               <input
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                className="w-full pl-10 pr-12 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/30 hover:text-white/60"
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
             {password && password.length > 0 && password.length < 6 && (
-              <div className="mt-2 text-sm text-red-600">Password must be at least 6 characters long.</div>
+              <div className="mt-2 text-sm text-red-400">Password must be at least 6 characters long.</div>
             )}
             {passwordError && (
-              <div className="mt-2 text-sm text-red-600">{passwordError}</div>
+              <div className="mt-2 text-sm text-red-400">{passwordError}</div>
             )}
 
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/30" />
               <input
                 type="password"
                 placeholder="Confirm password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                className={inputClasses}
                 required
               />
             </div>
             {confirmPassword && confirmPassword.length > 0 && confirmPassword !== password && (
-              <div className="mt-2 text-sm text-red-600">Passwords do not match.</div>
+              <div className="mt-2 text-sm text-red-400">Passwords do not match.</div>
             )}
             {confirmPasswordError && (
-              <div className="mt-2 text-sm text-red-600">{confirmPasswordError}</div>
+              <div className="mt-2 text-sm text-red-400">{confirmPasswordError}</div>
             )}
 
             <div className="flex items-center">
-              <input type="checkbox" className="h-4 w-4 text-brand-primary focus:ring-brand-primary border-gray-300 rounded" required />
-              <span className="ml-2 text-sm text-gray-600">
+              <input type="checkbox" className="h-4 w-4 text-brand-accent focus:ring-brand-accent border-white/20 rounded bg-white/5" required />
+              <span className="ml-2 text-sm text-white/50">
                 I agree to the{' '}
-                <a href="#" className="text-brand-primary hover:text-brand-primary-dark">Terms of Service</a>
+                <a href="#" className="text-brand-accent hover:text-brand-accent-light">Terms of Service</a>
                 {' '}and{' '}
-                <a href="#" className="text-brand-primary hover:text-brand-primary-dark">Privacy Policy</a>
+                <a href="#" className="text-brand-accent hover:text-brand-accent-light">Privacy Policy</a>
               </span>
             </div>
 
@@ -139,15 +142,15 @@ export function Register() {
           </form>
 
           <div className="mt-6 text-center">
-            <p className="text-gray-600">
+            <p className="text-white/50">
               Already have an account?{' '}
-              <Link to="/login" className="text-brand-primary hover:text-brand-primary-dark font-medium">
+              <Link to="/login" className="text-brand-accent hover:text-brand-accent-light font-medium">
                 Sign in
               </Link>
             </p>
           </div>
         </Card>
-      </div>
+      </FadeInUp>
     </div>
   );
 }

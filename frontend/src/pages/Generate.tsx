@@ -551,9 +551,24 @@ export function Generate() {
 
 
   // ── Checkout: STL URL resolution ──────────────────────────────────────
+  // Verify a URL actually returns a downloadable file (HEAD check)
+  const verifyUrlExists = useCallback(async (url: string): Promise<boolean> => {
+    try {
+      const resp = await fetch(url, { method: 'HEAD' });
+      return resp.ok;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const getModelUrlForPrinting = useCallback(async (): Promise<string> => {
+    // If we already confirmed an STL exists, use it
     if (confirmedStlUrl) return confirmedStlUrl;
+
+    // Check DB for STL URL
     const modelId = generatedModel?.id;
+    let candidateStlUrl: string | null = null;
+
     if (modelId) {
       try {
         const { data: record } = await supabase
@@ -561,17 +576,34 @@ export function Generate() {
           .select('stl_url')
           .eq('id', modelId)
           .single();
-        if (record?.stl_url) {
-          setConfirmedStlUrl(record.stl_url);
-          return record.stl_url;
-        }
+        if (record?.stl_url) candidateStlUrl = record.stl_url;
       } catch (e) {
         console.error('STL lookup error:', e);
       }
     }
-    if (generatedModel?.urls?.stl) return generatedModel.urls.stl;
-    return generatedModel?.urls?.glb || generatedModel?.modelUrl || '';
-  }, [confirmedStlUrl, generatedModel]);
+
+    // Also consider the STL URL from model data
+    if (!candidateStlUrl && generatedModel?.urls?.stl) {
+      candidateStlUrl = generatedModel.urls.stl;
+    }
+
+    // Verify the STL actually exists (repair may still be in progress)
+    if (candidateStlUrl) {
+      console.log('Verifying STL exists:', candidateStlUrl);
+      const exists = await verifyUrlExists(candidateStlUrl);
+      if (exists) {
+        console.log('STL confirmed available');
+        setConfirmedStlUrl(candidateStlUrl);
+        return candidateStlUrl;
+      }
+      console.warn('STL URL not yet available (repair may still be in progress), falling back to GLB');
+    }
+
+    // Fallback to GLB
+    const glbUrl = generatedModel?.urls?.glb || generatedModel?.modelUrl || '';
+    console.log('Using GLB for printing:', glbUrl);
+    return glbUrl;
+  }, [confirmedStlUrl, generatedModel, verifyUrlExists]);
 
   // Fetch Slant3D filaments when vendor changes
   useEffect(() => {

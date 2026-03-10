@@ -133,57 +133,56 @@ export function Order() {
     setStlChecking(false);
   }, [stlUrl]);
 
-  // Returns the model URL to send to manufacturers (STL preferred)
-  const getModelUrlForPrinting = useCallback(async (): Promise<string> => {
-    console.log('🖨️ getModelUrlForPrinting called:', {
-      confirmedStlUrl,
-      stlUrl,
-      modelId: modelData?.id,
-      modelUrl,
-    });
+  // Verify a URL actually returns a downloadable file (HEAD check)
+  const verifyUrlExists = useCallback(async (url: string): Promise<boolean> => {
+    try {
+      const resp = await fetch(url, { method: 'HEAD' });
+      return resp.ok;
+    } catch {
+      return false;
+    }
+  }, []);
 
-    // 1. If we already confirmed the STL from DB polling, use it
+  // Returns the model URL to send to manufacturers (STL preferred, verified)
+  const getModelUrlForPrinting = useCallback(async (): Promise<string> => {
+    // 1. If we already confirmed the STL exists, use it
     if (confirmedStlUrl) {
-      console.log('🖨️ Using confirmed STL:', confirmedStlUrl);
       return confirmedStlUrl;
     }
 
-    // 2. Try one final DB check
+    // 2. Gather candidate STL URLs
+    let candidateStlUrl: string | null = null;
     const modelId = modelData?.id;
     if (modelId) {
       try {
-        const { data: record, error: queryError } = await supabase
+        const { data: record } = await supabase
           .from('generated_models')
           .select('stl_url')
           .eq('id', modelId)
           .single();
-
-        if (queryError) {
-          console.error('❌ DB query error in getModelUrlForPrinting:', queryError.message, queryError.code);
-        }
-
-        if (record?.stl_url) {
-          console.log('🖨️ STL found on final DB check:', record.stl_url);
-          setConfirmedStlUrl(record.stl_url);
-          return record.stl_url;
-        }
+        if (record?.stl_url) candidateStlUrl = record.stl_url;
       } catch (e: any) {
-        console.error('❌ getModelUrlForPrinting exception:', e?.message);
+        console.error('STL lookup error:', e?.message);
       }
-    } else {
-      console.warn('⚠️ No modelData.id for DB lookup');
+    }
+    if (!candidateStlUrl && stlUrl) candidateStlUrl = stlUrl;
+
+    // 3. Verify the STL actually exists (repair may still be in progress)
+    if (candidateStlUrl) {
+      console.log('Verifying STL exists:', candidateStlUrl);
+      const exists = await verifyUrlExists(candidateStlUrl);
+      if (exists) {
+        console.log('STL confirmed available');
+        setConfirmedStlUrl(candidateStlUrl);
+        return candidateStlUrl;
+      }
+      console.warn('STL not yet available (repair may still be in progress), falling back to GLB');
     }
 
-    // 3. Use stlUrl from navigation state (set by Generate page)
-    if (stlUrl) {
-      console.log('🖨️ Using STL URL from navigation state:', stlUrl);
-      return stlUrl;
-    }
-
-    // 4. Last resort: fall back to GLB
-    console.warn('⚠️ No STL available — falling back to GLB:', modelUrl);
+    // 4. Fallback to GLB
+    console.log('Using GLB for printing:', modelUrl);
     return modelUrl;
-  }, [confirmedStlUrl, stlUrl, modelData?.id, modelUrl]);
+  }, [confirmedStlUrl, stlUrl, modelData?.id, modelUrl, verifyUrlExists]);
 
   // Handle no model data
   if (!modelData) {

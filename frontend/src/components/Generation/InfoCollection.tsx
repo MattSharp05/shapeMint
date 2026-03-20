@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Mail, Lock, User, Phone, MapPin, Eye, EyeOff, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { Card } from '../UI/Card';
@@ -36,6 +36,7 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   const [carouselIdx, setCarouselIdx] = useState(0);
   const allImages = angleImages && angleImages.length > 0
@@ -92,15 +93,18 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
     }
 
     setAuthLoading(true);
+    submittingRef.current = true;
 
     try {
       let userId: string;
+      let userEmail = form.email;
 
       if (isSignIn) {
         // Sign in existing user
         const authUser = await login(form.email, form.password);
         if (!authUser) throw new Error('Sign in failed.');
         userId = authUser.id;
+        userEmail = authUser.email || form.email;
       } else {
         // Register new user
         const authUser = await register(form.email, form.password, `${form.firstName} ${form.lastName}`);
@@ -109,7 +113,7 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
       }
 
       onSubmit({
-        email: form.email,
+        email: userEmail,
         firstName: form.firstName,
         lastName: form.lastName,
         phone: form.phone,
@@ -122,6 +126,7 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
         smsOptIn: form.smsOptIn,
       });
     } catch (err: any) {
+      submittingRef.current = false;
       console.error('Auth error:', err);
       if (err?.message?.includes('User already registered')) {
         setError('An account with this email already exists. Try signing in instead.');
@@ -136,7 +141,8 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
   };
 
   // If user is already signed in, skip auth fields and just collect shipping
-  const isAuthenticated = !!user;
+  // But if we're mid-submit (e.g. just logged in), don't flash the shipping form
+  const isAuthenticated = !!user && !submittingRef.current;
 
   const handleAuthenticatedSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

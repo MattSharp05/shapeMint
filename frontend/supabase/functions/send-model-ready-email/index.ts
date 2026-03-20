@@ -41,7 +41,7 @@ function buildPriceRow(label: string, quote: QuoteInfo): string {
 
 function buildEmailHtml(data: EmailRequest): string {
   const { firstName, prompt, thumbnailUrl, modelId, colorQuote, monoQuote, slsQuote } = data;
-  const modelUrl = `https://shapemint.com/model/${modelId}`;
+  const modelUrl = `https://shapemint.dev/model/${modelId}`;
   const name = firstName || 'there';
 
   const hasQuotes = colorQuote || monoQuote || slsQuote;
@@ -152,7 +152,7 @@ Deno.serve(async (req: Request) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'ShapeMint <noreply@shapemint.com>',
+        from: 'ShapeMint <noreply@shapemint.dev>',
         to: [email],
         subject: 'Your 3D Model is Ready! — ShapeMint',
         html,

@@ -27,7 +27,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Login function
   const login = async (email: string, password: string) => {
-    setLoading(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -52,14 +51,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       logger.error('Login error:', error);
       throw error;
-    } finally {
-      setLoading(false);
     }
   };
 
   // Register function
   const register = async (email: string, password: string, name: string) => {
-    setLoading(true);
     try {
       // Step 1: Create auth user
       const { data, error } = await supabase.auth.signUp({
@@ -96,8 +92,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       logger.error('Registration error:', error);
       throw error;
-    } finally {
-      setLoading(false);
     }
   };
 

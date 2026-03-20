@@ -15,7 +15,7 @@ serve(async (req)=>{
   }
   try {
     console.log('🚀 PRODUCTION Stripe Checkout - RLS Workaround v2');
-    const stripeKey = Deno.env.get('STRIPE_TEST_SECRET_KEY') || Deno.env.get('STRIPE_SECRET_KEY');
+    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!stripeKey || !supabaseUrl || !supabaseServiceKey) {

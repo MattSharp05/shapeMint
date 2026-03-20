@@ -143,9 +143,47 @@ async function loadModel(url: string): Promise<THREE.Group> {
 }
 
 /**
+ * Convert ImageBitmap textures to canvas-based images so GLTFExporter can serialize them.
+ * GLTFLoader decodes embedded textures as ImageBitmap, but GLTFExporter needs
+ * HTMLCanvasElement or HTMLImageElement sources to re-embed texture data in the GLB.
+ */
+function convertImageBitmapTextures(scene: THREE.Object3D): void {
+  scene.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const mat of materials) {
+      if (!mat) continue;
+      // Process all texture-bearing properties on the material
+      const textureProps = [
+        'map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap',
+        'aoMap', 'bumpMap', 'displacementMap', 'alphaMap', 'envMap',
+      ] as const;
+      for (const prop of textureProps) {
+        const tex = (mat as any)[prop] as THREE.Texture | undefined;
+        if (!tex?.image) continue;
+        if (typeof ImageBitmap !== 'undefined' && tex.image instanceof ImageBitmap) {
+          const canvas = document.createElement('canvas');
+          canvas.width = tex.image.width;
+          canvas.height = tex.image.height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(tex.image, 0, 0);
+            tex.image = canvas;
+            tex.needsUpdate = true;
+          }
+        }
+      }
+    }
+  });
+}
+
+/**
  * Export a Three.js scene to GLB blob
  */
 async function exportToGLB(scene: THREE.Object3D): Promise<Blob> {
+  // Convert ImageBitmap textures to canvas so the exporter can embed them
+  convertImageBitmapTextures(scene);
+
   const exporter = new GLTFExporter();
 
   return new Promise((resolve, reject) => {

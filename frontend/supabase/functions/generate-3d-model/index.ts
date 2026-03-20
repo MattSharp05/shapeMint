@@ -48,12 +48,13 @@ serve(async (req) => {
       }
       console.log('🎯 Using v1 Image-to-3D API.')
     } else if (type === 'multi-image-to-3d') {
-      apiUrl = 'https://api.meshy.ai/openapi/v1/multi-image-to-3d'
+      apiUrl = 'https://api.meshy.ai/v1/multi-image-to-3d'
       requestBody = {
         image_urls: imageData, // imageData is string[] for multi-image
         enable_pbr: true,
       }
       console.log('🎯 Using Multi-Image-to-3D API with', Array.isArray(imageData) ? imageData.length : 0, 'images.')
+      console.log('📸 Image URLs:', JSON.stringify(imageData))
     } else if (type === 'text-to-3d') {
       apiUrl = 'https://api.meshy.ai/v2/text-to-3d' // Use v2 for Text-to-3D
       requestBody = {
@@ -67,14 +68,25 @@ serve(async (req) => {
       throw new Error('Invalid generation type specified.')
     }
 
-    const meshyResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${meshyApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    })
+    console.log('📤 Calling Meshy API:', apiUrl)
+    console.log('📤 Request body:', JSON.stringify(requestBody))
+
+    let meshyResponse: Response
+    try {
+      meshyResponse = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${meshyApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      })
+    } catch (fetchErr: any) {
+      console.error('❌ Meshy fetch crashed:', fetchErr.message, fetchErr.stack)
+      throw new Error(`Meshy API fetch failed: ${fetchErr.message}`)
+    }
+
+    console.log('📥 Meshy response status:', meshyResponse.status)
 
     if (!meshyResponse.ok) {
       const errorText = await meshyResponse.text()
@@ -83,6 +95,7 @@ serve(async (req) => {
     }
 
     const meshyData = await meshyResponse.json()
+    console.log('📥 Meshy response data:', JSON.stringify(meshyData))
     const taskId = meshyData?.result
 
     if (!taskId) {

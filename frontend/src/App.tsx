@@ -6,10 +6,9 @@ import { Home } from './pages/Home';
 import { Generate } from './pages/Generate';
 import { Manufacturing } from './pages/Manufacturing';
 import { Dashboard } from './pages/Dashboard';
-import { Login } from './pages/Login';
-import { Register } from './pages/Register';
+import { SignIn } from './pages/SignIn';
 import { ResetPassword } from './pages/ResetPassword';
-import { Order } from './pages/Order';
+import { ModelResult } from './pages/ModelResult';
 import { DownloadCheckout } from './pages/DownloadCheckout';
 import { DesignDetails } from './pages/DesignDetails';
 import { UserProfile } from './pages/UserProfile';
@@ -32,10 +31,9 @@ function App() {
               <Route path="/generate" element={<Generate />} />
               <Route path="/manufacturing" element={<Manufacturing />} />
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
+              <Route path="/sign-in" element={<SignIn />} />
               <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/order" element={<Order />} />
+              <Route path="/model/:id" element={<ModelResult />} />
               <Route path="/download-checkout" element={<DownloadCheckout />} />
               <Route path="/design/:id" element={<DesignDetails />} />
               <Route path="/creator/:username" element={<UserProfile />} />

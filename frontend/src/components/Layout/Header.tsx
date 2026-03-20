@@ -95,14 +95,14 @@ export function Header() {
               </>
             ) : (
               <>
-            <Link
-              to="/login"
-              className="px-4 py-2 text-sm font-medium text-[#9ca3af] hover:text-white transition-colors"
-            >
-              Sign In
-            </Link>
                 <Link
-                  to="/register"
+                  to="/sign-in"
+                  className="px-4 py-2 text-sm font-medium text-[#9ca3af] hover:text-white transition-colors"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  to="/generate"
                   className="px-6 py-2.5 text-sm font-semibold bg-gradient-to-r from-brand-accent to-brand-accent-dark text-brand-dark rounded-full hover:shadow-[0_0_20px_rgba(237,174,73,0.4)] transition-all"
                 >
                   Get Started
@@ -152,14 +152,14 @@ export function Header() {
               ) : (
                 <>
                   <Link
-                    to="/login"
+                    to="/sign-in"
                     onClick={() => setMobileOpen(false)}
                     className="block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5"
                   >
                     Sign In
                   </Link>
                   <Link
-                    to="/register"
+                    to="/generate"
                     onClick={() => setMobileOpen(false)}
                     className="block px-4 py-2.5 rounded-full text-sm font-semibold bg-gradient-to-r from-brand-accent to-brand-accent-dark text-brand-dark text-center mt-1"
                   >

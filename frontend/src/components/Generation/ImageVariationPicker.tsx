@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, RefreshCw, Loader2 } from 'lucide-react';
+import { Check, RefreshCw, Loader2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Button } from '../UI/Button';
 
 interface ImageVariationPickerProps {
@@ -16,10 +16,36 @@ export function ImageVariationPicker({
   loading,
 }: ImageVariationPickerProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [carouselIndex, setCarouselIndex] = useState<number | null>(null);
 
   const handleConfirm = () => {
     if (selectedIndex !== null && images[selectedIndex]) {
       onSelect(images[selectedIndex]);
+    }
+  };
+
+  const openCarousel = (index: number) => {
+    setCarouselIndex(index);
+  };
+
+  const closeCarousel = () => {
+    setCarouselIndex(null);
+  };
+
+  const goToPrev = () => {
+    if (carouselIndex === null) return;
+    setCarouselIndex(carouselIndex === 0 ? images.length - 1 : carouselIndex - 1);
+  };
+
+  const goToNext = () => {
+    if (carouselIndex === null) return;
+    setCarouselIndex(carouselIndex === images.length - 1 ? 0 : carouselIndex + 1);
+  };
+
+  const selectFromCarousel = () => {
+    if (carouselIndex !== null) {
+      setSelectedIndex(carouselIndex);
+      setCarouselIndex(null);
     }
   };
 
@@ -52,14 +78,15 @@ export function ImageVariationPicker({
         Choose Your Variation
       </h3>
       <p className="text-sm text-gray-600">
-        Select the image that best matches your vision. This will be used to generate your 3D model.
+        Select the image that best matches your vision. Click to view full size.
       </p>
 
+      {/* Grid view */}
       <div className="grid grid-cols-2 gap-4">
         {images.map((url, index) => (
           <button
             key={index}
-            onClick={() => setSelectedIndex(index)}
+            onClick={() => openCarousel(index)}
             className={`relative aspect-square rounded-lg overflow-hidden border-3 transition-all ${
               selectedIndex === index
                 ? 'border-brand-primary ring-2 ring-brand-primary ring-offset-2'
@@ -83,6 +110,7 @@ export function ImageVariationPicker({
         ))}
       </div>
 
+      {/* Action buttons */}
       <div className="flex gap-3">
         <Button
           onClick={handleConfirm}
@@ -90,7 +118,7 @@ export function ImageVariationPicker({
           className="flex-1"
           size="lg"
         >
-          Use This Image
+          Confirm Selection
         </Button>
         <Button
           variant="outline"
@@ -100,6 +128,93 @@ export function ImageVariationPicker({
           Regenerate
         </Button>
       </div>
+
+      {/* Carousel overlay */}
+      {carouselIndex !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={closeCarousel}
+        >
+          <div
+            className="relative max-w-2xl w-full mx-4 flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={closeCarousel}
+              className="absolute -top-12 right-0 p-2 text-white/60 hover:text-white transition-colors"
+            >
+              <X className="h-6 w-6" />
+            </button>
+
+            {/* Image */}
+            <div className="relative w-full aspect-square rounded-xl overflow-hidden">
+              <img
+                src={images[carouselIndex]}
+                alt={`Variation ${carouselIndex + 1}`}
+                className="w-full h-full object-cover"
+              />
+
+              {/* Left arrow */}
+              <button
+                onClick={goToPrev}
+                className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+
+              {/* Right arrow */}
+              <button
+                onClick={goToNext}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+
+              {/* Selected indicator */}
+              {selectedIndex === carouselIndex && (
+                <div className="absolute top-4 right-4 bg-brand-primary text-white rounded-full p-1.5">
+                  <Check className="h-5 w-5" />
+                </div>
+              )}
+            </div>
+
+            {/* Dots indicator */}
+            <div className="flex items-center gap-2 mt-4">
+              {images.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setCarouselIndex(idx)}
+                  className={`w-2.5 h-2.5 rounded-full transition-all ${
+                    idx === carouselIndex
+                      ? 'bg-white scale-125'
+                      : idx === selectedIndex
+                        ? 'bg-brand-primary'
+                        : 'bg-white/30 hover:bg-white/50'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {/* Caption + select button */}
+            <div className="mt-4 flex items-center gap-4">
+              <span className="text-white/60 text-sm">
+                Option {carouselIndex + 1} of {images.length}
+              </span>
+              <button
+                onClick={selectFromCarousel}
+                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  selectedIndex === carouselIndex
+                    ? 'bg-brand-primary/20 text-brand-primary border border-brand-primary/40'
+                    : 'bg-brand-primary text-white hover:bg-brand-primary/90'
+                }`}
+              >
+                {selectedIndex === carouselIndex ? 'Selected' : 'Select This Image'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

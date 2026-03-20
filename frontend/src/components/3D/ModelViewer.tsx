@@ -10,10 +10,17 @@ import * as THREE from 'three';
 const isProduction = import.meta.env.PROD;
 const proxyBaseUrl = import.meta.env.VITE_PROXY_URL || '';
 
+export interface ModelDimensions3D {
+  width: number;   // cm
+  height: number;  // cm
+  depth: number;   // cm
+}
+
 interface ModelViewerProps {
   modelUrl?: string | { modelUrl?: string };
   className?: string;
   debug?: boolean;
+  onDimensions?: (dims: ModelDimensions3D) => void;
 }
 
 // Utility function to check if proxy server is ready
@@ -47,12 +54,13 @@ const checkProxyHealth = async (): Promise<boolean> => {
 
 
 
-function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }: {
+function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError, onDimensions }: {
   url: string;
   debug?: boolean;
   onLoadStart?: () => void;
   onLoadComplete?: () => void;
   onLoadError?: (error: string) => void;
+  onDimensions?: (dims: ModelDimensions3D) => void;
 }) {
   const { camera } = useThree();
   const [hasErrored, setHasErrored] = useState(false);
@@ -159,8 +167,17 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
     camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
 
+    // Report dimensions in cm (GLB units are meters)
+    if (onDimensions) {
+      onDimensions({
+        width: parseFloat((size.x * 100).toFixed(1)),
+        height: parseFloat((size.y * 100).toFixed(1)),
+        depth: parseFloat((size.z * 100).toFixed(1)),
+      });
+    }
+
     if (debug) console.log('📐 Auto-framed model:', { size, distance });
-  }, [gltfScene, camera, debug]);
+  }, [gltfScene, camera, debug, onDimensions]);
 
   useEffect(() => {
     // Cleanup function to dispose of resources when the component unmounts
@@ -285,36 +302,39 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError }:
   return <primitive object={gltfScene} key={proxiedUrl} />;
 }
 
-function Scene({ modelUrl, debug = false, onLoadStart, onLoadComplete, onLoadError }: { 
-  modelUrl?: string; 
+function Scene({ modelUrl, debug = false, onLoadStart, onLoadComplete, onLoadError, onDimensions }: {
+  modelUrl?: string;
   debug?: boolean;
   onLoadStart?: () => void;
   onLoadComplete?: () => void;
   onLoadError?: (error: string) => void;
+  onDimensions?: (dims: ModelDimensions3D) => void;
 }) {
   if (debug) console.log('🎬 Scene rendering with modelUrl:', modelUrl);
-  
+
   return (
     <>
       <PerspectiveCamera makeDefault position={[0, 0, 5]} />
       <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[10, 10, 5]} intensity={1} />
-      
+      <ambientLight intensity={1.2} />
+      <directionalLight position={[10, 10, 5]} intensity={0.8} castShadow={false} />
+      <directionalLight position={[-10, 5, -5]} intensity={0.4} castShadow={false} />
+
       {modelUrl ? (
-        <Model 
-          url={modelUrl} 
-          debug={debug} 
+        <Model
+          url={modelUrl}
+          debug={debug}
           onLoadStart={onLoadStart}
           onLoadComplete={onLoadComplete}
           onLoadError={onLoadError}
+          onDimensions={onDimensions}
         />
       ) : null}
     </>
   );
 }
 
-export function ModelViewer({ modelUrl: modelProp, className = '', debug = false }: ModelViewerProps) {
+export function ModelViewer({ modelUrl: modelProp, className = '', debug = false, onDimensions }: ModelViewerProps) {
   // Handle both string URL and model object being passed
   const modelUrl = typeof modelProp === 'string' ? modelProp : modelProp?.modelUrl;
   
@@ -461,12 +481,13 @@ export function ModelViewer({ modelUrl: modelProp, className = '', debug = false
         }}
       >
         <Suspense fallback={null}>
-          <Scene 
-            modelUrl={modelUrl} 
-            debug={debug} 
+          <Scene
+            modelUrl={modelUrl}
+            debug={debug}
             onLoadStart={handleLoadStart}
             onLoadComplete={handleLoadComplete}
             onLoadError={handleLoadError}
+            onDimensions={onDimensions}
           />
         </Suspense>
       </Canvas>

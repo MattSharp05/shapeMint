@@ -60,7 +60,7 @@ serve(async (req) => {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         console.log('💳 Payment successful for session:', session.id);
-        
+
         const orderId = session.metadata?.order_id;
         if (!orderId) {
           console.error('❌ No order_id in session metadata');
@@ -98,6 +98,99 @@ serve(async (req) => {
 
         if (eventError) {
           console.error('⚠️ Failed to log payment event:', eventError);
+        }
+
+        // If this is a CraftCloud order, pay via invoice
+        const craftcloudOrderId = session.metadata?.craftcloud_order_id;
+        if (craftcloudOrderId && session.metadata?.payment_type === 'craftcloud_invoice') {
+          console.log('📦 Triggering CraftCloud invoice payment for order:', craftcloudOrderId);
+          try {
+            const CRAFTCLOUD_API = 'https://api.craftcloud3d.com';
+            const invoiceResp = await fetch(`${CRAFTCLOUD_API}/v5/payment/invoice`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ orderId: craftcloudOrderId }),
+            });
+
+            if (!invoiceResp.ok) {
+              const errText = await invoiceResp.text().catch(() => '');
+              console.error('❌ CraftCloud invoice payment failed:', invoiceResp.status, errText);
+              // Update order with invoice failure — needs manual intervention
+              await supabase
+                .from('orders')
+                .update({
+                  status: 'paid_invoice_failed',
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', orderId);
+
+              // Log the failure
+              await supabase.from('payment_events').insert({
+                order_id: orderId,
+                event_type: 'craftcloud_invoice_failed',
+                event_data: { craftcloudOrderId, status: invoiceResp.status, error: errText },
+                created_at: new Date().toISOString(),
+              });
+            } else {
+              const invoiceData = await invoiceResp.json().catch(() => ({}));
+              console.log('✅ CraftCloud invoice payment successful:', JSON.stringify(invoiceData));
+
+              // Update order status to confirmed (paid + vendor paid)
+              await supabase
+                .from('orders')
+                .update({
+                  status: 'confirmed',
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', orderId);
+
+              // Log success
+              await supabase.from('payment_events').insert({
+                order_id: orderId,
+                event_type: 'craftcloud_invoice_paid',
+                event_data: { craftcloudOrderId, invoiceData },
+                created_at: new Date().toISOString(),
+              });
+            }
+          } catch (invoiceErr: any) {
+            console.error('💥 CraftCloud invoice error:', invoiceErr.message);
+            await supabase.from('payment_events').insert({
+              order_id: orderId,
+              event_type: 'craftcloud_invoice_error',
+              event_data: { craftcloudOrderId, error: invoiceErr.message },
+              created_at: new Date().toISOString(),
+            });
+          }
+        }
+
+        // Send order confirmation email (fire and forget)
+        try {
+          const { data: order } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('id', orderId)
+            .single();
+
+          if (order) {
+            const shippingAddr = order.shipping_address || {};
+            await supabase.functions.invoke('send-order-confirmation-email', {
+              body: {
+                email: order.customer_email || shippingAddr.email,
+                firstName: shippingAddr.firstName || order.customer_name?.split(' ')[0] || '',
+                lastName: shippingAddr.lastName || order.customer_name?.split(' ').slice(1).join(' ') || '',
+                orderId: order.id,
+                orderNumber: order.order_number || order.vendor_order_id || order.id,
+                totalPrice: order.total_price,
+                currency: order.currency || 'USD',
+                materialType: order.material_id || 'Standard',
+                vendorId: order.vendor || 'craftcloud',
+                shippingAddress: shippingAddr,
+              },
+            });
+            console.log('✅ Order confirmation email sent for:', orderId);
+          }
+        } catch (emailErr: any) {
+          console.error('⚠️ Order confirmation email failed (non-critical):', emailErr.message);
         }
 
         break;

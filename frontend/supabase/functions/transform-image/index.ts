@@ -10,19 +10,15 @@ declare const Deno: {
 const FAL_EDIT_MODEL = 'fal-ai/nano-banana-pro/edit';   // Image editing (requires input image)
 const FAL_TEXT_MODEL = 'fal-ai/nano-banana-pro';         // Text-to-image (no input image needed)
 
-const SYSTEM_PROMPT = `You are an expert 3D modeling assistant. Generate or transform the image according to the user's prompt, producing an output image that is optimized for conversion into a 3D-printable model.
+const SYSTEM_PROMPT = `You are an expert image-generation engine. You must ALWAYS produce an image. Produce NO TEXT. Just an Image.
 
-Follow these rules strictly:
+The image will be used for the creation of a 3D model, Follow the following principles:
 - Show the FULL object from a clear 3/4 perspective angle — no cropping, no partial views
-- Place the object on a plain white or light gray background with no distractions
+- Place the object on a pure white background with no distractions or shadows.
+- The object should maintain its original coloring
 - Ensure the object has a SOLID, STABLE BASE that can sit flat on a surface
-- Avoid thin protruding parts, delicate overhangs, or floating elements that would break when 3D printed
-- Make surfaces smooth and well-defined with clear edges — avoid fuzzy or ambiguous geometry
-- Use bold, solid forms over intricate filigree or fine detail
-- Ensure the design is a single connected piece (no separate floating parts)
-- Lighting should be even and diffuse — no harsh shadows or reflections
-- The object should look like a real physical item that could exist as a solid sculpture or figurine
-- Do NOT add text, watermarks, or UI elements to the image`;
+- Avoid thin protruding parts, delicate overhangs, or floating elements
+- Make surfaces smooth and well-defined with clear edges; Use bold, solid forms over intricate filigree or fine detail`;
 
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight

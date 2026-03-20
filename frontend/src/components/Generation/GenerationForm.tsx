@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Upload, Type, Settings, X, Loader2, Ruler, Wand2 } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { Card } from '../UI/Card';
@@ -198,13 +198,54 @@ export function GenerationForm({
     }
   };
 
+  // Drag and drop handlers
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set isDragging false if we're actually leaving the container
+    const rect = e.currentTarget.getBoundingClientRect();
+    const { clientX, clientY } = e;
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (!file.type.startsWith('image/')) return;
+
+      // Read file first, then switch mode and set preview together
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (mode === 'text') setMode('image');
+        setImageFile(file);
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  }, [setImageFile, setImagePreview, mode, setMode]);
+
   const inputClasses = "w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50";
   const selectClasses = "w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50 [&>option]:bg-brand-dark [&>option]:text-white";
   const labelClasses = "block text-sm font-medium text-white/70 mb-1";
 
   return (
     <Card className="p-6">
-      <div className="space-y-6">
+      <div className="space-y-6" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
         {/* Mode Selection */}
         <div className="flex space-x-4">
           <button
@@ -254,7 +295,16 @@ export function GenerationForm({
               <label className={labelClasses}>
                 Upload reference image
               </label>
-              <div className="border-2 border-dashed border-white/10 rounded-lg p-6 text-center hover:border-brand-accent/30 transition-colors">
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                  isDragging
+                    ? 'border-brand-accent/60 bg-brand-accent/10'
+                    : 'border-white/10 hover:border-brand-accent/30'
+                }`}
+              >
                 <input
                   type="file"
                   onChange={handleImageChange}

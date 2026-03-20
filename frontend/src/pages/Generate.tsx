@@ -1,49 +1,49 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-import { useThumbnailGenerator } from '../hooks/useThumbnailGenerator';
 import { GenerationForm, ModelDimensions } from '../components/Generation/GenerationForm';
 import { GenerationProgress } from '../components/Generation/GenerationProgress';
 import { ImageVariationPicker } from '../components/Generation/ImageVariationPicker';
-import { ModelViewer } from '../components/3D/ModelViewer';
-import { ThumbnailSelector } from '../components/UI/ThumbnailSelector';
 import { Card } from '../components/UI/Card';
-import { Download, Printer, ChevronDown, Info, ArrowLeft } from 'lucide-react';
-import { FadeIn, FadeInUp, MotionButton } from '../components/Motion';
+import { Info, Loader2 } from 'lucide-react';
+import { FadeIn, FadeInUp } from '../components/Motion';
 import { supabase } from '../supabaseClient';
 import { modelService } from '../services/modelService';
 import { falImageService } from '../services/falImageService';
 import { ScaleResult } from '../utils/modelScaler';
 import { useAuth } from '../hooks/useAuth';
+import { InfoCollection, CollectedInfo } from '../components/Generation/InfoCollection';
+import { getQuote as getCraftcloudQuote } from '../services/craftcloud';
 
-// Order flow imports
-import { ensureStableModelUrl } from '../services/modelUrlService';
-import { MaterialSelection } from '../components/Order/MaterialSelection';
-import { ShippingForm } from '../components/Order/ShippingForm';
-import { VENDORS, SHAPEWAYS_MATERIALS, SLANT3D_MATERIALS, getMaterialsForVendor } from '../data/vendors';
-import { OrderWizardState, ShippingInfo, Material } from '../types/order';
-import { getQuote as getShapewaysQuote } from '../services/shapeways';
-import { createOrder as createShapewaysOrder } from '../services/shapewaysOrder';
-import { getQuote as getSlant3DQuote, getAvailableFilaments } from '../services/slant3d';
-import { createOrder as createSlant3DOrder } from '../services/slant3dOrder';
-import { getQuote as getTreatstockQuote, TreatstockQuoteResponse } from '../services/treatstock';
-import { createOrder as createTreatstockOrder } from '../services/treatstockOrder';
-import { getQuote as getCraftcloudQuote, CraftcloudVendorOption } from '../services/craftcloud';
-import { createOrder as createCraftcloudOrder } from '../services/craftcloudOrder';
-import { getCraftcloudMaterialConfigId } from '../data/craftcloudMaterials';
+// System prompt for generating 4 angle views from a reference image
+const ANGLE_SYSTEM_PROMPT = `You are an expert image-generation engine. You must ALWAYS produce an image. Produce NO TEXT. Just an Image.
+
+You are creating various views of a 3D object that will be used for 3D rendering. Therefore be extremely consistent with the object.
+
+Do NOT change details, or add features that are not in the reference image.
+Include minimal shadows and flat uniform lighting, which only accentuates geometry.`;
+
+const ANGLE_PROMPTS = [
+  'Rotate the view to look straight on at the object.',
+  'Rotate the view to look straight at the back of the object.',
+  'Create a side view of this character. Rotating the camera exactly 90 degrees from the front perspective. (Do not add Ears if they are not in the reference image)',
+  'Create the missing view of this character. There should be Front, Back, Left.',
+];
+
+const ANGLE_LABELS = ['Front', 'Back', 'Left', 'Right'];
+
+// CraftCloud material config IDs
+const COLOR_CONFIG_ID = 'a69b05d8-39b9-5f3e-bd47-9df42b4b84c3';
+const MONO_CONFIG_ID = '6250ed03-5e96-5de8-bf06-44a13b952058';  // SLA Resin
+const SLS_CONFIG_ID = '6c633df0-aca1-5b95-aaab-5c19b4e0d24f';   // SLS Nylon PA12
 
 export function Generate() {
-  const [status, setStatus] = useState<'pending' | 'generating' | 'scaling' | 'repairing' | 'completed' | 'failed'>('pending');
+  const [status, setStatus] = useState<'pending' | 'info_collection' | 'generating_angles' | 'generating' | 'scaling' | 'completed' | 'failed'>('pending');
   const [generationProgress, setGenerationProgress] = useState(0);
-  const [generatedModel, setGeneratedModel] = useState<any>(null);
-  const [repairReport, setRepairReport] = useState<any>(null);
-  const [showThumbnailSelector, setShowThumbnailSelector] = useState(false);
-  const [thumbnailData, setThumbnailData] = useState<{
-    angles: { [angle: string]: string };
-    selectedAngle: string;
-    isCustom: boolean;
-  } | null>(null);
 
+  // Multi-angle state
+  const [angleImages, setAngleImages] = useState<string[] | null>(null);
+  const [angleError, setAngleError] = useState<string | null>(null);
 
   // Generation form state
   const [mode, setMode] = useState<'text' | 'image'>('text');
@@ -74,36 +74,23 @@ export function Generate() {
   const location = useLocation();
   const { user } = useAuth();
 
-  // ── Checkout state ──────────────────────────────────────────────────
-  const [checkoutMode, setCheckoutMode] = useState(false);
-  const [checkoutStep, setCheckoutStep] = useState(1); // 1: material, 2: shipping
-  const [wizardState, setWizardState] = useState<OrderWizardState>({ vendorId: 'craftcloud' });
-  const [quoteState, setQuoteState] = useState<{ loading: boolean; error?: string; data?: { quoteId: string; priceTotal: number; currency: string; reused?: boolean; expiresAt?: string; itemTotal?: number; surcharge?: number; shippingTotal?: number; publicFileServiceId?: string; treatstockRaw?: TreatstockQuoteResponse; craftcloudPriceId?: string; craftcloudQuoteId?: string; craftcloudShippingId?: string; vendorName?: string; productionTime?: string } }>({ loading: false });
-  const [orderState, setOrderState] = useState<{ loading: boolean; error?: string; data?: any }>({ loading: false });
-  const [craftcloudVendorOptions, setCraftcloudVendorOptions] = useState<CraftcloudVendorOption[]>([]);
-  const [selectedCraftcloudVendor, setSelectedCraftcloudVendor] = useState<number>(-1);
-  const [showVendorModal, setShowVendorModal] = useState(false);
-  const [slant3DFilaments, setSlant3DFilaments] = useState<Material[]>([]);
-  const [slant3DFilamentMap, setSlant3DFilamentMap] = useState<Record<string, string>>({});
-  const [loadingFilaments, setLoadingFilaments] = useState(false);
-  const [confirmedStlUrl, setConfirmedStlUrl] = useState<string | null>(null);
+  // ── New flow state ──────────────────────────────────────────────────
+  const [selectedVariationUrl, setSelectedVariationUrl] = useState<string | null>(null);
+  const selectedVariationUrlRef = useRef<string | null>(null);
+  const collectedInfoRef = useRef<CollectedInfo | null>(null);
 
   // Extract prefilled data or existing model from navigation state
   useEffect(() => {
     if (location.state?.existingModel) {
-      // Coming from Dashboard with an existing completed model
+      // Coming from Dashboard with an existing completed model — redirect to model page
       const model = location.state.existingModel;
-      setGeneratedModel(model);
-      setStatus('completed');
+      if (model.id) {
+        navigate(`/model/${model.id}`, { replace: true });
+      }
     } else if (location.state) {
       setPrefilledData(location.state);
     }
-  }, [location.state]);
-
-  // Client-side thumbnail generation (like working branch)
-  const { isGenerating: isGeneratingThumbnails } = useThumbnailGenerator({ 
-    uploadToStorage: false // Use data URLs for MVP speed
-  });
+  }, [location.state, navigate]);
 
   const repairDispatchedRef = useRef(false);
 
@@ -254,25 +241,78 @@ export function Generate() {
     }
   };
 
-  // Handle user selecting a transformed image variation
+  // Handle user selecting a transformed image variation — generate angle views
   const handleVariationSelect = async (selectedImageUrl: string) => {
-    console.log('User selected variation, sending to Meshy for 3D generation...');
-
-    // Clear the variation picker
+    console.log('User selected variation, generating angle views...');
+    setSelectedVariationUrl(selectedImageUrl);
+    selectedVariationUrlRef.current = selectedImageUrl;
     setTransformedImages(null);
+    setAngleImages(null);
+    setAngleError(null);
+    setStatus('generating_angles');
 
-    // Set the selected image as the new image preview and trigger Meshy generation
-    setImagePreview(selectedImageUrl);
+    try {
+      // Generate 4 angle views in parallel
+      const promises = ANGLE_PROMPTS.map((anglePrompt, i) => {
+        console.log(`Generating ${ANGLE_LABELS[i]} view...`);
+        return falImageService.transformImage(
+          anglePrompt,
+          selectedImageUrl,
+          {
+            systemPrompt: ANGLE_SYSTEM_PROMPT,
+            numImages: 1,
+            resolution: '1K',
+            aspectRatio: '1:1',
+            outputFormat: 'png',
+          }
+        ).then(result => {
+          if (result.images.length > 0) {
+            console.log(`${ANGLE_LABELS[i]} view generated`);
+            return result.images[0];
+          }
+          throw new Error(`No image returned for ${ANGLE_LABELS[i]} view`);
+        });
+      });
+
+      const generatedAngles = await Promise.all(promises);
+      console.log(`All ${generatedAngles.length} angle views generated`);
+      setAngleImages(generatedAngles);
+      setStatus('info_collection');
+    } catch (err: any) {
+      console.error('Angle generation failed:', err);
+      setAngleError(err.message || 'Failed to generate angle views.');
+      setStatus('info_collection'); // Still proceed to info collection, will use single image fallback
+    }
+  };
+
+  // Handle info collection submission — create account, then start 3D generation
+  const handleInfoSubmit = async (info: CollectedInfo) => {
+    console.log('Info collected, starting 3D generation...');
+    collectedInfoRef.current = info;
+
+    setImagePreview(selectedVariationUrl);
     setStatus('generating');
 
     try {
+      // Use multi-image-to-3d if angle images are available, otherwise fallback to single image
+      const useMultiImage = angleImages && angleImages.length === 4;
+      console.log(useMultiImage
+        ? `Sending ${angleImages!.length} angle images to Meshy (multi-image-to-3d)`
+        : 'Sending single reference image to Meshy (image-to-3d)');
+
       const modelData = await modelService.generate3DModel({
-        type: 'image-to-3d',
+        type: useMultiImage ? 'multi-image-to-3d' : 'image-to-3d',
         mode: 'preview',
-        prompt: imagePrompt || 'AI-transformed image',
-        image: selectedImageUrl,
-        userId: user?.id,
+        prompt: imagePrompt || prompt || 'AI-generated design',
+        image: useMultiImage ? angleImages! : selectedVariationUrl!,
+        userId: info.userId,
       });
+
+      if (!modelData.success) {
+        console.error('3D generation returned error:', modelData.error);
+        setStatus('failed');
+        return;
+      }
 
       // Clear form
       setImageFile(null);
@@ -281,12 +321,12 @@ export function Generate() {
 
       handleGenerationSuccess({
         ...modelData,
-        prompt: imagePrompt || 'AI-transformed image',
+        prompt: imagePrompt || prompt || 'AI-generated design',
         style: 'realistic',
         dimensions: pendingDimensions,
       });
     } catch (err: any) {
-      console.error('3D generation from selected variation failed:', err);
+      console.error('3D generation failed:', err);
       setStatus('failed');
     }
   };
@@ -313,7 +353,7 @@ export function Generate() {
       setGenerationProgress(0);
 
       // Start polling for completion using check-model-status edge function
-      const pollForCompletion = async (taskId: string, type: 'text-to-3d' | 'image-to-3d', dimensions: ModelDimensions | null) => {
+      const pollForCompletion = async (taskId: string, type: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d', dimensions: ModelDimensions | null) => {
         const maxAttempts = 60; // 10 minutes max (10s interval)
         let attempts = 0;
         let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -367,11 +407,13 @@ export function Generate() {
                   if (lookupError || !existingRecord) {
                     console.error('⚠️ Record not found with ID:', taskId, lookupError);
                   } else {
+                    // Keep glb_url as the original colored model for display
+                    // Store scaled version in model_url for ordering/quoting
                     const { error: updateError } = await supabase
                       .from('generated_models')
                       .update({
-                        glb_url: scaleResult.scaledUrl,
                         model_url: scaleResult.scaledUrl,
+                        stl_url: scaleResult.scaledUrl,
                         notes: `Scaled model. Original: ${statusResponse.model_url}. Target: ${dimensions.value}${dimensions.unit} ${dimensions.target}`,
                         updated_at: new Date().toISOString()
                       })
@@ -384,8 +426,8 @@ export function Generate() {
                         await supabase
                           .from('generated_models')
                           .update({
-                            glb_url: scaleResult.scaledUrl,
                             model_url: scaleResult.scaledUrl,
+                            stl_url: scaleResult.scaledUrl,
                             notes: `Scaled model. Original: ${statusResponse.model_url}. Target: ${dimensions.value}${dimensions.unit} ${dimensions.target}`,
                             updated_at: new Date().toISOString()
                           })
@@ -399,23 +441,143 @@ export function Generate() {
                 }
               }
 
-              // Dispatch Blender mesh repair (async — Modal handles repair + upload + DB update)
-              const stlUrl = await repairAndExportSTL(finalGlbUrl, taskId, user?.id);
+              // Save shipping info and selected 2D preview to DB
+              const info = collectedInfoRef.current;
+              if (info) {
+                const updatePayload: Record<string, any> = {
+                  shipping_info: {
+                    firstName: info.firstName,
+                    lastName: info.lastName,
+                    phone: info.phone,
+                    address1: info.address1,
+                    address2: info.address2,
+                    city: info.city,
+                    state: info.state,
+                    postalCode: info.postalCode,
+                    email: info.email,
+                  },
+                  user_id: info.userId,
+                };
+                if (selectedVariationUrlRef.current) {
+                  updatePayload.selected_2d_preview = selectedVariationUrlRef.current;
+                }
+                const { error: updateError } = await supabase
+                  .from('generated_models')
+                  .update(updatePayload)
+                  .eq('id', taskId);
+                if (updateError) {
+                  console.error('Failed to save shipping info to model:', updateError);
+                } else {
+                  console.log('✅ Shipping info saved to model', taskId);
+                }
+              }
 
-              const finalModelData = {
-                ...statusResponse,
-                id: taskId,
-                urls: {
-                  glb: finalGlbUrl,
-                  stl: stlUrl || undefined,
-                  originalGlb: statusResponse.model_url
-                },
-                modelUrl: finalGlbUrl,
-                originalModelUrl: statusResponse.model_url,
-                scaleInfo: scaledInfo
-              };
-              setGeneratedModel(finalModelData);
-              setStatus('completed');
+              // Fetch CraftCloud quotes for Color + Mono in parallel using the GLB
+              if (info) {
+                const addr = {
+                  firstName: info.firstName,
+                  lastName: info.lastName,
+                  email: info.email,
+                  address1: info.address1,
+                  city: info.city,
+                  state: info.state,
+                  zipCode: info.postalCode,
+                  country: 'US',
+                  phone: info.phone,
+                };
+
+                console.log('💰 Fetching CraftCloud quotes in parallel...');
+                const [colorResult, monoResult, slsResult] = await Promise.allSettled([
+                  getCraftcloudQuote({ modelUrl: finalGlbUrl, materialConfigId: COLOR_CONFIG_ID, quantity: 1, shippingAddress: addr }),
+                  getCraftcloudQuote({ modelUrl: finalGlbUrl, materialConfigId: MONO_CONFIG_ID, quantity: 1, shippingAddress: addr }),
+                  getCraftcloudQuote({ modelUrl: finalGlbUrl, materialConfigId: SLS_CONFIG_ID, quantity: 1, shippingAddress: addr }),
+                ]);
+
+                const quoteUpdate: Record<string, any> = {};
+
+                if (colorResult.status === 'fulfilled' && colorResult.value.vendorOptions?.length > 0) {
+                  quoteUpdate.color_quotes = {
+                    vendors: colorResult.value.vendorOptions,
+                    craftcloudPriceId: colorResult.value.craftcloudPriceId,
+                    currency: colorResult.value.currency || 'USD',
+                  };
+                  console.log('✅ Color quotes:', colorResult.value.vendorOptions.length, 'vendors');
+                } else {
+                  console.warn('⚠️ Color quote failed:', colorResult.status === 'rejected' ? colorResult.reason : 'No vendors');
+                }
+
+                if (monoResult.status === 'fulfilled' && monoResult.value.vendorOptions?.length > 0) {
+                  quoteUpdate.mono_quotes = {
+                    vendors: monoResult.value.vendorOptions,
+                    craftcloudPriceId: monoResult.value.craftcloudPriceId,
+                    currency: monoResult.value.currency || 'USD',
+                  };
+                  console.log('✅ Mono quotes:', monoResult.value.vendorOptions.length, 'vendors');
+                } else {
+                  console.warn('⚠️ Mono quote failed:', monoResult.status === 'rejected' ? monoResult.reason : 'No vendors');
+                }
+
+                if (slsResult.status === 'fulfilled' && slsResult.value.vendorOptions?.length > 0) {
+                  quoteUpdate.sls_quotes = {
+                    vendors: slsResult.value.vendorOptions,
+                    craftcloudPriceId: slsResult.value.craftcloudPriceId,
+                    currency: slsResult.value.currency || 'USD',
+                  };
+                  console.log('✅ SLS quotes:', slsResult.value.vendorOptions.length, 'vendors');
+                } else {
+                  console.warn('⚠️ SLS quote failed:', slsResult.status === 'rejected' ? slsResult.reason : 'No vendors');
+                }
+
+                if (Object.keys(quoteUpdate).length > 0) {
+                  const { error: quoteSaveError } = await supabase
+                    .from('generated_models')
+                    .update(quoteUpdate)
+                    .eq('id', taskId);
+                  if (quoteSaveError) {
+                    console.error('Failed to save quotes:', quoteSaveError);
+                  } else {
+                    console.log('✅ Quotes saved to DB');
+                  }
+                }
+
+                // Send "model ready" email (fire and forget)
+                const colorQuoteData = colorResult.status === 'fulfilled' && colorResult.value.vendorOptions?.length > 0
+                  ? { totalPrice: colorResult.value.vendorOptions[0].totalPrice, vendorId: colorResult.value.vendorOptions[0].vendorId }
+                  : undefined;
+                const monoQuoteData = monoResult.status === 'fulfilled' && monoResult.value.vendorOptions?.length > 0
+                  ? { totalPrice: monoResult.value.vendorOptions[0].totalPrice, vendorId: monoResult.value.vendorOptions[0].vendorId }
+                  : undefined;
+                const slsQuoteData = slsResult.status === 'fulfilled' && slsResult.value.vendorOptions?.length > 0
+                  ? { totalPrice: slsResult.value.vendorOptions[0].totalPrice, vendorId: slsResult.value.vendorOptions[0].vendorId }
+                  : undefined;
+
+                supabase.functions.invoke('send-model-ready-email', {
+                  body: {
+                    email: info.email,
+                    firstName: info.firstName,
+                    modelId: taskId,
+                    prompt: imagePrompt || prompt || 'AI-generated design',
+                    thumbnailUrl: selectedVariationUrlRef.current || undefined,
+                    colorQuote: colorQuoteData,
+                    monoQuote: monoQuoteData,
+                    slsQuote: slsQuoteData,
+                  },
+                }).catch(err => console.error('Email send failed:', err));
+
+                // Send "model ready" SMS if user opted in (fire and forget)
+                if (info.smsOptIn && info.phone) {
+                  supabase.functions.invoke('send-model-ready-sms', {
+                    body: {
+                      to: info.phone,
+                      modelId: taskId,
+                      recipientName: info.firstName,
+                    },
+                  }).catch(err => console.error('SMS send failed:', err));
+                }
+              }
+
+              // Redirect to the shareable model result page
+              navigate(`/model/${taskId}`);
               return true; // Stop polling
             } else if (statusResponse?.status === 'failed') {
               console.error('❌ Model generation failed:', statusResponse.error);
@@ -458,290 +620,76 @@ export function Generate() {
     }
     
     // Handle legacy completed model response (if any)
-    const mappedModelData = {
-      ...modelData.data,
-      id: modelData.data?.taskId,
-      taskId: modelData.data?.taskId,
-      urls: {
-        glb: modelData.data?.modelUrl,
-        stl: modelData.data?.stlUrl,
-        obj: modelData.data?.objUrl,
-        download: modelData.data?.downloadUrl
-      },
-      modelUrl: modelData.data?.modelUrl,
-      downloadUrl: modelData.data?.downloadUrl,
-      stlUrl: modelData.data?.stlUrl,
-      objUrl: modelData.data?.objUrl
-    };
-    
-    console.log('🔄 Mapped model data:', mappedModelData);
-    
-    setStatus('completed');
-    setGeneratedModel(mappedModelData);
-    
-    // Start mesh repair and STL export if GLB URL is available
-    if (mappedModelData.urls?.glb) {
-      console.log('🔧 Starting mesh repair and STL export...');
-      repairAndExportSTL(mappedModelData.urls.glb, mappedModelData.id, user?.id);
-    }
-    
-    // Start server-side thumbnail generation via Edge function
-    if (mappedModelData.urls?.glb) {
-      console.log('🎨 Starting server-side thumbnail generation via Edge function...');
-      // setIsGeneratingThumbnails(true); // This line is removed
-      
-      try {
-        // Use client-side thumbnail generation for real 3D model screenshots
-        const { ThumbnailGenerator, DEFAULT_CAMERA_ANGLES } = await import('../services/thumbnailGenerator');
-        
-        const generator = new ThumbnailGenerator({
-          width: 400,
-          height: 300,
-          backgroundColor: '#f8fafc'
-        });
-        
-        console.log('🎬 Generating real 3D thumbnails from GLB model...');
-        
-        // Generate thumbnails for multiple angles using original Meshy URL
-        console.log('🎨 Loading model for thumbnails from:', mappedModelData.urls.glb);
-        const thumbnails = await generator.generateAllThumbnails(mappedModelData.urls.glb, DEFAULT_CAMERA_ANGLES);
-        
-        // Clean up Three.js resources
-        generator.dispose();
-        
-        if (thumbnails && Object.keys(thumbnails).length > 0) {
-          setThumbnailData({
-            angles: thumbnails,
-            selectedAngle: Object.keys(thumbnails)[0] || 'front',
-            isCustom: false
-          });
-          setShowThumbnailSelector(true);
-          console.log('✅ Client-side 3D thumbnails generated successfully:', Object.keys(thumbnails));
-        } else {
-          console.log('⚠️ No thumbnails generated');
-        }
-      } catch (error) {
-        console.error('Failed to generate client-side thumbnails:', error);
-        // Continue without thumbnails - not a blocking error
-      } finally {
-        // setIsGeneratingThumbnails(false); // This line is removed
-      }
-    }
-  };
+    const modelId = modelData.data?.taskId;
+    console.log('🔄 Legacy immediate completion, model ID:', modelId);
 
-  const handleBuyNow = () => {
-    navigate('/download-checkout', {
-      state: {
-        modelData: {
-          ...generatedModel,
-          prompt: generatedModel?.prompt || 'Generated Model',
-          settings: {
-            style: 'realistic',
-            quality: 'high',
-            size: 'medium'
-          }
+    // Save shipping info to DB if available
+    const info = collectedInfoRef.current;
+    if (info && modelId) {
+      const updatePayload: Record<string, any> = {
+        shipping_info: {
+          firstName: info.firstName,
+          lastName: info.lastName,
+          phone: info.phone,
+          address1: info.address1,
+          address2: info.address2,
+          city: info.city,
+          state: info.state,
+          postalCode: info.postalCode,
+          email: info.email,
         },
-        modelUrl: generatedModel?.urls?.glb,
-        stlUrl: generatedModel?.urls?.stl,
-        price: 0, // Free for generated models
-        isGenerated: true
+        user_id: info.userId,
+      };
+      if (selectedVariationUrlRef.current) {
+        updatePayload.selected_2d_preview = selectedVariationUrlRef.current;
       }
-    });
-  };
-
-
-  // ── Checkout: STL URL resolution ──────────────────────────────────────
-  // Verify a URL actually returns a downloadable file (HEAD check)
-  const verifyUrlExists = useCallback(async (url: string): Promise<boolean> => {
-    try {
-      const resp = await fetch(url, { method: 'HEAD' });
-      return resp.ok;
-    } catch {
-      return false;
+      await supabase.from('generated_models').update(updatePayload).eq('id', modelId);
     }
-  }, []);
 
-  const getModelUrlForPrinting = useCallback(async (): Promise<string> => {
-    // If we already confirmed an STL exists, use it
-    if (confirmedStlUrl) return confirmedStlUrl;
-
-    // Check DB for STL URL
-    const modelId = generatedModel?.id;
-    let candidateStlUrl: string | null = null;
-
+    // Redirect to model result page
     if (modelId) {
-      try {
-        const { data: record } = await supabase
-          .from('generated_models')
-          .select('stl_url')
-          .eq('id', modelId)
-          .single();
-        if (record?.stl_url) candidateStlUrl = record.stl_url;
-      } catch (e) {
-        console.error('STL lookup error:', e);
-      }
-    }
-
-    // Also consider the STL URL from model data
-    if (!candidateStlUrl && generatedModel?.urls?.stl) {
-      candidateStlUrl = generatedModel.urls.stl;
-    }
-
-    // Verify the STL actually exists (repair may still be in progress)
-    if (candidateStlUrl) {
-      console.log('Verifying STL exists:', candidateStlUrl);
-      const exists = await verifyUrlExists(candidateStlUrl);
-      if (exists) {
-        console.log('STL confirmed available');
-        setConfirmedStlUrl(candidateStlUrl);
-        return candidateStlUrl;
-      }
-      console.warn('STL URL not yet available (repair may still be in progress), falling back to GLB');
-    }
-
-    // Fallback to GLB
-    const glbUrl = generatedModel?.urls?.glb || generatedModel?.modelUrl || '';
-    console.log('Using GLB for printing:', glbUrl);
-    return glbUrl;
-  }, [confirmedStlUrl, generatedModel, verifyUrlExists]);
-
-  // Fetch Slant3D filaments when vendor changes
-  useEffect(() => {
-    if (wizardState.vendorId === 'slant3d' && slant3DFilaments.length === 0 && !loadingFilaments) {
-      setLoadingFilaments(true);
-      getAvailableFilaments()
-        .then(filaments => {
-          const materials: Material[] = filaments
-            .filter(f => f.available && f.public)
-            .map(filament => ({
-              id: `slant3d-${filament.publicId}`,
-              name: filament.name,
-              description: `${filament.profile} - ${filament.color}`,
-              colors: [{ id: filament.color.toLowerCase().replace(/\s+/g, '-'), name: filament.color, hex: filament.hexValue || '#000000' }],
-              finishes: []
-            }));
-          const mapping: Record<string, string> = {};
-          materials.forEach(m => { mapping[m.id] = m.id.replace('slant3d-', ''); });
-          SLANT3D_MATERIALS.forEach(hardcoded => {
-            const match = materials.find(m => m.name.toLowerCase().replace(/\s+/g, '-') === hardcoded.id);
-            if (match) mapping[hardcoded.id] = match.id.replace('slant3d-', '');
-          });
-          setSlant3DFilaments(materials);
-          setSlant3DFilamentMap(mapping);
-          setLoadingFilaments(false);
-        })
-        .catch(() => {
-          setSlant3DFilaments(SLANT3D_MATERIALS);
-          setLoadingFilaments(false);
-        });
-    }
-  }, [wizardState.vendorId, slant3DFilaments.length, loadingFilaments]);
-
-  // ── Checkout handlers ──────────────────────────────────────────────
-  const handleMaterialSelect = (materialId: string) => setWizardState(prev => ({ ...prev, materialId, colorId: undefined, finishId: undefined }));
-  const handleColorSelect = (colorId: string) => setWizardState(prev => ({ ...prev, colorId }));
-  const handleFinishSelect = (finishId: string) => setWizardState(prev => ({ ...prev, finishId }));
-  const handleShippingInfoChange = (shippingInfo: Partial<ShippingInfo>) => setWizardState(prev => ({ ...prev, shippingInfo: { ...prev.shippingInfo, ...shippingInfo, country: 'US' } }));
-
-  const handleGetQuote = async () => {
-    if (!wizardState.vendorId || !wizardState.materialId) {
-      setQuoteState({ loading: false, error: !wizardState.materialId ? 'Select a material first' : 'Select a vendor' });
-      return;
-    }
-    const { shippingInfo } = wizardState;
-    if (!shippingInfo?.firstName || !shippingInfo.lastName || !shippingInfo.address1 || !shippingInfo.city || !shippingInfo.state || !shippingInfo.postalCode || !shippingInfo.phone) {
-      setQuoteState({ loading: false, error: 'Complete shipping form' });
-      return;
-    }
-    setQuoteState({ loading: true });
-    try {
-      const quantity = shippingInfo.quantity && shippingInfo.quantity > 0 ? Math.min(100, Math.floor(shippingInfo.quantity)) : 1;
-      const printModelUrl = await getModelUrlForPrinting();
-
-      if (wizardState.vendorId === 'shapeways') {
-        const data = await getShapewaysQuote({ modelUrl: printModelUrl, selections: { baseMaterialId: wizardState.materialId, colorId: wizardState.colorId, finishId: wizardState.finishId }, quantity, shippingAddress: { firstName: shippingInfo.firstName!, lastName: shippingInfo.lastName!, email: shippingInfo.email || 'user@example.com', address1: shippingInfo.address1!, city: shippingInfo.city!, state: shippingInfo.state!, zipCode: shippingInfo.postalCode!, country: 'US', phone: shippingInfo.phone! } });
-        setQuoteState({ loading: false, data });
-      } else if (wizardState.vendorId === 'slant3d') {
-        const filamentPublicId = slant3DFilamentMap[wizardState.materialId] || wizardState.materialId;
-        const data = await getSlant3DQuote({ modelUrl: printModelUrl, filamentId: filamentPublicId, quantity, shippingAddress: { firstName: shippingInfo.firstName!, lastName: shippingInfo.lastName!, email: shippingInfo.email || 'user@example.com', address1: shippingInfo.address1!, address2: shippingInfo.address2, city: shippingInfo.city!, state: shippingInfo.state!, zipCode: shippingInfo.postalCode!, country: 'US', phone: shippingInfo.phone! } });
-        setQuoteState({ loading: false, data });
-      } else if (wizardState.vendorId === 'treatstock') {
-        const data = await getTreatstockQuote({ modelUrl: printModelUrl, quantity, shippingAddress: { firstName: shippingInfo.firstName!, lastName: shippingInfo.lastName!, email: shippingInfo.email || 'user@example.com', address1: shippingInfo.address1!, address2: shippingInfo.address2, city: shippingInfo.city!, state: shippingInfo.state!, zipCode: shippingInfo.postalCode!, country: 'US', phone: shippingInfo.phone! } });
-        setQuoteState({ loading: false, data });
-      } else if (wizardState.vendorId === 'craftcloud') {
-        const materialConfigId = getCraftcloudMaterialConfigId(wizardState.materialId!, wizardState.colorId, wizardState.finishId);
-        if (!materialConfigId) { setQuoteState({ loading: false, error: 'This material/color/finish combination is not available.' }); return; }
-        const isMulticolor = ['cc-multicolor-pla', 'cc-full-color', 'cc-mjf-multicolor'].includes(wizardState.materialId!);
-        let objUrl: string | undefined, mtlUrl: string | undefined;
-        if (isMulticolor && generatedModel?.id) {
-          const { data: record } = await supabase.from('generated_models').select('obj_url, mtl_url').eq('id', generatedModel.id).single();
-          objUrl = record?.obj_url || undefined;
-          mtlUrl = record?.mtl_url || undefined;
-        }
-        const data = await getCraftcloudQuote({ modelUrl: printModelUrl, materialConfigId, quantity, shippingAddress: { firstName: shippingInfo.firstName!, lastName: shippingInfo.lastName!, email: shippingInfo.email || 'user@example.com', address1: shippingInfo.address1!, city: shippingInfo.city!, state: shippingInfo.state!, zipCode: shippingInfo.postalCode!, country: 'US', phone: shippingInfo.phone! }, ...(isMulticolor && objUrl && { objUrl, mtlUrl }) });
-        if (!data.vendorOptions || data.vendorOptions.length === 0) { setQuoteState({ loading: false, error: 'No print vendors returned quotes.' }); return; }
-        setCraftcloudVendorOptions(data.vendorOptions);
-        setSelectedCraftcloudVendor(0);
-        setShowVendorModal(true);
-        const cheapest = data.vendorOptions[0];
-        setQuoteState({ loading: false, data: { quoteId: data.craftcloudPriceId, priceTotal: cheapest.totalPrice, currency: data.currency, itemTotal: cheapest.itemPrice, shippingTotal: cheapest.shippingPrice, craftcloudPriceId: data.craftcloudPriceId, craftcloudQuoteId: cheapest.craftcloudQuoteId, craftcloudShippingId: cheapest.craftcloudShippingId, vendorName: cheapest.vendorId, productionTime: `${cheapest.productionTimeFast}-${cheapest.productionTimeSlow} business days` } });
-      }
-    } catch (e: any) {
-      if (e?.code === 'material_not_printable') {
-        setQuoteState({ loading: false, error: 'Full Color Nylon (MJF) is not available for this model. Please choose a different material.' });
-      } else {
-        setQuoteState({ loading: false, error: e.message || 'Quote failed' });
-      }
+      navigate(`/model/${modelId}`);
     }
   };
 
-  const handlePlaceOrder = async () => {
-    if (!quoteState.data || !wizardState.vendorId) return;
-    const { shippingInfo } = wizardState;
-    if (!shippingInfo) return;
-    setOrderState({ loading: true });
-    try {
-      const quantity = shippingInfo.quantity && shippingInfo.quantity > 0 ? Math.min(100, Math.floor(shippingInfo.quantity)) : 1;
-      const printModelUrl = await getModelUrlForPrinting();
-      const addr = { firstName: shippingInfo.firstName!, lastName: shippingInfo.lastName!, email: shippingInfo.email || 'user@example.com', address1: shippingInfo.address1!, address2: shippingInfo.address2, city: shippingInfo.city!, state: shippingInfo.state!, zipCode: shippingInfo.postalCode!, country: 'US', phone: shippingInfo.phone! };
-      const successNav = (resp: any) => navigate('/order-success', { state: { isDirectOrder: true, orderData: { orderId: resp.orderNumber, customerName: `${shippingInfo.firstName} ${shippingInfo.lastName}`, customerEmail: shippingInfo.email || 'user@example.com', filename: 'model', quantity: quantity.toString(), material: wizardState.materialId || '', shippingAddress: { name: `${shippingInfo.firstName} ${shippingInfo.lastName}`, street: shippingInfo.address1!, city: shippingInfo.city!, state: shippingInfo.state!, zip: shippingInfo.postalCode! }, message: 'Order submitted successfully.' } } });
 
-      if (wizardState.vendorId === 'shapeways') {
-        const resp = await createShapewaysOrder({ modelUrl: printModelUrl, selections: { baseMaterialId: wizardState.materialId!, colorId: wizardState.colorId, finishId: wizardState.finishId }, quantity, shippingAddress: addr, priorQuote: quoteState.data.itemTotal != null && quoteState.data.surcharge != null ? { itemTotal: quoteState.data.itemTotal, surcharge: quoteState.data.surcharge, total: quoteState.data.priceTotal } : undefined, quoteId: quoteState.data.quoteId });
-        setOrderState({ loading: false, data: resp });
-        successNav(resp);
-      } else if (wizardState.vendorId === 'slant3d') {
-        const filamentPublicId = slant3DFilamentMap[wizardState.materialId!] || wizardState.materialId!;
-        const resp = await createSlant3DOrder({ modelUrl: printModelUrl, filamentId: filamentPublicId, quantity, shippingAddress: addr, priorQuote: quoteState.data.itemTotal != null && quoteState.data.shippingTotal != null ? { itemTotal: quoteState.data.itemTotal, shippingTotal: quoteState.data.shippingTotal, total: quoteState.data.priceTotal } : undefined, quoteId: quoteState.data.quoteId, publicFileServiceId: quoteState.data.publicFileServiceId });
-        setOrderState({ loading: false, data: resp });
-        successNav(resp);
-      } else if (wizardState.vendorId === 'treatstock') {
-        const resp = await createTreatstockOrder({ modelUrl: printModelUrl, quantity, shippingAddress: addr, priorQuote: { itemTotal: quoteState.data.itemTotal ?? quoteState.data.priceTotal, shippingTotal: quoteState.data.shippingTotal ?? 0, total: quoteState.data.priceTotal }, quoteId: quoteState.data.quoteId, quoteRaw: quoteState.data.treatstockRaw! });
-        setOrderState({ loading: false, data: resp });
-        successNav(resp);
-      } else if (wizardState.vendorId === 'craftcloud') {
-        const resp = await createCraftcloudOrder({ craftcloudQuoteId: quoteState.data.craftcloudQuoteId!, craftcloudShippingId: quoteState.data.craftcloudShippingId!, craftcloudPriceId: quoteState.data.craftcloudPriceId!, quantity, shippingAddress: addr, successUrl: `${window.location.origin}/order-success?vendor=craftcloud`, cancelUrl: `${window.location.origin}/generate?payment=cancelled`, priorQuote: quoteState.data.itemTotal != null && quoteState.data.shippingTotal != null ? { itemTotal: quoteState.data.itemTotal, shippingTotal: quoteState.data.shippingTotal, total: quoteState.data.priceTotal } : undefined, quoteId: quoteState.data.quoteId, modelUrl: printModelUrl });
-        setOrderState({ loading: false, data: resp });
-        window.location.href = resp.stripeCheckoutUrl;
-      }
-    } catch (e: any) {
-      if (e.message === 'price_changed') {
-        setOrderState({ loading: false, error: 'Price changed since quote. Please Get Quote again.' });
-      } else {
-        setOrderState({ loading: false, error: e.message || 'Order failed' });
-      }
-    }
-  };
+  const isWorking = status === 'generating' || status === 'scaling';
 
-  const availableMaterials = wizardState.vendorId === 'slant3d'
-    ? (slant3DFilaments.length > 0 ? slant3DFilaments : SLANT3D_MATERIALS)
-    : getMaterialsForVendor(wizardState.vendorId || '');
+  // ── Generating angle views ──────────────────────────────────────────
+  if (status === 'generating_angles' && selectedVariationUrl) {
+    return (
+      <div className="pt-16 min-h-screen bg-brand-dark">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-16">
+          <div className="text-center">
+            <div className="mb-6">
+              <img src={selectedVariationUrl} alt="Selected design" className="w-32 h-32 object-cover rounded-xl mx-auto shadow-lg" />
+            </div>
+            <Loader2 className="h-8 w-8 text-brand-accent animate-spin mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">Generating Angle Views</h2>
+            <p className="text-white/40 text-sm">Creating front, back, left, and right views of your design...</p>
+            <p className="text-white/30 text-xs mt-2">This may take 30-60 seconds</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const isCompleted = status === 'completed' && generatedModel;
-  const isWorking = status === 'generating' || status === 'scaling' || status === 'repairing';
+  // ── Info collection view ──────────────────────────────────────────────
+  if (status === 'info_collection' && selectedVariationUrl) {
+    return (
+      <InfoCollection
+        selectedImage={selectedVariationUrl}
+        prompt={imagePrompt || prompt || 'AI-generated design'}
+        onSubmit={handleInfoSubmit}
+        loading={false}
+        angleImages={angleImages}
+        angleLabels={ANGLE_LABELS}
+      />
+    );
+  }
 
   // ── Pre-generation view ──────────────────────────────────────────────
-  if (!isCompleted && !isWorking) {
+  if (!isWorking && status === 'pending') {
     return (
       <div className="pt-16 min-h-screen bg-brand-dark">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-16">
@@ -813,9 +761,9 @@ export function Generate() {
 
         {/* Generation progress overlay */}
         <GenerationProgress
-          progress={status === 'completed' ? 100 : status === 'repairing' ? 95 : status === 'scaling' ? 90 : generationProgress}
+          progress={status === 'completed' ? 100 : status === 'scaling' ? 90 : generationProgress}
           status={status === 'scaling' ? 'generating' : status}
-          estimatedTime={status === 'scaling' ? 'Scaling model...' : status === 'repairing' ? 'Preparing for 3D printing...' : undefined}
+          estimatedTime={status === 'scaling' ? 'Scaling model...' : undefined}
         />
       </div>
     );
@@ -826,350 +774,22 @@ export function Generate() {
     return (
       <div className="pt-16 min-h-screen bg-brand-dark">
         <GenerationProgress
-          progress={status === 'completed' ? 100 : status === 'repairing' ? 95 : status === 'scaling' ? 90 : generationProgress}
+          progress={status === 'completed' ? 100 : status === 'scaling' ? 90 : generationProgress}
           status={status === 'scaling' ? 'generating' : status}
-          estimatedTime={status === 'scaling' ? 'Scaling model...' : status === 'repairing' ? 'Preparing for 3D printing...' : undefined}
+          estimatedTime={status === 'scaling' ? 'Scaling model...' : undefined}
         />
       </div>
     );
   }
 
-  // ── Post-generation: product page ────────────────────────────────────
+  // ── Post-generation: redirect to model result page ──────────────────
+  // This shouldn't normally render since polling success redirects,
+  // but handle edge cases (e.g., coming back with existing model)
   return (
-    <div className="pt-16 min-h-screen bg-brand-dark">
-      <div className="max-w-[1400px] mx-auto">
-        <div className="flex flex-col lg:flex-row">
-          {/* Left — Model viewer (60%) */}
-          <FadeIn x={-20} duration={0.7} className="lg:w-[60%] bg-brand-dark-lighter lg:min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 lg:p-8">
-            <div className="w-full aspect-square max-w-[700px]">
-              <ModelViewer
-                modelUrl={generatedModel}
-                className="h-full w-full rounded-2xl"
-              />
-            </div>
-          </FadeIn>
-
-          {/* Right — Checkout sidebar (40%) */}
-          <div className="lg:w-[40%] lg:min-h-[calc(100vh-4rem)] lg:overflow-y-auto border-l border-white/5">
-            <div className="p-6 lg:p-10 max-w-lg mx-auto">
-              {!checkoutMode ? (
-                <>
-                  {/* Title */}
-                  <FadeIn delay={0.2} y={12}>
-                    <h1 className="text-2xl font-bold text-white mb-1">
-                      {generatedModel?.prompt || 'Your Custom Design'}
-                    </h1>
-                    <p className="text-sm text-white/30 mb-8">AI-generated 3D model</p>
-                  </FadeIn>
-
-                  {/* Material toggle: Color vs Monochromatic */}
-                  <div className="mb-6">
-                    <label className="text-xs font-semibold uppercase tracking-wider text-white/30 mb-3 block">
-                      Print Type
-                    </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button className="card-glow p-4 rounded-xl border-2 border-brand-accent/50 bg-brand-dark-card text-center transition-all">
-                        <div className="w-6 h-6 mx-auto mb-2 rounded-full" style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }} />
-                        <span className="text-sm font-medium text-white">Full Color</span>
-                        <p className="text-xs text-white/30 mt-1">HD color print</p>
-                      </button>
-                      <button className="card-glow p-4 rounded-xl border-2 border-white/10 bg-brand-dark-card text-center transition-all hover:border-white/20">
-                        <div className="w-6 h-6 mx-auto mb-2 rounded-full bg-white/20" />
-                        <span className="text-sm font-medium text-white">Monochromatic</span>
-                        <p className="text-xs text-white/30 mt-1">Single color SLA</p>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Dimensions summary */}
-                  {scaleInfo && (
-                    <div className="mb-6 p-4 bg-white/5 rounded-xl">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-white/30 mb-2">Dimensions</p>
-                      <div className="grid grid-cols-3 gap-3 text-sm">
-                        <div>
-                          <span className="text-white/30 block">W</span>
-                          <span className="font-medium text-white">{scaleInfo.finalDimensions.width.toFixed(1)} {pendingDimensions?.unit || 'cm'}</span>
-                        </div>
-                        <div>
-                          <span className="text-white/30 block">H</span>
-                          <span className="font-medium text-white">{scaleInfo.finalDimensions.height.toFixed(1)} {pendingDimensions?.unit || 'cm'}</span>
-                        </div>
-                        <div>
-                          <span className="text-white/30 block">D</span>
-                          <span className="font-medium text-white">{scaleInfo.finalDimensions.depth.toFixed(1)} {pendingDimensions?.unit || 'cm'}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Repair status */}
-                  {repairReport && (
-                    <div className={`mb-6 p-4 rounded-xl text-sm ${
-                      repairReport.print_ready
-                        ? 'bg-green-900/20 text-green-400 border border-green-500/20'
-                        : 'bg-yellow-900/20 text-yellow-400 border border-yellow-500/20'
-                    }`}>
-                      {repairReport.print_ready ? 'Model is print-ready' : 'Model may need adjustments for best results'}
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  <FadeInUp delay={0.35}>
-                    <div className="space-y-3 mb-8">
-                      <MotionButton
-                        onClick={() => {
-                          setWizardState(prev => ({
-                            ...prev,
-                            modelData: generatedModel,
-                            modelUrl: generatedModel?.urls?.glb,
-                            stlUrl: generatedModel?.urls?.stl,
-                          }));
-                          setCheckoutMode(true);
-                          setCheckoutStep(1);
-                          setQuoteState({ loading: false });
-                          setOrderState({ loading: false });
-                        }}
-                        className="btn-glow w-full py-4 bg-brand-accent text-brand-dark text-sm font-semibold uppercase tracking-wider rounded-lg flex items-center justify-center gap-2"
-                      >
-                        <Printer className="h-4 w-4" />
-                        Order Print
-                      </MotionButton>
-
-                      <MotionButton
-                        onClick={handleBuyNow}
-                        className="w-full py-4 bg-white/5 text-white border border-white/10 text-sm font-semibold uppercase tracking-wider rounded-lg hover:bg-white/10 transition-colors flex items-center justify-center gap-2"
-                      >
-                        <Download className="h-4 w-4" />
-                        Download Model
-                      </MotionButton>
-                    </div>
-                  </FadeInUp>
-
-                  {/* Details accordion */}
-                  <details className="group border-t border-white/5 pt-4">
-                    <summary className="flex items-center justify-between cursor-pointer py-2">
-                      <span className="text-sm font-medium text-white/70">Model Details</span>
-                      <ChevronDown className="h-4 w-4 text-white/30 group-open:rotate-180 transition-transform" />
-                    </summary>
-                    <div className="pb-4 pt-2 text-sm text-white/40 space-y-2">
-                      <div className="flex justify-between">
-                        <span>Format</span>
-                        <span className="font-medium text-white/70">GLB, STL</span>
-                      </div>
-                      {pendingDimensions && (
-                        <div className="flex justify-between">
-                          <span>Target {pendingDimensions.target}</span>
-                          <span className="font-medium text-white/70">{pendingDimensions.value} {pendingDimensions.unit}</span>
-                        </div>
-                      )}
-                    </div>
-                  </details>
-
-                  {/* Generate another */}
-                  <div className="border-t border-white/5 pt-6 mt-4">
-                    <button
-                      onClick={() => {
-                        setStatus('pending');
-                        setGeneratedModel(null);
-                        setRepairReport(null);
-                        setScaleInfo(null);
-                        setGenerationProgress(0);
-                        repairDispatchedRef.current = false;
-                      }}
-                      className="text-sm text-brand-accent hover:underline font-medium"
-                    >
-                      Generate another design
-                    </button>
-                  </div>
-                </>
-              ) : (
-                /* ── Inline checkout flow ───────────────────────────── */
-                <>
-                  {/* Back button */}
-                  <button
-                    onClick={() => {
-                      if (checkoutStep > 1) {
-                        setCheckoutStep(prev => prev - 1);
-                      } else {
-                        setCheckoutMode(false);
-                      }
-                    }}
-                    className="flex items-center gap-2 text-white/50 hover:text-white transition-colors mb-6 text-sm"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    {checkoutStep > 1 ? 'Back to Materials' : 'Back'}
-                  </button>
-
-                  {/* Step indicator */}
-                  <div className="mb-6">
-                    <h2 className="text-xl font-bold text-white mb-1">
-                      {checkoutStep === 1 ? 'Select Material & Color' : 'Shipping & Payment'}
-                    </h2>
-                    <p className="text-sm text-white/30">
-                      Step {checkoutStep} of 2
-                    </p>
-                    <div className="flex gap-2 mt-3">
-                      <div className={`h-1 flex-1 rounded-full ${checkoutStep >= 1 ? 'bg-brand-accent' : 'bg-white/10'}`} />
-                      <div className={`h-1 flex-1 rounded-full ${checkoutStep >= 2 ? 'bg-brand-accent' : 'bg-white/10'}`} />
-                    </div>
-                  </div>
-
-                  {/* Step 1: Material Selection */}
-                  {checkoutStep === 1 && (
-                    <div>
-                      {wizardState.vendorId === 'slant3d' && loadingFilaments && (
-                        <div className="text-center py-4">
-                          <p className="text-white/50">Loading available materials...</p>
-                        </div>
-                      )}
-                      <MaterialSelection
-                        materials={availableMaterials}
-                        selectedMaterialId={wizardState.materialId}
-                        selectedColorId={wizardState.colorId}
-                        selectedFinishId={wizardState.finishId}
-                        onMaterialSelect={handleMaterialSelect}
-                        onColorSelect={handleColorSelect}
-                        onFinishSelect={handleFinishSelect}
-                        onNext={() => setCheckoutStep(2)}
-                        onBack={() => setCheckoutMode(false)}
-                      />
-                    </div>
-                  )}
-
-                  {/* Step 2: Shipping + Quote + Order */}
-                  {checkoutStep === 2 && (
-                    <div className="space-y-6">
-                      {/* Quantity selector */}
-                      <div>
-                        <label className="block text-sm font-medium text-white/70 mb-2">Quantity</label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="100"
-                          value={wizardState.shippingInfo?.quantity || 1}
-                          onChange={(e) => handleShippingInfoChange({ quantity: parseInt(e.target.value) || 1 })}
-                          className="w-20 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50 text-sm"
-                        />
-                      </div>
-
-                      <ShippingForm
-                        shippingInfo={wizardState.shippingInfo || {}}
-                        onShippingInfoChange={handleShippingInfoChange}
-                        onBack={() => setCheckoutStep(1)}
-                        onGetQuote={handleGetQuote}
-                        isQuoteLoading={quoteState.loading}
-                        quoteError={quoteState.error}
-                        quoteData={quoteState.data}
-                        onPlaceOrder={handlePlaceOrder}
-                        isOrderLoading={orderState.loading}
-                        orderError={orderState.error}
-                      />
-
-                      {/* Craftcloud vendor selection modal */}
-                      {showVendorModal && craftcloudVendorOptions.length > 0 && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                          <div className="bg-brand-dark-card border border-white/10 rounded-2xl shadow-2xl max-w-lg w-full mx-4 p-6">
-                            <h3 className="text-xl font-semibold text-white mb-1">Select a Print Vendor</h3>
-                            <p className="text-sm text-white/40 mb-4">
-                              {craftcloudVendorOptions.length} vendor{craftcloudVendorOptions.length !== 1 ? 's' : ''} quoted — sorted by lowest price
-                            </p>
-                            <div className="space-y-3 max-h-80 overflow-y-auto mb-6">
-                              {craftcloudVendorOptions.map((option, idx) => (
-                                <button
-                                  key={option.craftcloudQuoteId}
-                                  onClick={() => {
-                                    setSelectedCraftcloudVendor(idx);
-                                    setQuoteState(prev => ({
-                                      ...prev,
-                                      data: prev.data ? {
-                                        ...prev.data,
-                                        priceTotal: option.totalPrice,
-                                        itemTotal: option.itemPrice,
-                                        shippingTotal: option.shippingPrice,
-                                        craftcloudQuoteId: option.craftcloudQuoteId,
-                                        craftcloudShippingId: option.craftcloudShippingId,
-                                        vendorName: option.vendorId,
-                                        productionTime: `${option.productionTimeFast}-${option.productionTimeSlow} business days`,
-                                      } : prev.data,
-                                    }));
-                                  }}
-                                  className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
-                                    selectedCraftcloudVendor === idx
-                                      ? 'border-brand-accent/50 bg-brand-accent/10'
-                                      : 'border-white/10 hover:border-white/20 bg-white/5'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-semibold text-white">{option.vendorId}</span>
-                                        {idx === 0 && (
-                                          <span className="text-xs bg-green-900/30 text-green-400 px-2 py-0.5 rounded-full font-medium">
-                                            Best Price
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-sm text-white/40 mt-1">
-                                        Production: {option.productionTimeFast}-{option.productionTimeSlow} days
-                                        {option.shippingName && ` · ${option.shippingName}`}
-                                        {option.shippingDeliveryTime && ` (${option.shippingDeliveryTime} days delivery)`}
-                                      </div>
-                                    </div>
-                                    <div className="text-right">
-                                      <div className="text-lg font-bold text-white">
-                                        ${option.totalPrice.toFixed(2)}
-                                      </div>
-                                      <div className="text-xs text-white/40 space-y-0.5">
-                                        <div>${option.itemPrice.toFixed(2)} item</div>
-                                        <div>${option.shippingPrice.toFixed(2)} shipping</div>
-                                        {option.minimumFee != null && option.minimumFee > 0 && (
-                                          <div className="text-amber-400">+${option.minimumFee.toFixed(2)} order minimum</div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                            <button
-                              onClick={() => setShowVendorModal(false)}
-                              disabled={selectedCraftcloudVendor < 0}
-                              className="btn-glow w-full bg-brand-accent text-brand-dark font-semibold py-3 rounded-lg hover:bg-brand-accent-light transition-colors disabled:opacity-50"
-                            >
-                              Confirm Selection
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
+    <div className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center">
+      <div className="text-center">
+        <p className="text-white/50">Redirecting to your model...</p>
       </div>
-
-      {/* Thumbnail Selector Modal */}
-      {thumbnailData && (
-        <ThumbnailSelector
-          modelId={generatedModel?.id}
-          angles={thumbnailData.angles}
-          selectedAngle={thumbnailData.selectedAngle}
-          onSelect={(angle) => {
-            setThumbnailData(prev => prev ? { ...prev, selectedAngle: angle, isCustom: false } : null);
-          }}
-          onUpload={(_file) => {
-            setThumbnailData(prev => prev ? { ...prev, isCustom: true } : null);
-          }}
-          onRemove={() => {
-            setThumbnailData(prev => prev ? { ...prev, isCustom: false } : null);
-          }}
-          isOpen={showThumbnailSelector}
-          onClose={() => setShowThumbnailSelector(false)}
-          isCustom={thumbnailData.isCustom}
-        />
-      )}
     </div>
   );
 }

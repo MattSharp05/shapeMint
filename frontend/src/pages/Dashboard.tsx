@@ -218,21 +218,8 @@ export function Dashboard() {
                       key={model.id}
                       className="group card-glow rounded-2xl overflow-hidden bg-brand-dark-card cursor-pointer"
                       onClick={() => {
-                        if (model.status === 'completed' && model.glb_url) {
-                          navigate('/generate', {
-                            state: {
-                              existingModel: {
-                                id: model.id,
-                                prompt: model.prompt || model.name,
-                                modelUrl: model.glb_url,
-                                urls: {
-                                  glb: model.glb_url,
-                                  stl: model.stl_url || undefined,
-                                  obj: model.obj_url || undefined,
-                                },
-                              },
-                            },
-                          });
+                        if (model.status === 'completed' && model.id) {
+                          navigate(`/model/${model.id}`);
                         }
                       }}
                     >

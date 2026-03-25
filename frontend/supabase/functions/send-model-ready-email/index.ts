@@ -41,7 +41,7 @@ function buildPriceRow(label: string, quote: QuoteInfo): string {
 
 function buildEmailHtml(data: EmailRequest): string {
   const { firstName, prompt, thumbnailUrl, modelId, colorQuote, monoQuote, slsQuote } = data;
-  const modelUrl = `https://shapemint.dev/model/${modelId}`;
+  const modelUrl = `https://shape-mint.vercel.app/model/${modelId}`;
   const name = firstName || 'there';
 
   const hasQuotes = colorQuote || monoQuote || slsQuote;

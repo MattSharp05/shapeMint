@@ -167,41 +167,46 @@ export function ModelResult() {
     fetchModel();
   }, [id, user]);
 
-  // Poll if still generating
+  // Supabase Realtime: subscribe to model updates while generating
   useEffect(() => {
-    if (!model || model.status === 'completed' || model.status === 'failed') return;
-    const interval = setInterval(async () => {
-      const { data } = await supabase
-        .from('generated_models')
-        .select('status, progress, glb_url, model_url, stl_url, shipping_info, color_quotes, mono_quotes, sls_quotes')
-        .eq('id', id)
-        .single();
-      if (data) {
-        setModel(prev => prev ? { ...prev, ...data } : prev);
-        if (data.shipping_info && !shippingForm.firstName) {
+    if (!id || !model || model.status === 'completed' || model.status === 'failed') return;
+
+    const channel = supabase.channel(`model-${id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'generated_models',
+        filter: `id=eq.${id}`,
+      }, (payload: any) => {
+        const newData = payload.new;
+        console.log('🔄 Realtime update:', newData.status, 'progress:', newData.progress);
+        setModel(prev => prev ? { ...prev, ...newData } : prev);
+
+        if (newData.shipping_info && !shippingForm.firstName) {
           setShippingForm({
-            firstName: data.shipping_info.firstName || '', lastName: data.shipping_info.lastName || '',
-            email: data.shipping_info.email || '', phone: data.shipping_info.phone || '',
-            address1: data.shipping_info.address1 || '', address2: data.shipping_info.address2 || '',
-            city: data.shipping_info.city || '', state: data.shipping_info.state || '',
-            postalCode: data.shipping_info.postalCode || '',
+            firstName: newData.shipping_info.firstName || '', lastName: newData.shipping_info.lastName || '',
+            email: newData.shipping_info.email || '', phone: newData.shipping_info.phone || '',
+            address1: newData.shipping_info.address1 || '', address2: newData.shipping_info.address2 || '',
+            city: newData.shipping_info.city || '', state: newData.shipping_info.state || '',
+            postalCode: newData.shipping_info.postalCode || '',
           });
         }
-        if (data.status === 'completed' || data.status === 'failed') {
-          clearInterval(interval);
-          if (data.color_quotes?.vendors?.length > 0) {
-            setColorQuote({ vendors: data.color_quotes.vendors, craftcloudPriceId: data.color_quotes.craftcloudPriceId, currency: data.color_quotes.currency || 'USD', loading: false });
+
+        if (newData.status === 'completed' || newData.status === 'failed') {
+          if (newData.color_quotes?.vendors?.length > 0) {
+            setColorQuote({ vendors: newData.color_quotes.vendors, craftcloudPriceId: newData.color_quotes.craftcloudPriceId, currency: newData.color_quotes.currency || 'USD', loading: false });
           }
-          if (data.mono_quotes?.vendors?.length > 0) {
-            setMonoQuote({ vendors: data.mono_quotes.vendors, craftcloudPriceId: data.mono_quotes.craftcloudPriceId, currency: data.mono_quotes.currency || 'USD', loading: false });
+          if (newData.mono_quotes?.vendors?.length > 0) {
+            setMonoQuote({ vendors: newData.mono_quotes.vendors, craftcloudPriceId: newData.mono_quotes.craftcloudPriceId, currency: newData.mono_quotes.currency || 'USD', loading: false });
           }
-          if (data.sls_quotes?.vendors?.length > 0) {
-            setSlsQuote({ vendors: data.sls_quotes.vendors, craftcloudPriceId: data.sls_quotes.craftcloudPriceId, currency: data.sls_quotes.currency || 'USD', loading: false });
+          if (newData.sls_quotes?.vendors?.length > 0) {
+            setSlsQuote({ vendors: newData.sls_quotes.vendors, craftcloudPriceId: newData.sls_quotes.craftcloudPriceId, currency: newData.sls_quotes.currency || 'USD', loading: false });
           }
         }
-      }
-    }, 5000);
-    return () => clearInterval(interval);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [model?.status, id, shippingForm.firstName]);
 
   const getShippingAddress = useCallback(() => {

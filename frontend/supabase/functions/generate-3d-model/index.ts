@@ -20,7 +20,7 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt = '', image: imageData, user_id: userId, type, mode = 'preview' } = await req.json()
+    const { prompt = '', image: imageData, user_id: userId, type, mode = 'preview', dimensions } = await req.json()
 
     const meshyApiKey = Deno.env.get('MESHY_API_KEY')
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
@@ -45,6 +45,7 @@ serve(async (req) => {
         image_url: imageData,
         enable_pbr: true,
         should_texture: true,
+        auto_size: true,
       }
       console.log('🎯 Using v1 Image-to-3D API.')
     } else if (type === 'multi-image-to-3d') {
@@ -52,6 +53,7 @@ serve(async (req) => {
       requestBody = {
         image_urls: imageData, // imageData is string[] for multi-image
         enable_pbr: true,
+        auto_size: true,
       }
       console.log('🎯 Using Multi-Image-to-3D API with', Array.isArray(imageData) ? imageData.length : 0, 'images.')
       console.log('📸 Image URLs:', JSON.stringify(imageData))
@@ -62,6 +64,7 @@ serve(async (req) => {
         art_style: 'realistic', // v2 requires an art style
         mode: mode, // 'preview' or 'refine'
         enable_pbr: true,
+        auto_size: true,
       }
       console.log('🎯 Using v2 Text-to-3D API.')
     } else {
@@ -103,6 +106,9 @@ serve(async (req) => {
       throw new Error('Failed to get task ID from Meshy.')
     }
 
+    console.log(`🎯 Meshy task created: ${taskId} (type=${type}, mode=${mode})`)
+    console.log(`🎯 Webhook should fire at: meshy-webhook?secret=*** when task ${taskId} completes`)
+
     // Try to save to database
     let recordId: string | null = null
 
@@ -117,7 +123,7 @@ serve(async (req) => {
       }
     }
 
-    const taskRecord = {
+    const taskRecord: Record<string, any> = {
       user_id: effectiveUserId, // null for anonymous users
       prompt: prompt || 'Image-to-3D generation',
       type: type,
@@ -125,7 +131,10 @@ serve(async (req) => {
       mode: mode,
       meshy_task_id: taskId,
       notes: `Meshy task: ${taskId}`,
-      is_marketplace_listed: true
+      is_marketplace_listed: true,
+    }
+    if (dimensions) {
+      taskRecord.target_dimensions = dimensions
     }
 
     const { data: insertedRecord, error: dbError } = await supabase
@@ -136,9 +145,10 @@ serve(async (req) => {
 
     if (dbError) {
       console.warn('⚠️ Database save failed (non-critical):', dbError.message)
+      console.warn('⚠️ DB error details:', JSON.stringify(dbError))
     } else {
       recordId = insertedRecord?.id
-      console.log('✅ Model saved to database with ID:', recordId)
+      console.log(`✅ Model saved to database: recordId=${recordId}, meshyTaskId=${taskId}`)
     }
 
     // Use DB record ID if available, otherwise fall back to raw Meshy task ID
@@ -146,6 +156,8 @@ serve(async (req) => {
     if (!recordId) {
       console.log('ℹ️ No DB record — returning raw Meshy task ID:', taskId)
     }
+
+    console.log(`📋 Summary: responseId=${responseId}, meshyTaskId=${taskId}, type=${type}, userId=${effectiveUserId || 'anonymous'}, dimensions=${dimensions ? JSON.stringify(dimensions) : 'none'}`)
 
     // Fire-and-forget: pre-warm the Blender repair container
     // so it's ready by the time Meshy finishes (1-5 minutes later)

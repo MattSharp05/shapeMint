@@ -44,7 +44,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const name = recipientName || 'there';
-    const modelUrl = `https://shapemint.dev/model/${modelId}`;
+    const modelUrl = `https://shape-mint.vercel.app/model/${modelId}`;
     const message = `Hey ${name}! Your ShapeMint 3D model is ready. View it and order a print here: ${modelUrl}`;
 
     // Twilio REST API - send SMS

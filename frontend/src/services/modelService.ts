@@ -55,6 +55,7 @@ interface Generate3DModelParams {
   image?: string | string[] | File;
   mode?: 'preview' | 'refine';
   userId: string;
+  dimensions?: { value: number; unit: string; target: string };
 }
 
 // Type for the edge function payload
@@ -64,6 +65,7 @@ interface GenerateModelPayload {
   type: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d';
   mode: 'preview' | 'refine';
   image?: string | string[];
+  dimensions?: { value: number; unit: string; target: string };
 }
 
 export interface ModelService {
@@ -92,6 +94,11 @@ export const modelService: ModelService = {
         type: params.type,
         mode: params.mode || 'preview'
       };
+
+      // Add dimensions if provided
+      if (params.dimensions) {
+        payload.dimensions = params.dimensions;
+      }
 
       // Add image for image-to-3d or multi-image-to-3d type
       if ((params.type === 'image-to-3d' || params.type === 'multi-image-to-3d') && params.image) {

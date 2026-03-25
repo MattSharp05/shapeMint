@@ -231,7 +231,7 @@ Deno.serve(async (req: Request) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         orderId,
-        successUrl: `${successUrl}${successUrl.includes('?') ? '&' : '?'}order_id=${orderId}`,
+        returnUrl: `${successUrl}${successUrl.includes('?') ? '&' : '?'}order_id=${orderId}`,
         cancelUrl: `${cancelUrl}${cancelUrl.includes('?') ? '&' : '?'}order_id=${orderId}`,
       }),
       timeoutMs: 15000,

@@ -39,7 +39,7 @@ export function Generate() {
   const [generationProgress, setGenerationProgress] = useState(0);
 
   // Multi-angle state
-  const [angleImages, setAngleImages] = useState<string[] | null>(null);
+  const [angleImages, setAngleImages] = useState<(string | null)[] | null>(null);
   const [angleError, setAngleError] = useState<string | null>(null);
 
   // Generation form state
@@ -89,18 +89,36 @@ export function Generate() {
   }, [location.state, navigate]);
 
   // Handle image/text transform request from GenerationForm
-  // All generation paths now go through fal.ai first for 2D previews
+  // Fires 4 parallel calls with numImages=1 for progressive loading
   const handleImageTransformRequest = async (image: string | null, transformPrompt: string, dimensions: ModelDimensions) => {
     setIsTransforming(true);
     setTransformError(null);
-    setTransformedImages(null);
+    setTransformedImages([]);  // Start with empty array (not null) to show progressive UI
     setPendingDimensions(dimensions);
     lastTransformInputs.current = { image: image || '', prompt: transformPrompt };
 
     try {
-      console.log(`Starting ${image ? 'image transformation' : 'text-to-image generation'} via fal.ai...`);
-      const result = await falImageService.transformImage(transformPrompt, image);
-      setTransformedImages(result.images);
+      console.log(`Starting ${image ? 'image transformation' : 'text-to-image generation'} via fal.ai (4 parallel calls)...`);
+
+      // Fire 4 parallel calls, each producing 1 image
+      const promises = Array.from({ length: 4 }, (_, i) =>
+        falImageService.transformImage(transformPrompt, image, { numImages: 1 })
+          .then(result => {
+            if (result.images.length > 0) {
+              console.log(`Variation ${i + 1} ready`);
+              setTransformedImages(prev => {
+                const updated = [...(prev || [])];
+                updated[i] = result.images[0];
+                return updated;
+              });
+            }
+          })
+          .catch(err => {
+            console.error(`Variation ${i + 1} failed:`, err);
+          })
+      );
+
+      await Promise.all(promises);
     } catch (err: any) {
       console.error('fal.ai generation failed:', err);
       setTransformError(err.message || 'Failed to generate previews. Please try again.');
@@ -120,18 +138,18 @@ export function Generate() {
     }
   };
 
-  // Handle user selecting a transformed image variation — generate angle views
+  // Handle user selecting a transformed image variation — generate angle views progressively
   const handleVariationSelect = async (selectedImageUrl: string) => {
     console.log('User selected variation, generating angle views...');
     setSelectedVariationUrl(selectedImageUrl);
     selectedVariationUrlRef.current = selectedImageUrl;
     setTransformedImages(null);
-    setAngleImages(null);
+    setAngleImages([null, null, null, null]);  // 4 slots, null = loading
     setAngleError(null);
     setStatus('generating_angles');
 
     try {
-      // Generate 4 angle views in parallel
+      // Generate 4 angle views in parallel, streaming each as it arrives
       const promises = ANGLE_PROMPTS.map((anglePrompt, i) => {
         console.log(`Generating ${ANGLE_LABELS[i]} view...`);
         return falImageService.transformImage(
@@ -147,20 +165,27 @@ export function Generate() {
         ).then(result => {
           if (result.images.length > 0) {
             console.log(`${ANGLE_LABELS[i]} view generated`);
+            setAngleImages(prev => {
+              const updated = [...(prev || [null, null, null, null])];
+              updated[i] = result.images[0];
+              return updated;
+            });
             return result.images[0];
           }
           throw new Error(`No image returned for ${ANGLE_LABELS[i]} view`);
+        }).catch(err => {
+          console.error(`${ANGLE_LABELS[i]} view failed:`, err);
+          return null;
         });
       });
 
-      const generatedAngles = await Promise.all(promises);
-      console.log(`All ${generatedAngles.length} angle views generated`);
-      setAngleImages(generatedAngles);
+      await Promise.all(promises);
+      console.log('All angle views completed');
       setStatus('info_collection');
     } catch (err: any) {
       console.error('Angle generation failed:', err);
       setAngleError(err.message || 'Failed to generate angle views.');
-      setStatus('info_collection'); // Still proceed to info collection, will use single image fallback
+      setStatus('info_collection');
     }
   };
 
@@ -173,17 +198,18 @@ export function Generate() {
     setStatus('generating');
 
     try {
-      // Use multi-image-to-3d if angle images are available, otherwise fallback to single image
-      const useMultiImage = angleImages && angleImages.length === 4;
+      // Use multi-image-to-3d if we have all 4 angle images, otherwise fallback to single image
+      const validAngleImages = angleImages?.filter((img): img is string => !!img) || [];
+      const useMultiImage = validAngleImages.length === 4;
       console.log(useMultiImage
-        ? `Sending ${angleImages!.length} angle images to Meshy (multi-image-to-3d)`
-        : 'Sending single reference image to Meshy (image-to-3d)');
+        ? `Sending ${validAngleImages.length} angle images to Meshy (multi-image-to-3d)`
+        : `Sending single reference image to Meshy (image-to-3d) — ${validAngleImages.length}/4 angles available`);
 
       const modelData = await modelService.generate3DModel({
         type: useMultiImage ? 'multi-image-to-3d' : 'image-to-3d',
         mode: 'preview',
         prompt: imagePrompt || prompt || 'AI-generated design',
-        image: useMultiImage ? angleImages! : selectedVariationUrl!,
+        image: useMultiImage ? validAngleImages : selectedVariationUrl!,
         userId: info.userId,
         dimensions: pendingDimensions || undefined,
       });
@@ -262,19 +288,35 @@ export function Generate() {
 
   const isWorking = status === 'generating' || status === 'scaling';
 
-  // ── Generating angle views ──────────────────────────────────────────
+  // ── Generating angle views (progressive) ────────────────────────────
   if (status === 'generating_angles' && selectedVariationUrl) {
+    const loadedCount = angleImages?.filter(Boolean).length || 0;
     return (
       <div className="pt-16 min-h-screen bg-brand-dark">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-16">
-          <div className="text-center">
+          <div className="text-center mb-6">
             <div className="mb-6">
               <img src={selectedVariationUrl} alt="Selected design" className="w-32 h-32 object-cover rounded-xl mx-auto shadow-lg" />
             </div>
-            <Loader2 className="h-8 w-8 text-brand-accent animate-spin mx-auto mb-4" />
             <h2 className="text-xl font-bold text-white mb-2">Generating Angle Views</h2>
-            <p className="text-white/40 text-sm">Creating front, back, left, and right views of your design...</p>
-            <p className="text-white/30 text-xs mt-2">This may take 30-60 seconds</p>
+            <p className="text-white/40 text-sm">{loadedCount}/4 views ready</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto">
+            {ANGLE_LABELS.map((label, i) => (
+              <div key={label} className="aspect-square rounded-xl overflow-hidden border border-white/10 bg-white/5">
+                {angleImages?.[i] ? (
+                  <div className="relative w-full h-full">
+                    <img src={angleImages[i]!} alt={`${label} view`} className="w-full h-full object-cover animate-fadeIn" />
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/40 text-white text-xs py-1 text-center">{label}</div>
+                  </div>
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center">
+                    <Loader2 className="h-6 w-6 text-brand-accent animate-spin mb-2" />
+                    <span className="text-white/30 text-xs">{label}</span>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -289,7 +331,7 @@ export function Generate() {
         prompt={imagePrompt || prompt || 'AI-generated design'}
         onSubmit={handleInfoSubmit}
         loading={false}
-        angleImages={angleImages}
+        angleImages={angleImages?.filter((img): img is string => !!img) || null}
         angleLabels={ANGLE_LABELS}
       />
     );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ModelViewer, ModelDimensions3D } from '../components/3D/ModelViewer';
 import { Card } from '../components/UI/Card';
@@ -7,6 +7,7 @@ import { FadeIn, FadeInUp } from '../components/Motion';
 import { supabase } from '../supabaseClient';
 import { getQuote as getCraftcloudQuote, CraftcloudVendorOption } from '../services/craftcloud';
 import { createOrder as createCraftcloudOrder } from '../services/craftcloudOrder';
+import { modelService } from '../services/modelService';
 import { Loader2, Package, Truck, MapPin, Link2, Check, ChevronRight, X, Palette, ChevronDown } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { CRAFTCLOUD_MATERIALS, getCraftcloudMaterialConfigId } from '../data/craftcloudMaterials';
@@ -31,6 +32,8 @@ interface ModelData {
   sls_quotes: any;
   progress: number;
   user_id: string;
+  meshy_task_id: string;
+  type: string;
 }
 
 interface QuoteSet {
@@ -180,7 +183,12 @@ export function ModelResult() {
       }, (payload: any) => {
         const newData = payload.new;
         console.log('🔄 Realtime update:', newData.status, 'progress:', newData.progress);
-        setModel(prev => prev ? { ...prev, ...newData } : prev);
+        setModel(prev => {
+          if (!prev) return prev;
+          // Never let Realtime decrease progress — polling gives more accurate values
+          const mergedProgress = Math.max(prev.progress || 0, newData.progress || 0);
+          return { ...prev, ...newData, progress: mergedProgress };
+        });
 
         if (newData.shipping_info && !shippingForm.firstName) {
           setShippingForm({
@@ -208,6 +216,51 @@ export function ModelResult() {
 
     return () => { supabase.removeChannel(channel); };
   }, [model?.status, id, shippingForm.firstName]);
+
+  // Poll Meshy for visual progress updates while model is processing
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (!model || !model.meshy_task_id || model.status === 'completed' || model.status === 'failed') {
+      // Clear any existing poll
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const meshyType = (model.type || 'image-to-3d') as 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d';
+
+    const poll = async () => {
+      try {
+        const result = await modelService.checkModelStatus(model.meshy_task_id, meshyType);
+        console.log('📊 Poll progress:', result.progress, 'status:', result.status);
+        if (result.progress !== undefined && result.progress > (model.progress || 0)) {
+          setModel(prev => prev ? { ...prev, progress: result.progress! } : prev);
+        }
+        // If poll sees completed/failed, stop polling — webhook + Realtime will handle the rest
+        if (result.status === 'completed' || result.status === 'failed') {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+        }
+      } catch (err) {
+        console.warn('⚠️ Progress poll failed:', err);
+      }
+    };
+
+    // Poll immediately, then every 5 seconds
+    poll();
+    pollIntervalRef.current = setInterval(poll, 5000);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [model?.status, model?.meshy_task_id]);
 
   const getShippingAddress = useCallback(() => {
     const src = model?.shipping_info || shippingForm;
@@ -396,7 +449,16 @@ export function ModelResult() {
             <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">{model.progress || 0}%</span>
           </div>
           <h2 className="text-xl font-bold text-white mb-2">Generating Your Model</h2>
-          <p className="text-white/40 mb-4">This usually takes 2-3 minutes.</p>
+          <p className="text-white/40 mb-2">This usually takes around 3 minutes.</p>
+          <p className="text-white/30 text-sm mb-4">
+            Stay on this page and you'll be redirected when it's ready.
+          </p>
+          <div className="mt-4 p-3 rounded-xl bg-white/5 border border-white/10 text-left">
+            <p className="text-white/40 text-xs leading-relaxed">
+              You can also close this page — we'll email you a link to your model with a price quote when it's done.
+              <span className="text-white/50 font-medium"> Check your spam folder</span> if you don't see it.
+            </p>
+          </div>
         </div>
       </div>
     );

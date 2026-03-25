@@ -385,7 +385,7 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
                         required
                       />
 
-                      {/* SMS opt-in */}
+                      {/* SMS opt-in — hidden until phone number is approved
                       <label className="flex items-start gap-3 cursor-pointer group">
                         <input
                           type="checkbox"
@@ -397,6 +397,7 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
                           Text me when my model is ready (standard message rates may apply)
                         </span>
                       </label>
+                      */}
                     </>
                   )}
 

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, PenLine, Eye, Package, Check } from 'lucide-react';
+import { ArrowRight, PenLine, Eye, Package, Check, ChevronRight } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { PRINT_TYPES } from '../data/printTypes';
 import {
   FadeIn,
   FadeInUp,
@@ -90,6 +91,42 @@ export function Home() {
               </p>
             </FadeIn>
           </div>
+        </div>
+      </section>
+
+      {/* ── Print types ───────────────────────────────────────────────── */}
+      <section className="py-24 bg-brand-dark relative bg-noise">
+        <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <RevealOnScroll>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-accent text-center mb-4">
+              What do you want to create?
+            </p>
+            <h2 className="text-3xl md:text-4xl font-bold text-white text-center mb-14">
+              Choose your print type
+            </h2>
+          </RevealOnScroll>
+
+          <StaggerList className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {PRINT_TYPES.map((pt) => (
+              <StaggerItem key={pt.slug}>
+                <Link
+                  to={`/create/${pt.slug}`}
+                  className="group card-glow rounded-2xl bg-brand-dark-card p-6 h-full flex flex-col hover:bg-brand-dark-card/80 transition-colors"
+                >
+                  <div className="text-4xl mb-4">{pt.icon}</div>
+                  <h3 className="font-semibold text-white mb-2 group-hover:text-brand-accent transition-colors">
+                    {pt.title}
+                  </h3>
+                  <p className="text-sm text-[#9ca3af] leading-relaxed flex-1">
+                    {pt.subtitle}
+                  </p>
+                  <div className="mt-4 flex items-center text-sm font-medium text-brand-accent opacity-0 group-hover:opacity-100 transition-opacity">
+                    Get started <ChevronRight className="h-4 w-4 ml-1" />
+                  </div>
+                </Link>
+              </StaggerItem>
+            ))}
+          </StaggerList>
         </div>
       </section>
 

@@ -12,9 +12,10 @@ import { modelService } from '../services/modelService';
 import { falImageService } from '../services/falImageService';
 import { useAuth } from '../hooks/useAuth';
 import { InfoCollection, CollectedInfo } from '../components/Generation/InfoCollection';
+import { PrintType } from '../data/printTypes';
 
-// System prompt for generating 4 angle views from a reference image
-const ANGLE_SYSTEM_PROMPT = `You are an expert image-generation engine. You must ALWAYS produce an image. Produce NO TEXT. Just an Image.
+// Default system prompt for angle views (used when no print type config is provided)
+const DEFAULT_ANGLE_SYSTEM_PROMPT = `You are an expert image-generation engine. You must ALWAYS produce an image. Produce NO TEXT. Just an Image.
 
 You are creating various views of a full-color 3D object that will be used for 3D rendering. Therefore be extremely consistent with the object.
 
@@ -33,8 +34,13 @@ const ANGLE_PROMPTS = [
 
 const ANGLE_LABELS = ['Front', 'Back', 'Left', 'Right'];
 
+interface GenerateProps {
+  printType?: PrintType;
+}
 
-export function Generate() {
+export function Generate({ printType }: GenerateProps = {}) {
+  const ANGLE_SYSTEM_PROMPT = printType?.angleSystemPrompt || DEFAULT_ANGLE_SYSTEM_PROMPT;
+  const variationSystemPrompt = printType?.variationSystemPrompt || undefined;
   const [status, setStatus] = useState<'pending' | 'info_collection' | 'generating_angles' | 'generating' | 'scaling' | 'completed' | 'failed'>('pending');
   const [generationProgress, setGenerationProgress] = useState(0);
 
@@ -43,7 +49,7 @@ export function Generate() {
   const [angleError, setAngleError] = useState<string | null>(null);
 
   // Generation form state
-  const [mode, setMode] = useState<'text' | 'image'>('text');
+  const [mode, setMode] = useState<'text' | 'image'>(printType?.defaultMode || 'text');
   const [prompt, setPrompt] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -102,7 +108,7 @@ export function Generate() {
 
       // Fire 4 parallel calls, each producing 1 image
       const promises = Array.from({ length: 4 }, (_, i) =>
-        falImageService.transformImage(transformPrompt, image, { numImages: 1 })
+        falImageService.transformImage(transformPrompt, image, { numImages: 1, systemPrompt: variationSystemPrompt })
           .then(result => {
             if (result.images.length > 0) {
               console.log(`Variation ${i + 1} ready`);
@@ -344,11 +350,16 @@ export function Generate() {
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-16">
           <FadeIn y={16} delay={0.1}>
             <div className="text-center mb-10">
+              {printType && (
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-accent mb-4">
+                  {printType.title}
+                </p>
+              )}
               <h1 className="text-3xl md:text-4xl font-bold text-white mb-3">
-                Create Your Design
+                {printType?.heroTagline || 'Create Your Design'}
               </h1>
               <p className="text-white/40">
-                Describe what you want or upload a reference image
+                {printType?.description || 'Describe what you want or upload a reference image'}
               </p>
             </div>
           </FadeIn>
@@ -392,6 +403,7 @@ export function Generate() {
                 isTransforming={isTransforming}
                 imagePrompt={imagePrompt}
                 setImagePrompt={setImagePrompt}
+                defaultDimensions={printType?.defaultDimensions as ModelDimensions | undefined}
               />
             )}
           </FadeInUp>

@@ -33,6 +33,7 @@ interface GenerationFormProps {
     mode?: 'text' | 'image';
     image?: File;
   } | null;
+  defaultDimensions?: ModelDimensions;
 }
 
 export function GenerationForm({
@@ -51,6 +52,7 @@ export function GenerationForm({
   isTransforming,
   imagePrompt,
   setImagePrompt,
+  defaultDimensions,
 }: GenerationFormProps) {
   const { user } = useAuth();
   const [error, setError] = useState<string | null>(null);
@@ -58,11 +60,9 @@ export function GenerationForm({
     style: 'realistic' as const,
     quality: 'standard' as const,
   });
-  const [dimensions, setDimensions] = useState<ModelDimensions>({
-    value: 10,
-    unit: 'cm',
-    target: 'longest',
-  });
+  const [dimensions, setDimensions] = useState<ModelDimensions>(
+    defaultDimensions || { value: 10, unit: 'cm', target: 'longest' }
+  );
 
   useEffect(() => {
     if (prefilledData) {

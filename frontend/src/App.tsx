@@ -17,6 +17,7 @@ import { PaymentCancel } from './pages/PaymentCancel';
 import { OrderSuccess } from './pages/OrderSuccess';
 import { ThumbnailTest } from './pages/ThumbnailTest';
 import { TestingEnv } from './pages/TestingEnv';
+import { CreatePage } from './pages/CreatePage';
 import { AuthProvider } from './hooks/useAuth';
 
 function App() {
@@ -29,6 +30,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/generate" element={<Generate />} />
+              <Route path="/create/:printType" element={<CreatePage />} />
               <Route path="/manufacturing" element={<Manufacturing />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/sign-in" element={<SignIn />} />

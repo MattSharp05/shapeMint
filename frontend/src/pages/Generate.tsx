@@ -13,6 +13,7 @@ import { falImageService } from '../services/falImageService';
 import { useAuth } from '../hooks/useAuth';
 import { InfoCollection, CollectedInfo } from '../components/Generation/InfoCollection';
 import { PrintType } from '../data/printTypes';
+import { BeamsBackground } from '../components/UI/BeamsBackground';
 
 // Default system prompt for angle views (used when no print type config is provided)
 const DEFAULT_ANGLE_SYSTEM_PROMPT = `You are an expert image-generation engine. You must ALWAYS produce an image. Produce NO TEXT. Just an Image.
@@ -26,10 +27,10 @@ Do NOT change details, or add features that are not in the reference image.
 Use flat, even lighting that shows the geometry clearly without washing out the colors.`;
 
 const ANGLE_PROMPTS = [
-  'Rotate the view to look straight on at the object.',
-  'Rotate the view to look straight at the back of the object.',
-  'Create a side view of this character. Rotating the camera exactly 90 degrees from the front perspective. (Do not add Ears if they are not in the reference image)',
-  'Create the missing view of this character. There should be Front, Back, Left.',
+  'Show ONLY the front view of this object. One single object, centered in the frame, facing directly toward the camera. Do NOT show multiple angles or a turnaround sheet — just one isolated front view.',
+  'Show ONLY the back view of this object. One single object, centered in the frame, with its back facing the camera. Do NOT show multiple angles or a turnaround sheet — just one isolated rear view.',
+  'Show ONLY the left side view of this object. One single object, centered in the frame, rotated exactly 90 degrees so the left side faces the camera. Do NOT show multiple angles or a turnaround sheet — just one isolated side view.',
+  'Show ONLY the right side view of this object. One single object, centered in the frame, rotated exactly 90 degrees so the right side faces the camera. Do NOT show multiple angles or a turnaround sheet — just one isolated side view.',
 ];
 
 const ANGLE_LABELS = ['Front', 'Back', 'Left', 'Right'];
@@ -346,7 +347,7 @@ export function Generate({ printType }: GenerateProps = {}) {
   // ── Pre-generation view ──────────────────────────────────────────────
   if (!isWorking && status === 'pending') {
     return (
-      <div className="pt-16 min-h-screen bg-brand-dark">
+      <BeamsBackground className="pt-16 min-h-screen bg-brand-dark" intensity="medium">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-16">
           <FadeIn y={16} delay={0.1}>
             <div className="text-center mb-10">
@@ -404,6 +405,7 @@ export function Generate({ printType }: GenerateProps = {}) {
                 imagePrompt={imagePrompt}
                 setImagePrompt={setImagePrompt}
                 defaultDimensions={printType?.defaultDimensions as ModelDimensions | undefined}
+                isCustom={!printType || printType.slug === 'custom'}
               />
             )}
           </FadeInUp>
@@ -426,20 +428,20 @@ export function Generate({ printType }: GenerateProps = {}) {
           status={status === 'scaling' ? 'generating' : status}
           estimatedTime={status === 'scaling' ? 'Scaling model...' : undefined}
         />
-      </div>
+      </BeamsBackground>
     );
   }
 
   // ── Generating / processing overlay ──────────────────────────────────
   if (isWorking) {
     return (
-      <div className="pt-16 min-h-screen bg-brand-dark">
+      <BeamsBackground className="pt-16 min-h-screen bg-brand-dark" intensity="medium">
         <GenerationProgress
           progress={status === 'completed' ? 100 : status === 'scaling' ? 90 : generationProgress}
           status={status === 'scaling' ? 'generating' : status}
           estimatedTime={status === 'scaling' ? 'Scaling model...' : undefined}
         />
-      </div>
+      </BeamsBackground>
     );
   }
 
@@ -447,10 +449,10 @@ export function Generate({ printType }: GenerateProps = {}) {
   // This shouldn't normally render since polling success redirects,
   // but handle edge cases (e.g., coming back with existing model)
   return (
-    <div className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center">
+    <BeamsBackground className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center" intensity="medium">
       <div className="text-center">
         <p className="text-white/50">Redirecting to your model...</p>
       </div>
-    </div>
+    </BeamsBackground>
   );
 }

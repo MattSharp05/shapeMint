@@ -34,6 +34,8 @@ interface GenerationFormProps {
     image?: File;
   } | null;
   defaultDimensions?: ModelDimensions;
+  /** When true, shows the full form (text mode, dimensions, style/quality, transform prompt). When false, shows simplified image-only form. */
+  isCustom?: boolean;
 }
 
 export function GenerationForm({
@@ -53,6 +55,7 @@ export function GenerationForm({
   imagePrompt,
   setImagePrompt,
   defaultDimensions,
+  isCustom = true,
 }: GenerationFormProps) {
   const { user } = useAuth();
   const [error, setError] = useState<string | null>(null);
@@ -246,37 +249,39 @@ export function GenerationForm({
   return (
     <Card className="p-6">
       <div className="space-y-6" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
-        {/* Mode Selection */}
-        <div className="flex space-x-4">
-          <button
-            type="button"
-            onClick={() => setMode('text')}
-            className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-lg border-2 transition-all ${
-              mode === 'text'
-                ? 'border-brand-accent/50 bg-brand-accent/10 text-brand-accent'
-                : 'border-white/10 hover:border-white/20 text-white/50'
-            }`}
-          >
-            <Type className="h-5 w-5" />
-            <span>Text Prompt</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('image')}
-            className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-lg border-2 transition-all ${
-              mode === 'image'
-                ? 'border-brand-accent/50 bg-brand-accent/10 text-brand-accent'
-                : 'border-white/10 hover:border-white/20 text-white/50'
-            }`}
-          >
-            <Upload className="h-5 w-5" />
-            <span>Upload Image</span>
-          </button>
-        </div>
+        {/* Mode Selection — only show for custom */}
+        {isCustom && (
+          <div className="flex space-x-4">
+            <button
+              type="button"
+              onClick={() => setMode('text')}
+              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-lg border-2 transition-all ${
+                mode === 'text'
+                  ? 'border-brand-accent/50 bg-brand-accent/10 text-brand-accent'
+                  : 'border-white/10 hover:border-white/20 text-white/50'
+              }`}
+            >
+              <Type className="h-5 w-5" />
+              <span>Text Prompt</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('image')}
+              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-lg border-2 transition-all ${
+                mode === 'image'
+                  ? 'border-brand-accent/50 bg-brand-accent/10 text-brand-accent'
+                  : 'border-white/10 hover:border-white/20 text-white/50'
+              }`}
+            >
+              <Upload className="h-5 w-5" />
+              <span>Upload Image</span>
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Input Section */}
-          {mode === 'text' ? (
+          {isCustom && mode === 'text' ? (
             <div>
               <label className={labelClasses}>
                 Describe your 3D model
@@ -332,119 +337,125 @@ export function GenerationForm({
                 )}
               </div>
 
-              {/* Image Transform Prompt */}
-              <div className="mt-4">
-                <label className={labelClasses}>
-                  <div className="flex items-center space-x-1">
-                    <Wand2 className="h-4 w-4 text-brand-accent" />
-                    <span>Describe how to transform this image</span>
-                    <span className="text-white/30 font-normal">(optional)</span>
-                  </div>
-                </label>
-                <textarea
-                  value={imagePrompt}
-                  onChange={(e) => setImagePrompt(e.target.value)}
-                  placeholder="Make this look like a fantasy warrior, turn this into a robot, style it as a cartoon character..."
-                  className={`${inputClasses} resize-none`}
-                  rows={3}
-                />
-                <p className="text-xs text-white/30 mt-1">
-                  {imagePrompt.trim()
-                    ? 'Your image will be transformed with AI before 3D generation. You will choose from 4 variations.'
-                    : 'Leave empty to convert the image directly to 3D.'}
-                </p>
-              </div>
+              {/* Image Transform Prompt — only show for custom */}
+              {isCustom && (
+                <div className="mt-4">
+                  <label className={labelClasses}>
+                    <div className="flex items-center space-x-1">
+                      <Wand2 className="h-4 w-4 text-brand-accent" />
+                      <span>Describe how to transform this image</span>
+                      <span className="text-white/30 font-normal">(optional)</span>
+                    </div>
+                  </label>
+                  <textarea
+                    value={imagePrompt}
+                    onChange={(e) => setImagePrompt(e.target.value)}
+                    placeholder="Make this look like a fantasy warrior, turn this into a robot, style it as a cartoon character..."
+                    className={`${inputClasses} resize-none`}
+                    rows={3}
+                  />
+                  <p className="text-xs text-white/30 mt-1">
+                    {imagePrompt.trim()
+                      ? 'Your image will be transformed with AI before 3D generation. You will choose from 4 variations.'
+                      : 'Leave empty to convert the image directly to 3D.'}
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Model Dimensions */}
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Ruler className="h-4 w-4 text-white/30" />
-              <h3 className="text-sm font-medium text-white/70">Model Size</h3>
+          {/* Model Dimensions — only show for custom */}
+          {isCustom && (
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Ruler className="h-4 w-4 text-white/30" />
+                <h3 className="text-sm font-medium text-white/70">Model Size</h3>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className={labelClasses}>Size</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={dimensions.value}
+                    onChange={(e) => setDimensions({ ...dimensions, value: Math.max(1, Number(e.target.value)) })}
+                    className={inputClasses}
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClasses}>Unit</label>
+                  <select
+                    value={dimensions.unit}
+                    onChange={(e) => setDimensions({ ...dimensions, unit: e.target.value as DimensionUnit })}
+                    className={selectClasses}
+                  >
+                    <option value="cm">cm</option>
+                    <option value="mm">mm</option>
+                    <option value="inches">inches</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className={labelClasses}>Dimension</label>
+                  <select
+                    value={dimensions.target}
+                    onChange={(e) => setDimensions({ ...dimensions, target: e.target.value as DimensionTarget })}
+                    className={selectClasses}
+                  >
+                    <option value="height">Height</option>
+                    <option value="width">Width</option>
+                    <option value="depth">Depth</option>
+                    <option value="longest">Longest Edge</option>
+                  </select>
+                </div>
+              </div>
+
+              <p className="text-xs text-white/30">
+                Your model will be scaled so the {dimensions.target} is {dimensions.value} {dimensions.unit}
+              </p>
             </div>
+          )}
 
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className={labelClasses}>Size</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="1000"
-                  value={dimensions.value}
-                  onChange={(e) => setDimensions({ ...dimensions, value: Math.max(1, Number(e.target.value)) })}
-                  className={inputClasses}
-                />
+          {/* Generation Settings — only show for custom */}
+          {isCustom && (
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Settings className="h-4 w-4 text-white/30" />
+                <h3 className="text-sm font-medium text-white/70">Generation Settings</h3>
               </div>
 
-              <div>
-                <label className={labelClasses}>Unit</label>
-                <select
-                  value={dimensions.unit}
-                  onChange={(e) => setDimensions({ ...dimensions, unit: e.target.value as DimensionUnit })}
-                  className={selectClasses}
-                >
-                  <option value="cm">cm</option>
-                  <option value="mm">mm</option>
-                  <option value="inches">inches</option>
-                </select>
-              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClasses}>Style</label>
+                  <select
+                    value={settings.style}
+                    onChange={(e) => setSettings({ ...settings, style: e.target.value as any })}
+                    className={selectClasses}
+                  >
+                    <option value="realistic">Realistic</option>
+                    <option value="stylized">Stylized</option>
+                    <option value="minimalist">Minimalist</option>
+                  </select>
+                </div>
 
-              <div>
-                <label className={labelClasses}>Dimension</label>
-                <select
-                  value={dimensions.target}
-                  onChange={(e) => setDimensions({ ...dimensions, target: e.target.value as DimensionTarget })}
-                  className={selectClasses}
-                >
-                  <option value="height">Height</option>
-                  <option value="width">Width</option>
-                  <option value="depth">Depth</option>
-                  <option value="longest">Longest Edge</option>
-                </select>
+                <div>
+                  <label className={labelClasses}>Quality</label>
+                  <select
+                    value={settings.quality}
+                    onChange={(e) => setSettings({ ...settings, quality: e.target.value as any })}
+                    className={selectClasses}
+                  >
+                    <option value="draft">Draft</option>
+                    <option value="standard">Standard</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
               </div>
             </div>
-
-            <p className="text-xs text-white/30">
-              Your model will be scaled so the {dimensions.target} is {dimensions.value} {dimensions.unit}
-            </p>
-          </div>
-
-          {/* Generation Settings */}
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Settings className="h-4 w-4 text-white/30" />
-              <h3 className="text-sm font-medium text-white/70">Generation Settings</h3>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className={labelClasses}>Style</label>
-                <select
-                  value={settings.style}
-                  onChange={(e) => setSettings({ ...settings, style: e.target.value as any })}
-                  className={selectClasses}
-                >
-                  <option value="realistic">Realistic</option>
-                  <option value="stylized">Stylized</option>
-                  <option value="minimalist">Minimalist</option>
-                </select>
-              </div>
-
-              <div>
-                <label className={labelClasses}>Quality</label>
-                <select
-                  value={settings.quality}
-                  onChange={(e) => setSettings({ ...settings, quality: e.target.value as any })}
-                  className={selectClasses}
-                >
-                  <option value="draft">Draft</option>
-                  <option value="standard">Standard</option>
-                  <option value="high">High</option>
-                </select>
-              </div>
-            </div>
-          </div>
+          )}
 
           {error && (
             <div className="p-3 rounded-lg bg-red-900/20 border border-red-500/20">

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Download, DollarSign, Eye, Settings, Package, Truck, ExternalLink } from 'lucide-react';
-import { Card } from '../components/UI/Card';
+import { motion } from 'framer-motion';
+import { Package, Truck, Trash2 } from 'lucide-react';
+import { OrderStatusTracker } from '../components/UI/OrderStatusTracker';
 import { Button } from '../components/UI/Button';
 import { Modal } from '../components/UI/Modal';
 import { AutoThumbnailProgress } from '../components/UI/AutoThumbnailProgress';
@@ -9,34 +10,115 @@ import { useAuth } from '../hooks/useAuth';
 import { logger } from '../utils/logger';
 import { useAutoThumbnail } from '../hooks/useAutoThumbnail';
 import { supabase } from '../supabaseClient';
-import { autoThumbnailService } from '../services/autoThumbnailService';
+import { modelService } from '../services/model';
 import type { GeneratedModel } from '../types/model';
 import { ContactSubmissions } from '../components/Admin/ContactSubmissions';
+import { BeamsBackground } from '../components/UI/BeamsBackground';
 
 interface Order {
   id: string;
   user_id?: string;
-  slant_order_id: string;
+  vendor: string;
   order_number: string;
+  vendor_order_id?: string;
   customer_name: string;
   customer_email: string;
-  filename: string;
+  material_id?: string;
   quantity: number;
-  color: string;
-  profile: string;
   status: string;
-  tracking_numbers?: string[];
-  shipping_status: string;
-  label_download_url?: string;
+  item_subtotal?: number;
+  shipping_price?: number;
+  total_price?: number;
+  currency?: string;
   shipping_address: {
-    name: string;
-    street1: string;
-    city: string;
-    state: string;
-    zip: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    address1?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+    phone?: string;
+    // Legacy Slant3D format
+    name?: string;
+    street1?: string;
+    zip?: string;
   };
+  last_vendor_status?: any;
+  vendor_order_raw?: any;
   created_at: string;
+  shipped_at?: string;
+  delivered_at?: string;
+  // Joined from generated_models
+  thumbnail_url?: string;
 }
+
+const VENDOR_LABELS: Record<string, string> = {
+  craftcloud: 'CraftCloud',
+  slant3d: 'Slant3D',
+  shapeways: 'Shapeways',
+  treatstock: 'Treatstock',
+};
+
+const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  pending: { label: 'Pending', color: 'bg-gray-900/30 text-gray-400' },
+  pending_payment: { label: 'Awaiting Payment', color: 'bg-yellow-900/30 text-yellow-400' },
+  submitted: { label: 'Submitted', color: 'bg-blue-900/30 text-blue-400' },
+  in_production: { label: 'In Production', color: 'bg-purple-900/30 text-purple-400' },
+  shipped: { label: 'Shipped', color: 'bg-green-900/30 text-green-400' },
+  delivered: { label: 'Delivered', color: 'bg-green-900/30 text-green-400' },
+  failed: { label: 'Failed', color: 'bg-red-900/30 text-red-400' },
+  cancelled: { label: 'Cancelled', color: 'bg-red-900/30 text-red-400' },
+};
+
+function getShippingDisplay(addr: Order['shipping_address']) {
+  // Handle both CraftCloud format (firstName/address1) and legacy Slant3D (name/street1)
+  const name = addr?.firstName ? `${addr.firstName} ${addr.lastName || ''}`.trim() : addr?.name || '';
+  const street = addr?.address1 || addr?.street1 || '';
+  const city = addr?.city || '';
+  const state = addr?.state || '';
+  const zip = addr?.zipCode || addr?.zip || '';
+  return { name, street, city, state, zip };
+}
+
+function getTrackingInfo(order: Order): { trackingNumber?: string; trackingUrl?: string } {
+  const vs = order.last_vendor_status;
+  if (Array.isArray(vs)) {
+    for (const part of vs) {
+      if (part.trackingNumber || part.trackingUrl) {
+        return { trackingNumber: part.trackingNumber, trackingUrl: part.trackingUrl };
+      }
+    }
+  } else if (vs?.trackingNumber || vs?.trackingUrl) {
+    return { trackingNumber: vs.trackingNumber, trackingUrl: vs.trackingUrl };
+  }
+  // Legacy Slant3D format
+  if (vs?.tracking_number) {
+    return { trackingNumber: vs.tracking_number };
+  }
+  return {};
+}
+
+function getCheapestPrice(model: GeneratedModel): number | null {
+  const prices: number[] = [];
+  for (const q of [model.mono_quotes, model.sls_quotes]) {
+    if (q?.vendors?.[0]?.totalPrice) {
+      prices.push(q.vendors[0].totalPrice);
+    }
+  }
+  return prices.length > 0 ? Math.min(...prices) : null;
+}
+
+const gridContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.06 } },
+};
+
+const gridItemVariants = {
+  hidden: { y: 20, opacity: 0 },
+  visible: { y: 0, opacity: 1, transition: { type: 'spring', stiffness: 120, damping: 12 } },
+};
 
 export function Dashboard() {
   const [activeTab, setActiveTab] = useState('designs');
@@ -55,12 +137,30 @@ export function Dashboard() {
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
 
+  // Delete model state
+  const [deletingModelId, setDeletingModelId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const handleDeleteModel = async (modelId: string) => {
+    setDeletingModelId(modelId);
+    try {
+      await modelService.deleteModel(modelId);
+      setGeneratedModels((prev) => prev.filter((m) => m.id !== modelId));
+    } catch (err) {
+      logger.error('Failed to delete model:', err);
+    } finally {
+      setDeletingModelId(null);
+      setConfirmDeleteId(null);
+    }
+  };
+
   // Order state
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [refreshingStatuses, setRefreshingStatuses] = useState(false);
 
   const tabs = [
     { id: 'designs', label: 'My Designs', count: generatedModels.length },
@@ -87,9 +187,54 @@ export function Dashboard() {
       });
   }, [user?.id]);
 
-  // Function to fetch orders filtered by user email
+  // Refresh CraftCloud order statuses via edge function
+  const refreshCraftcloudStatuses = useCallback(async (orderList: Order[]) => {
+    const craftcloudOrders = orderList.filter(
+      (o) => o.vendor === 'craftcloud' && !['delivered', 'cancelled', 'failed'].includes(o.status)
+    );
+    if (craftcloudOrders.length === 0) return;
+
+    setRefreshingStatuses(true);
+    const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/vendor-craftcloud-get-order`;
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    const results = await Promise.allSettled(
+      craftcloudOrders.map((order) =>
+        fetch(edgeFunctionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ orderId: order.id }),
+        }).then((r) => r.ok ? r.json() : null)
+      )
+    );
+
+    // Merge updated statuses into orders
+    setOrders((prev) =>
+      prev.map((order) => {
+        const idx = craftcloudOrders.findIndex((o) => o.id === order.id);
+        if (idx === -1) return order;
+        const result = results[idx];
+        if (result.status === 'fulfilled' && result.value) {
+          return {
+            ...order,
+            status: result.value.status || order.status,
+            last_vendor_status: result.value.vendorStatus,
+          };
+        }
+        return order;
+      })
+    );
+    setRefreshingStatuses(false);
+  }, []);
+
+  // Function to fetch orders and match thumbnails from generated models
   const fetchOrders = useCallback(async () => {
-    if (!user?.email) return;
+    if (!user?.id) return;
 
     setLoadingOrders(true);
     setOrdersError(null);
@@ -98,27 +243,47 @@ export function Dashboard() {
       const { data, error } = await supabase
         .from('orders')
         .select('*')
-        .eq('customer_email', user.email)
+        .eq('user_id', user.id)
+        .in('status', ['submitted', 'in_production', 'shipped', 'delivered'])
         .order('created_at', { ascending: false });
 
       if (error) {
         setOrdersError(error.message);
         setOrders([]);
-      } else {
-        setOrders(data as Order[]);
+        return;
       }
+
+      // Match thumbnails: orders store file_url which corresponds to a generated model's glb_url
+      const ordersWithThumbnails = (data || []).map((order: any) => {
+        const matchedModel = generatedModels.find(
+          (m) => m.glb_url === order.file_url || m.glb_url === order.model_url
+        );
+        return {
+          ...order,
+          thumbnail_url: matchedModel?.thumbnail_url || null,
+        } as Order;
+      });
+
+      setOrders(ordersWithThumbnails);
     } catch (err) {
       setOrdersError('Failed to fetch orders');
       setOrders([]);
     } finally {
       setLoadingOrders(false);
     }
-  }, [user?.email]);
+  }, [user?.id, generatedModels]);
 
   // Fetch orders on mount
   useEffect(() => {
     fetchOrders();
   }, [user, fetchOrders]);
+
+  // Auto-refresh CraftCloud statuses when switching to orders tab
+  useEffect(() => {
+    if (activeTab === 'orders' && orders.length > 0) {
+      refreshCraftcloudStatuses(orders);
+    }
+  }, [activeTab]); // intentionally only on tab change
 
   // Refresh orders when page comes into focus
   useEffect(() => {
@@ -131,7 +296,7 @@ export function Dashboard() {
   }, [user, fetchOrders]);
 
   return (
-    <div className="pt-16 min-h-screen bg-brand-dark">
+    <BeamsBackground className="pt-16 min-h-screen bg-brand-dark" intensity="medium">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">
@@ -212,55 +377,106 @@ export function Dashboard() {
               ) : generatedModels.length === 0 ? (
                 <div className="text-white/40">You have not generated any models yet.</div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {generatedModels.map((model) => (
-                    <div
-                      key={model.id}
-                      className="group card-glow rounded-2xl overflow-hidden bg-brand-dark-card cursor-pointer"
-                      onClick={() => {
-                        if (model.status === 'completed' && model.id) {
-                          navigate(`/model/${model.id}`);
-                        }
-                      }}
-                    >
-                      {model.thumbnail_url ? (
-                        <div className="aspect-square overflow-hidden bg-brand-dark-lighter">
-                          <img
-                            src={model.thumbnail_url}
-                            alt={model.name || 'Generated Model'}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                          />
-                        </div>
-                      ) : (
-                        <div className="aspect-square flex items-center justify-center bg-brand-dark-lighter text-white/20">
-                          <div className="text-center">
-                            <div className="text-sm font-medium">No Thumbnail</div>
-                            <div className="text-xs text-white/15">Generating...</div>
+                <motion.div
+                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+                  variants={gridContainerVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  {generatedModels.map((model) => {
+                    const cheapest = getCheapestPrice(model);
+                    return (
+                      <motion.div
+                        key={model.id}
+                        variants={gridItemVariants}
+                        whileHover={{ y: -6 }}
+                        transition={{ type: 'spring', stiffness: 300 }}
+                        className="group relative flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/5 bg-brand-dark-card text-center shadow-sm transition-shadow duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:border-white/10 cursor-pointer"
+                        onClick={() => {
+                          if (model.status === 'completed' && model.id) {
+                            navigate(`/model/${model.id}`);
+                          }
+                        }}
+                      >
+                        {/* Thumbnail */}
+                        <div className="relative flex w-full items-center justify-center bg-black">
+                          {model.thumbnail_url ? (
+                            <img
+                              src={model.thumbnail_url}
+                              alt={model.name || 'Generated Model'}
+                              className="w-full aspect-square object-cover transition-transform duration-300 group-hover:scale-105"
+                            />
+                          ) : (
+                            <div className="w-full aspect-square flex items-center justify-center text-white/15">
+                              <div className="text-center">
+                                <Package className="h-10 w-10 mx-auto mb-1" />
+                                <div className="text-xs">Generating...</div>
+                              </div>
+                            </div>
+                          )}
+                          {/* Delete button overlay */}
+                          <div className="absolute top-2 right-2" onClick={(e) => e.stopPropagation()}>
+                            {confirmDeleteId === model.id ? (
+                              <div className="flex items-center gap-1 bg-black/70 backdrop-blur-sm rounded-lg p-1.5">
+                                <button
+                                  onClick={() => handleDeleteModel(model.id)}
+                                  disabled={deletingModelId === model.id}
+                                  className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                                >
+                                  {deletingModelId === model.id ? '...' : 'Delete'}
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteId(null)}
+                                  className="text-xs px-2 py-1 rounded bg-white/20 text-white/70 hover:bg-white/30"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmDeleteId(model.id)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 backdrop-blur-sm rounded-lg p-1.5 text-white/40 hover:text-red-400"
+                                title="Delete model"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
-                      )}
-                      <div className="p-6">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="text-md font-semibold text-white">
+
+                        {/* Details */}
+                        <div className="flex flex-grow flex-col items-center gap-2 p-6">
+                          <h3 className="font-semibold text-white text-base leading-snug line-clamp-2">
                             {model.prompt || model.name || 'Untitled Model'}
-                          </h4>
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            model.status === 'completed'
-                              ? 'bg-green-900/30 text-green-400'
-                              : model.status === 'processing'
-                              ? 'bg-yellow-900/30 text-yellow-400'
-                              : 'bg-red-900/30 text-red-400'
-                          }`}>
-                            {model.status}
-                          </span>
+                          </h3>
+                          <p className="text-sm text-white/30">
+                            {new Date(model.created_at).toLocaleDateString()}
+                          </p>
                         </div>
-                        <div className="text-sm text-white/30 mb-2">
-                          <span>Created: {new Date(model.created_at).toLocaleString()}</span>
+
+                        {/* Price / Status footer */}
+                        <div className="px-6 pb-6">
+                          {model.status === 'completed' && cheapest ? (
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-2xl font-bold text-brand-accent">${cheapest.toFixed(2)}</span>
+                              <span className="text-xs text-white/30 uppercase tracking-wider">Starting at</span>
+                            </div>
+                          ) : (
+                            <span className={`inline-block text-sm px-3 py-1 rounded-full font-medium ${
+                              model.status === 'completed'
+                                ? 'bg-green-900/30 text-green-400'
+                                : model.status === 'processing'
+                                ? 'bg-yellow-900/30 text-yellow-400'
+                                : 'bg-red-900/30 text-red-400'
+                            }`}>
+                              {model.status}
+                            </span>
+                          )}
                         </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                      </motion.div>
+                    );
+                  })}
+                </motion.div>
               )}
             </div>
           </div>
@@ -269,7 +485,12 @@ export function Dashboard() {
         {activeTab === 'orders' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-white">Your Manufacturing Orders</h2>
+              <h2 className="text-xl font-semibold text-white">
+                Your Manufacturing Orders
+                {refreshingStatuses && (
+                  <span className="ml-3 text-sm font-normal text-white/40">Updating statuses...</span>
+                )}
+              </h2>
               <Button
                 onClick={fetchOrders}
                 disabled={loadingOrders}
@@ -301,59 +522,62 @@ export function Dashboard() {
               </div>
             ) : (
               <div className="space-y-4">
-                {orders.map((order) => (
-                  <div
-                    key={order.id}
-                    className="card-glow rounded-2xl bg-brand-dark-card p-6 cursor-pointer border-l-4 border-l-brand-accent"
-                    onClick={() => {
-                      setSelectedOrder(order);
-                      setIsOrderModalOpen(true);
-                    }}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="text-lg font-semibold text-white">
-                            {order.filename}
-                          </h3>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm text-white/40">
-                          <div>
-                            <div>Vendor: Slant3D</div>
-                            <div>Order Date: {new Date(order.created_at).toLocaleDateString()}</div>
-                            <div>Quantity: {order.quantity}</div>
+                {orders.map((order) => {
+                  const statusCfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
+                  const tracking = getTrackingInfo(order);
+                  return (
+                    <div
+                      key={order.id}
+                      className="card-glow rounded-2xl bg-brand-dark-card p-6 cursor-pointer border-l-4 border-l-brand-accent"
+                      onClick={() => {
+                        setSelectedOrder(order);
+                        setIsOrderModalOpen(true);
+                      }}
+                    >
+                      <div className="flex items-start gap-4">
+                        {/* Thumbnail */}
+                        {order.thumbnail_url ? (
+                          <div className="w-20 h-20 rounded-lg overflow-hidden bg-brand-dark-lighter shrink-0">
+                            <img
+                              src={order.thumbnail_url}
+                              alt="Model"
+                              className="w-full h-full object-cover"
+                            />
                           </div>
-                          <div>
-                            <div>Material: {order.profile}</div>
-                            <div>Color: {order.color}</div>
-                            {order.tracking_numbers && order.tracking_numbers.length > 0 && (
-                              <div className="flex items-center space-x-1">
-                                <Truck className="h-3 w-3" />
-                                <span>Tracking Available</span>
-                              </div>
+                        ) : (
+                          <div className="w-20 h-20 rounded-lg bg-brand-dark-lighter shrink-0 flex items-center justify-center">
+                            <Package className="h-8 w-8 text-white/15" />
+                          </div>
+                        )}
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start mb-2">
+                            <h3 className="text-lg font-semibold text-white truncate">
+                              Order #{order.order_number || order.vendor_order_id || order.id.slice(0, 8)}
+                            </h3>
+                            <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium shrink-0 ml-2 ${statusCfg.color}`}>
+                              {statusCfg.label}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-white/40">
+                            <div>Vendor: {VENDOR_LABELS[order.vendor] || order.vendor}</div>
+                            <div>Quantity: {order.quantity}</div>
+                            <div>Ordered: {new Date(order.created_at).toLocaleDateString()}</div>
+                            {order.total_price != null && (
+                              <div>Total: ${Number(order.total_price).toFixed(2)} {order.currency || 'USD'}</div>
                             )}
                           </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                          order.shipping_status === 'shipped' || (order.tracking_numbers && order.tracking_numbers.length > 0)
-                            ? 'bg-green-900/30 text-green-400'
-                            : order.shipping_status === 'awaiting_shipment'
-                            ? 'bg-yellow-900/30 text-yellow-400'
-                            : 'bg-blue-900/30 text-blue-400'
-                        }`}>
-                          {order.shipping_status === 'shipped' || (order.tracking_numbers && order.tracking_numbers.length > 0) ? 'Shipped' :
-                           order.shipping_status === 'awaiting_shipment' ? 'Processing' :
-                           order.status}
-                        </span>
-                        <div className="text-lg font-bold text-white mt-2">
-                          Order #{order.slant_order_id}
+                          {tracking.trackingNumber && (
+                            <div className="flex items-center gap-1 mt-2 text-sm text-green-400">
+                              <Truck className="h-3 w-3" />
+                              <span>Tracking: {tracking.trackingNumber}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -367,113 +591,65 @@ export function Dashboard() {
         )}
 
         {/* Order Detail Modal */}
-        {selectedOrder && (
-          <Modal
-            isOpen={isOrderModalOpen}
-            onClose={() => setIsOrderModalOpen(false)}
-            title={`Order #${selectedOrder.slant_order_id}`}
-          >
-            <div className="space-y-6">
-              {/* Order Info */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">Order Details</h3>
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Item:</span>
-                    <span className="font-medium">{selectedOrder.filename}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Quantity:</span>
-                    <span className="font-medium">{selectedOrder.quantity}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Material:</span>
-                    <span className="font-medium">{selectedOrder.profile}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Color:</span>
-                    <span className="font-medium">{selectedOrder.color}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Order Date:</span>
-                    <span className="font-medium">{new Date(selectedOrder.created_at).toLocaleDateString()}</span>
-                  </div>
-                </div>
-              </div>
+        {selectedOrder && (() => {
+          const shipping = getShippingDisplay(selectedOrder.shipping_address);
+          const statusCfg = STATUS_CONFIG[selectedOrder.status] || STATUS_CONFIG.pending;
+          const tracking = getTrackingInfo(selectedOrder);
 
-              {/* Shipping Info */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">Shipping Address</h3>
-                <div className="bg-gray-50 rounded-lg p-4 text-sm">
-                  <div>{selectedOrder.shipping_address.name}</div>
-                  <div>{selectedOrder.shipping_address.street1}</div>
-                  <div>
-                    {selectedOrder.shipping_address.city}, {selectedOrder.shipping_address.state} {selectedOrder.shipping_address.zip}
-                  </div>
-                </div>
-              </div>
+          const summaryLines = [
+            { label: 'Order ID', value: selectedOrder.order_number || selectedOrder.vendor_order_id || selectedOrder.id.slice(0, 8) },
+            { label: 'Vendor', value: VENDOR_LABELS[selectedOrder.vendor] || selectedOrder.vendor },
+            { label: 'Order Date', value: new Date(selectedOrder.created_at).toLocaleDateString() },
+            { label: 'Quantity', value: String(selectedOrder.quantity) },
+            ...(shipping.name ? [{ label: 'Ship To', value: `${shipping.name}${shipping.city ? `, ${shipping.city}` : ''}` }] : []),
+            ...(selectedOrder.item_subtotal != null ? [{ label: 'Subtotal', value: `$${Number(selectedOrder.item_subtotal).toFixed(2)}` }] : []),
+            ...(selectedOrder.shipping_price != null ? [{ label: 'Shipping', value: `$${Number(selectedOrder.shipping_price).toFixed(2)}` }] : []),
+            ...(selectedOrder.total_price != null ? [{ label: 'Total', value: `$${Number(selectedOrder.total_price).toFixed(2)} ${selectedOrder.currency || 'USD'}` }] : []),
+          ];
 
-              {/* Tracking Info */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">Tracking & Status</h3>
-                <div className={`rounded-lg p-4 ${
-                  selectedOrder.tracking_numbers && selectedOrder.tracking_numbers.length > 0 ? 'bg-green-50' : 'bg-yellow-50'
-                }`}>
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Truck className="h-4 w-4" />
-                    <span className="font-medium">
-                      Shipping Status
-                    </span>
-                  </div>
+          const statusDescriptions: Record<string, string> = {
+            submitted: 'Your order has been submitted to the manufacturer.',
+            in_production: 'Your model is currently being printed.',
+            shipped: 'Your package is on the way!',
+            delivered: 'Your package has been delivered.',
+            failed: 'There was an issue with your order.',
+            cancelled: 'This order has been cancelled.',
+          };
 
-                  {selectedOrder.tracking_numbers && selectedOrder.tracking_numbers.length > 0 ? (
-                    <div className="space-y-2">
-                      <div className="text-sm text-gray-600">Tracking Numbers:</div>
-                      {selectedOrder.tracking_numbers.map((trackingNumber, index) => (
-                        <div key={index} className="flex items-center justify-between bg-white p-2 rounded border">
-                          <code className="text-sm">{trackingNumber}</code>
-                          <a
-                            href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingNumber}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center space-x-1 text-brand-primary hover:text-brand-primary-dark text-sm"
-                          >
-                            <span>Track with USPS</span>
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-600">
-                      Your order is being prepared for shipment. Tracking information will be available once shipped.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex space-x-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsOrderModalOpen(false)}
-                  className="flex-1"
-                >
-                  Close
-                </Button>
-                {selectedOrder.tracking_numbers && selectedOrder.tracking_numbers.length > 0 && (
-                  <Button
-                    onClick={() => window.open(`https://tools.usps.com/go/TrackConfirmAction?tLabels=${selectedOrder.tracking_numbers![0]}`, '_blank')}
-                    className="flex-1"
-                  >
-                    <Truck className="h-4 w-4 mr-2" />
-                    Track Package
-                  </Button>
-                )}
-              </div>
-            </div>
-          </Modal>
-        )}
+          return (
+            <Modal
+              isOpen={isOrderModalOpen}
+              onClose={() => setIsOrderModalOpen(false)}
+            >
+              <OrderStatusTracker
+                thumbnailUrl={selectedOrder.thumbnail_url}
+                statusTitle={statusCfg.label}
+                statusDescription={statusDescriptions[selectedOrder.status] || 'Order is being processed.'}
+                itemName={`Order #${selectedOrder.order_number || selectedOrder.vendor_order_id || selectedOrder.id.slice(0, 8)}`}
+                itemDetails={`${VENDOR_LABELS[selectedOrder.vendor] || selectedOrder.vendor} · Qty ${selectedOrder.quantity}`}
+                itemPrice={selectedOrder.total_price != null ? `$${Number(selectedOrder.total_price).toFixed(2)}` : undefined}
+                summary={summaryLines}
+                trackingNumber={tracking.trackingNumber}
+                trackingUrl={tracking.trackingUrl}
+                trackingStatus={
+                  tracking.trackingNumber
+                    ? 'Your order is confirmed and in transit'
+                    : selectedOrder.status === 'shipped'
+                    ? 'Shipped — tracking info incoming'
+                    : undefined
+                }
+                onTrackOrder={
+                  tracking.trackingUrl
+                    ? () => window.open(tracking.trackingUrl!, '_blank')
+                    : tracking.trackingNumber
+                    ? () => window.open(`https://tools.usps.com/go/TrackConfirmAction?tLabels=${tracking.trackingNumber}`, '_blank')
+                    : undefined
+                }
+                onClose={() => setIsOrderModalOpen(false)}
+              />
+            </Modal>
+          );
+        })()}
 
         {/* Auto-Thumbnail Progress */}
         <AutoThumbnailProgress
@@ -482,6 +658,6 @@ export function Dashboard() {
           onRetry={triggerAutoGeneration}
         />
       </div>
-    </div>
+    </BeamsBackground>
   );
 }

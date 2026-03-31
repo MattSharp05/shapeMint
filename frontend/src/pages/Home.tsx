@@ -11,6 +11,7 @@ import {
   StaggerItem,
   MotionButton,
 } from '../components/Motion';
+import { BeamsBackground } from '../components/UI/BeamsBackground';
 
 interface FeaturedDesign {
   id: string;
@@ -38,13 +39,10 @@ export function Home() {
   }, []);
 
   return (
-    <div className="pt-16 bg-brand-dark">
+    <BeamsBackground className="pt-16 bg-brand-dark" intensity="strong">
       {/* ── Hero ──────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden bg-cinematic bg-noise">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[1000px] bg-brand-accent/8 rounded-full blur-[140px] pointer-events-none" />
-        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-brand-accent/6 rounded-full blur-[100px] pointer-events-none" />
-
-        <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section>
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="py-32 md:py-48 text-center">
             <FadeIn delay={0.1} y={12}>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-accent mb-8">
@@ -95,7 +93,7 @@ export function Home() {
       </section>
 
       {/* ── Print types ───────────────────────────────────────────────── */}
-      <section className="py-24 bg-brand-dark relative bg-noise">
+      <section className="py-24 relative">
         <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <RevealOnScroll>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-accent text-center mb-4">
@@ -131,7 +129,7 @@ export function Home() {
       </section>
 
       {/* ── How it works ──────────────────────────────────────────────── */}
-      <section id="how-it-works" className="py-24 bg-brand-dark-lighter relative bg-noise">
+      <section id="how-it-works" className="py-24 relative">
         <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <RevealOnScroll>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-accent text-center mb-4">
@@ -184,7 +182,7 @@ export function Home() {
 
       {/* ── Showcase ──────────────────────────────────────────────────── */}
       {featuredDesigns.length > 0 && (
-        <section className="py-24 bg-brand-dark">
+        <section className="py-24">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <RevealOnScroll>
               <div className="text-center mb-14">
@@ -242,7 +240,7 @@ export function Home() {
       )}
 
       {/* ── Why ShapeMint ─────────────────────────────────────────────── */}
-      <section className="py-24 bg-brand-dark-lighter relative bg-noise">
+      <section className="py-24 relative">
         <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <RevealOnScroll>
             <div className="text-center mb-14">
@@ -302,9 +300,7 @@ export function Home() {
       </section>
 
       {/* ── CTA ───────────────────────────────────────────────────────── */}
-      <section className="py-24 bg-brand-dark relative overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-accent/5 rounded-full blur-[100px] pointer-events-none" />
-
+      <section className="py-24 relative">
         <RevealOnScroll className="relative z-10 max-w-2xl mx-auto px-4 text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
             Ready to bring your idea to life?
@@ -319,6 +315,6 @@ export function Home() {
           </Link>
         </RevealOnScroll>
       </section>
-    </div>
+    </BeamsBackground>
   );
 }

@@ -41,6 +41,9 @@ export interface GeneratedModel {
   status: 'processing' | 'completed' | 'failed';
   created_at: string;
   updated_at: string;
+  mono_quotes?: { vendors: { totalPrice: number; itemPrice: number; shippingPrice: number }[]; currency?: string } | null;
+  sls_quotes?: { vendors: { totalPrice: number; itemPrice: number; shippingPrice: number }[]; currency?: string } | null;
+  color_quotes?: { vendors: { totalPrice: number; itemPrice: number; shippingPrice: number }[]; currency?: string } | null;
 }
 
 export type CreateModelInput = Omit<GeneratedModel, 'id' | 'created_at' | 'updated_at'>;

@@ -129,6 +129,7 @@ Deno.serve(async (req: Request) => {
     const cartPayload: any = {
       quotes: [{ id: craftcloudQuoteId }],
       currency: 'USD',
+      note: 'Please do not include a printed receipt or invoice in the package. This is a gift fulfillment order.',
     };
     // Only include shippingIds if we have one
     if (craftcloudShippingId) {

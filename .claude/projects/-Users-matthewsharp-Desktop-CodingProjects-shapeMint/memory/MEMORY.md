@@ -1,0 +1,3 @@
+- [User Profile](user_profile.md) — Matt Sharp, solo developer building ShapeMint
+- [Project Overview](project_overview.md) — AI-powered 3D model generation and manufacturing platform
+- [Tech Stack](tech_stack.md) — React/TS/Vite frontend, Supabase backend, Meshy AI for 3D generation

@@ -165,6 +165,16 @@ export function OrderSuccess() {
     setLoading(false);
   }, [sessionId, vendor, user, isDirectOrder, directOrderData]);
 
+  // Auto-redirect to dashboard after showing success
+  useEffect(() => {
+    if (!loading && !error && orderData) {
+      const timer = setTimeout(() => {
+        navigate('/dashboard');
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, error, orderData, navigate]);
+
   if (loading) {
     return (
       <div className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center">
@@ -276,19 +286,23 @@ export function OrderSuccess() {
           {/* Actions */}
           <div className="space-y-3">
             <Button
+              onClick={() => navigate('/dashboard')}
+              className="w-full"
+            >
+              View My Models
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => navigate('/generate')}
               className="w-full"
             >
               Generate Another Model
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => navigate('/marketplace')}
-              className="w-full"
-            >
-              Browse Marketplace
-            </Button>
           </div>
+
+          <p className="text-xs text-white/30 mt-4">
+            Redirecting to your models in a few seconds...
+          </p>
         </div>
         </Card>
       </FadeInUp>

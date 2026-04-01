@@ -105,10 +105,13 @@ export function Home() {
           </RevealOnScroll>
 
           <StaggerList className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {PRINT_TYPES.map((pt) => (
+            {PRINT_TYPES.map((pt) => {
+              const hasLandingPage = pt.slug === 'statue-bust' || pt.slug === 'cake-topper';
+              const linkTo = hasLandingPage ? `/landing/${pt.slug}` : `/create/${pt.slug}`;
+              return (
               <StaggerItem key={pt.slug}>
                 <Link
-                  to={`/create/${pt.slug}`}
+                  to={linkTo}
                   className="group card-glow rounded-2xl bg-brand-dark-card p-6 h-full flex flex-col hover:bg-brand-dark-card/80 transition-colors"
                 >
                   <div className="text-4xl mb-4">{pt.icon}</div>
@@ -123,7 +126,8 @@ export function Home() {
                   </div>
                 </Link>
               </StaggerItem>
-            ))}
+              );
+            })}
           </StaggerList>
         </div>
       </section>

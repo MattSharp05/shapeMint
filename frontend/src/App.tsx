@@ -19,6 +19,7 @@ import { ThumbnailTest } from './pages/ThumbnailTest';
 import { TestingEnv } from './pages/TestingEnv';
 import { CreatePage } from './pages/CreatePage';
 import { LandingCakeTopper } from './pages/LandingCakeTopper';
+import { LandingStatueBust } from './pages/LandingStatueBust';
 import { AuthProvider } from './hooks/useAuth';
 
 function App() {
@@ -46,6 +47,7 @@ function App() {
               <Route path="/thumbnail-test" element={<ThumbnailTest />} />
               <Route path="/testing-env" element={<TestingEnv />} />
               <Route path="/landing/cake-topper" element={<LandingCakeTopper />} />
+              <Route path="/landing/statue-bust" element={<LandingStatueBust />} />
             </Routes>
           </main>
           <Footer />

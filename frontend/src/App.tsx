@@ -18,6 +18,7 @@ import { OrderSuccess } from './pages/OrderSuccess';
 import { ThumbnailTest } from './pages/ThumbnailTest';
 import { TestingEnv } from './pages/TestingEnv';
 import { CreatePage } from './pages/CreatePage';
+import { LandingCakeTopper } from './pages/LandingCakeTopper';
 import { AuthProvider } from './hooks/useAuth';
 
 function App() {
@@ -44,6 +45,7 @@ function App() {
               <Route path="/order-success" element={<OrderSuccess />} />
               <Route path="/thumbnail-test" element={<ThumbnailTest />} />
               <Route path="/testing-env" element={<TestingEnv />} />
+              <Route path="/landing/cake-topper" element={<LandingCakeTopper />} />
             </Routes>
           </main>
           <Footer />

@@ -35,7 +35,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { image, prompt, systemPrompt, numImages, resolution, aspectRatio, outputFormat } = await req.json();
+    const { image, images, prompt, systemPrompt, numImages, resolution, aspectRatio, outputFormat } = await req.json();
 
     if (!prompt) {
       return new Response(
@@ -44,9 +44,11 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const hasImage = !!image;
+    // Support single image (string) or multiple images (string[])
+    const imageUrls: string[] = images && Array.isArray(images) ? images : image ? [image] : [];
+    const hasImage = imageUrls.length > 0;
     const modelId = hasImage ? FAL_EDIT_MODEL : FAL_TEXT_MODEL;
-    console.log(`Starting ${hasImage ? 'image editing' : 'text-to-image'} via fal.ai (${modelId})`);
+    console.log(`Starting ${hasImage ? `image editing (${imageUrls.length} images)` : 'text-to-image'} via fal.ai (${modelId})`);
 
     // Use custom system prompt if provided, otherwise use default
     const effectiveSystemPrompt = systemPrompt || SYSTEM_PROMPT;
@@ -63,8 +65,8 @@ Deno.serve(async (req: Request) => {
     };
 
     if (hasImage) {
-      // Image editing: pass the source image
-      falBody.image_urls = [image];
+      // Image editing: pass all source images (up to 14 supported by Nano Banana Pro)
+      falBody.image_urls = imageUrls;
     }
 
     const falResponse = await fetch(`https://fal.run/${modelId}`, {

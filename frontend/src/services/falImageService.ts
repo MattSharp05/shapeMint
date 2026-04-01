@@ -22,9 +22,32 @@ export interface TransformOptions {
 }
 
 class FalImageService {
-  async transformImage(prompt: string, image?: string | null, options?: TransformOptions): Promise<TransformResult> {
+  /**
+   * Generate/transform images via fal.ai Nano Banana Pro.
+   * @param prompt - User prompt
+   * @param image - Single image URL or data URI (for backwards compat)
+   * @param options - Generation options
+   * @param additionalImages - Extra reference image URLs (combined with `image` into image_urls array)
+   */
+  async transformImage(
+    prompt: string,
+    image?: string | null,
+    options?: TransformOptions,
+    additionalImages?: string[],
+  ): Promise<TransformResult> {
     const body: Record<string, any> = { prompt };
-    if (image) body.image = image;
+
+    // Build images array: primary image + any additional references
+    const allImages: string[] = [];
+    if (image) allImages.push(image);
+    if (additionalImages?.length) allImages.push(...additionalImages);
+
+    if (allImages.length === 1) {
+      body.image = allImages[0];
+    } else if (allImages.length > 1) {
+      body.images = allImages;
+    }
+
     if (options?.systemPrompt) body.systemPrompt = options.systemPrompt;
     if (options?.numImages) body.numImages = options.numImages;
     if (options?.resolution) body.resolution = options.resolution;

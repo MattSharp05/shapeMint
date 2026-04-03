@@ -22,9 +22,10 @@ interface QuoteInput {
     country: string;
     phone: string;
   };
-  // For multicolor: OBJ+MTL URLs to bundle into a ZIP
+  // For multicolor: OBJ+MTL+texture URLs to bundle into a ZIP
   objUrl?: string;
   mtlUrl?: string;
+  textureUrls?: string[];
 }
 
 async function fetchWithTimeout(
@@ -374,7 +375,7 @@ Deno.serve(async (req: Request) => {
     if (payload.sub) userId = payload.sub;
   } catch { /* ignore */ }
 
-  const { modelUrl, materialConfigId, quantity, shippingAddress, objUrl, mtlUrl } = body;
+  const { modelUrl, materialConfigId, quantity, shippingAddress, objUrl, mtlUrl, textureUrls } = body;
 
   try {
     let fileBytes: Uint8Array;
@@ -400,24 +401,46 @@ Deno.serve(async (req: Request) => {
           const mtlName = mtlUrl.split('/').pop()?.split('?')[0] || 'model.mtl';
           zipFiles.push({ name: mtlName, data: mtlBytes });
 
-          // Parse MTL to find texture map files (map_Kd, map_Ka, map_Ks, etc.)
-          const mtlText = new TextDecoder().decode(mtlBytes);
-          const texturePattern = /\bmap_\w+\s+(.+)/g;
-          const baseUrl = mtlUrl.substring(0, mtlUrl.lastIndexOf('/') + 1);
-          let match;
-          while ((match = texturePattern.exec(mtlText)) !== null) {
-            const texFile = match[1].trim();
-            if (!texFile) continue;
-            const texUrl = texFile.startsWith('http') ? texFile : baseUrl + texFile;
-            try {
-              console.log(JSON.stringify({ evt: 'cc_downloading_texture', texFile }));
-              const texResp = await fetchWithTimeout(texUrl, { timeoutMs: 30000 });
-              if (texResp.ok) {
-                const texBytes = new Uint8Array(await texResp.arrayBuffer());
-                zipFiles.push({ name: texFile, data: texBytes });
+          if (textureUrls && Array.isArray(textureUrls) && textureUrls.length > 0) {
+            // Use pre-stored Supabase texture URLs (won't expire, paths already rewritten in MTL)
+            console.log(JSON.stringify({ evt: 'cc_using_stored_textures', count: textureUrls.length }));
+            for (const texUrl of textureUrls) {
+              const texName = texUrl.split('/').pop()?.split('?')[0] || 'texture.png';
+              try {
+                console.log(JSON.stringify({ evt: 'cc_downloading_stored_texture', texName }));
+                const texResp = await fetchWithTimeout(texUrl, { timeoutMs: 30000 });
+                if (texResp.ok) {
+                  const texBytes = new Uint8Array(await texResp.arrayBuffer());
+                  // Strip the recordId prefix from the filename to match what's in the MTL
+                  // Storage format: {recordId}_{texName}, MTL references just {texName}
+                  const cleanName = texName.includes('_') ? texName.substring(texName.indexOf('_') + 1) : texName;
+                  zipFiles.push({ name: cleanName, data: texBytes });
+                }
+              } catch (texErr: any) {
+                console.warn(JSON.stringify({ evt: 'cc_stored_texture_download_failed', texName, error: texErr.message }));
               }
-            } catch (texErr: any) {
-              console.warn(JSON.stringify({ evt: 'cc_texture_download_failed', texFile, error: texErr.message }));
+            }
+          } else {
+            // Fallback: parse MTL to find texture map files from original URLs
+            console.log(JSON.stringify({ evt: 'cc_parsing_mtl_for_textures' }));
+            const mtlText = new TextDecoder().decode(mtlBytes);
+            const texturePattern = /\bmap_\w+\s+(.+)/g;
+            const baseUrl = mtlUrl.substring(0, mtlUrl.lastIndexOf('/') + 1);
+            let match;
+            while ((match = texturePattern.exec(mtlText)) !== null) {
+              const texFile = match[1].trim();
+              if (!texFile) continue;
+              const texUrl = texFile.startsWith('http') ? texFile : baseUrl + texFile;
+              try {
+                console.log(JSON.stringify({ evt: 'cc_downloading_texture', texFile }));
+                const texResp = await fetchWithTimeout(texUrl, { timeoutMs: 30000 });
+                if (texResp.ok) {
+                  const texBytes = new Uint8Array(await texResp.arrayBuffer());
+                  zipFiles.push({ name: texFile, data: texBytes });
+                }
+              } catch (texErr: any) {
+                console.warn(JSON.stringify({ evt: 'cc_texture_download_failed', texFile, error: texErr.message }));
+              }
             }
           }
         }

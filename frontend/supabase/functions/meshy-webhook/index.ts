@@ -352,9 +352,13 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[${reqId}] Found DB record: id=${record.id}, status=${record.status}, type=${record.type}, meshy_task_id=${record.meshy_task_id}, meshy_refine_task_id=${record.meshy_refine_task_id}`);
 
-    // Idempotency: skip if already completed
+    // Idempotency: skip if already completed or being processed by another webhook execution
     if (record.status === 'completed') {
-      console.log(`⚡ [${reqId}] Record already completed — skipping`);
+      console.log(`⚡ [${reqId}] Record already completed — skipping duplicate webhook`);
+      return new Response(JSON.stringify({ received: true, skipped: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    if (record.processing_status === 'processing' || record.processing_status === 'completed') {
+      console.log(`⚡ [${reqId}] Processing already ${record.processing_status} — skipping duplicate webhook`);
       return new Response(JSON.stringify({ received: true, skipped: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -438,7 +442,7 @@ Deno.serve(async (req: Request) => {
       console.error(`[${reqId}] ❌ No model URLs and no MESHY_API_KEY to poll — cannot proceed`);
     }
 
-    // ── Step 1c: Store GLB in Supabase ──
+    // ── Step 1c: Store GLB in Supabase (for ModelViewer — keeps colors in browser) ──
     let storedGlbUrl = meshyGlbUrl || '';
     console.log(`[${reqId}] Step 1c: Store GLB. meshyGlbUrl=${meshyGlbUrl ? 'present' : 'MISSING'}`);
     if (meshyGlbUrl) {
@@ -446,35 +450,156 @@ Deno.serve(async (req: Request) => {
       console.log(`[${reqId}] GLB stored: ${storedGlbUrl === meshyGlbUrl ? 'kept original' : 'uploaded to Supabase'}`);
     }
 
-    // Update DB with model URLs
+    // ── Step 1d: Store OBJ + MTL + textures in Supabase (for color printing — Meshy CDN URLs expire) ──
+    let storedObjUrl = meshyObjUrl || '';
+    let storedMtlUrl = meshyMtlUrl || '';
+    const storedTextureUrls: string[] = [];
+
+    if (meshyObjUrl) {
+      console.log(`[${reqId}] Step 1d: Storing OBJ+MTL+textures in Supabase...`);
+      const basePath = userId ? `models/${userId}` : 'models';
+
+      // Store OBJ
+      try {
+        const objResp = await fetch(meshyObjUrl);
+        if (objResp.ok) {
+          const objData = await objResp.arrayBuffer();
+          const objPath = `${basePath}/${recordId}.obj`;
+          const { error: objErr } = await supabase.storage.from('3d-models').upload(objPath, objData, { contentType: 'application/octet-stream', upsert: true });
+          if (!objErr) {
+            storedObjUrl = supabase.storage.from('3d-models').getPublicUrl(objPath).data.publicUrl;
+            console.log(`[${reqId}]   ✅ OBJ stored: ${objData.byteLength} bytes`);
+          } else {
+            console.error(`[${reqId}]   ❌ OBJ upload failed:`, objErr.message);
+          }
+        }
+      } catch (e: any) { console.error(`[${reqId}]   ❌ OBJ download failed:`, e.message); }
+
+      // Store MTL and parse for texture references
+      if (meshyMtlUrl) {
+        try {
+          const mtlResp = await fetch(meshyMtlUrl);
+          if (mtlResp.ok) {
+            let mtlText = await mtlResp.text();
+            const mtlBaseUrl = meshyMtlUrl.substring(0, meshyMtlUrl.lastIndexOf('/') + 1);
+
+            // Find all texture references in the MTL
+            const texRegex = /\bmap_\w+\s+(.+)/g;
+            let match;
+            const textureFiles = new Set<string>();
+            while ((match = texRegex.exec(mtlText)) !== null) {
+              textureFiles.add(match[1].trim());
+            }
+            console.log(`[${reqId}]   Found ${textureFiles.size} texture references in MTL`);
+
+            // Download and store each texture, rewrite MTL paths
+            for (const texFile of textureFiles) {
+              try {
+                const texUrl = texFile.startsWith('http') ? texFile : mtlBaseUrl + texFile;
+                const texResp = await fetch(texUrl);
+                if (texResp.ok) {
+                  const texData = await texResp.arrayBuffer();
+                  const texName = texFile.split('/').pop() || texFile;
+                  const texPath = `${basePath}/${recordId}_${texName}`;
+                  const { error: texErr } = await supabase.storage.from('3d-models').upload(texPath, texData, { contentType: 'application/octet-stream', upsert: true });
+                  if (!texErr) {
+                    const texPublicUrl = supabase.storage.from('3d-models').getPublicUrl(texPath).data.publicUrl;
+                    storedTextureUrls.push(texPublicUrl);
+                    // Rewrite MTL to use the simple filename (for ZIP bundling)
+                    mtlText = mtlText.split(texFile).join(texName);
+                    console.log(`[${reqId}]   ✅ Texture stored: ${texName} (${texData.byteLength} bytes)`);
+                  } else {
+                    console.error(`[${reqId}]   ❌ Texture upload failed (${texFile}):`, texErr.message);
+                  }
+                }
+              } catch (texE: any) { console.error(`[${reqId}]   ❌ Texture download failed (${texFile}):`, texE.message); }
+            }
+
+            // Store the rewritten MTL
+            const mtlData = new TextEncoder().encode(mtlText);
+            const mtlPath = `${basePath}/${recordId}.mtl`;
+            const { error: mtlErr } = await supabase.storage.from('3d-models').upload(mtlPath, mtlData, { contentType: 'text/plain', upsert: true });
+            if (!mtlErr) {
+              storedMtlUrl = supabase.storage.from('3d-models').getPublicUrl(mtlPath).data.publicUrl;
+              console.log(`[${reqId}]   ✅ MTL stored (rewritten with ${storedTextureUrls.length} texture paths)`);
+            } else {
+              console.error(`[${reqId}]   ❌ MTL upload failed:`, mtlErr.message);
+            }
+          }
+        } catch (e: any) { console.error(`[${reqId}]   ❌ MTL download failed:`, e.message); }
+      }
+      console.log(`[${reqId}] Step 1d complete: obj=${storedObjUrl ? 'stored' : 'MISSING'}, mtl=${storedMtlUrl ? 'stored' : 'MISSING'}, textures=${storedTextureUrls.length}`);
+    }
+
+    // Update DB with model URLs (using Supabase URLs, not Meshy CDN)
     const urlUpdate: any = {
       glb_url: storedGlbUrl || null,
-      model_url: storedGlbUrl || null,
-      obj_url: meshyObjUrl || null,
+      model_url: storedGlbUrl || null,  // Keep GLB as model_url for ModelViewer
+      obj_url: storedObjUrl || meshyObjUrl || null,
       stl_url: meshyStlUrl || null,
-      mtl_url: meshyMtlUrl || null,
+      mtl_url: storedMtlUrl || meshyMtlUrl || null,
       fbx_url: meshyFbxUrl || null,
       usdz_url: meshyUsdzUrl || null,
       thumbnail_url: thumbnailUrl || null,
+      texture_urls: storedTextureUrls.length > 0 ? storedTextureUrls : null,
       updated_at: new Date().toISOString(),
     };
     if (meshyGlbUrl && meshyGlbUrl !== storedGlbUrl) {
-      urlUpdate.notes = `Original Meshy URL: ${meshyGlbUrl}`;
+      urlUpdate.notes = `Original Meshy GLB: ${meshyGlbUrl}`;
     }
     const { error: urlUpdateErr } = await supabase.from('generated_models').update(urlUpdate).eq('id', recordId);
     if (urlUpdateErr) {
       console.error(`[${reqId}] ❌ URL update failed:`, urlUpdateErr.message);
     } else {
-      console.log(`[${reqId}] ✅ Model URLs saved to DB`);
+      console.log(`[${reqId}] ✅ Model URLs saved to DB (GLB + OBJ + MTL + ${storedTextureUrls.length} textures)`);
     }
 
-    // ── Step 2: Scale model if dimensions were requested ──
-    let finalModelUrl = storedGlbUrl;
+    // ── Step 2: Scale + Hollow model via Blender (replaces old THREE.js scaling) ──
+    // process-model is now SYNCHRONOUS — it waits for Modal and returns the results directly.
+    let finalStlUrl: string | null = null;
+    let finalGlbUrl: string | null = null;
     const dims = record.target_dimensions;
-    console.log(`[${reqId}] Step 2: Scale. target_dimensions=${dims ? JSON.stringify(dims) : 'none'}, hasModelUrl=${!!storedGlbUrl}`);
-    if (dims && storedGlbUrl) {
+    console.log(`[${reqId}] Step 2: Process (scale+hollow). target_dimensions=${dims ? JSON.stringify(dims) : 'none'}, hasGlbUrl=${!!storedGlbUrl}, hasObjUrl=${!!storedObjUrl}`);
+    if (dims && (storedGlbUrl || storedObjUrl)) {
       try {
-        console.log(`📐 [${reqId}] Scaling model...`, dims);
+        console.log(`📐 [${reqId}] Calling process-model (synchronous — waits for Blender)...`, dims);
+        const processStart = Date.now();
+        const { data: processData, error: processErr } = await supabase.functions.invoke('process-model', {
+          body: {
+            glbUrl: storedGlbUrl || undefined,
+            objUrl: storedObjUrl || undefined,
+            modelId: recordId,
+            userId: userId || '00000000-0000-0000-0000-000000000000',
+            scaleValue: dims.value,
+            scaleUnit: dims.unit,
+            scaleTarget: dims.target,
+            wallThickness: 0,   // Hollowing disabled for now — scale only
+            drainHoles: 0,
+            holeDiameter: 0,
+          },
+        });
+        const processDuration = ((Date.now() - processStart) / 1000).toFixed(1);
+
+        if (!processErr && processData?.success) {
+          finalStlUrl = processData.scaledStlUrl || null;
+          finalGlbUrl = processData.scaledGlbUrl || null;
+          const report = processData.report;
+          console.log(`✅ [${reqId}] Processing completed in ${processDuration}s.`);
+          console.log(`✅ [${reqId}]   scaled_stl=${finalStlUrl ? finalStlUrl.slice(-60) : 'NONE'}`);
+          console.log(`✅ [${reqId}]   scaled_glb=${finalGlbUrl ? finalGlbUrl.slice(-60) : 'NONE'}`);
+          if (report) {
+            console.log(`✅ [${reqId}]   dims=${report.final?.dimensions_m?.map((d: number) => (d * 100).toFixed(1) + 'cm')}, material_saved=${report.material_saved_percent}%`);
+          }
+        } else {
+          console.warn(`⚠️ [${reqId}] Processing failed after ${processDuration}s:`, processErr?.message || processData?.error);
+        }
+      } catch (processErr: any) {
+        console.warn(`⚠️ [${reqId}] Process error (non-critical):`, processErr.message);
+      }
+    } else if (dims && !storedObjUrl && storedGlbUrl) {
+      // Fallback: no OBJ available, try old scale-model with GLB
+      console.warn(`⚠️ [${reqId}] No OBJ URL available — falling back to old scale-model for GLB`);
+      try {
         const { data: scaleData, error: scaleErr } = await supabase.functions.invoke('scale-model', {
           body: {
             glbUrl: storedGlbUrl,
@@ -485,70 +610,65 @@ Deno.serve(async (req: Request) => {
             target: dims.target,
           },
         });
-
         if (!scaleErr && scaleData?.success) {
-          finalModelUrl = scaleData.data.scaledUrl;
-          console.log(`✅ [${reqId}] Scaled. Updating DB...`);
-          await supabase.from('generated_models').update({
-            model_url: finalModelUrl,
-            stl_url: finalModelUrl,
-            notes: `Scaled model. Original: ${storedGlbUrl}. Target: ${dims.value}${dims.unit} ${dims.target}`,
-            updated_at: new Date().toISOString(),
-          }).eq('id', recordId);
-        } else {
-          console.warn(`⚠️ [${reqId}] Scaling failed (non-critical):`, scaleErr?.message || scaleData?.error);
+          finalStlUrl = scaleData.data.scaledUrl;
         }
-      } catch (scaleErr: any) {
-        console.warn(`⚠️ [${reqId}] Scale error (non-critical):`, scaleErr.message);
+      } catch (e: any) {
+        console.warn(`⚠️ [${reqId}] Fallback scale failed:`, e.message);
       }
     }
+
+    // Use scaled GLB for ALL quotes (has colors for color quotes, geometry for mono/SLS).
+    // One upload to CraftCloud, reused for all 3 material types.
+    const quoteModelUrl = finalGlbUrl || finalStlUrl || storedGlbUrl;
 
     // ── Step 3: Fetch CraftCloud quotes ──
     const shippingInfo = record.shipping_info;
     let quoteUpdate: Record<string, any> = {};
-    console.log(`[${reqId}] Step 3: Quotes. shippingInfo=${shippingInfo ? 'present' : 'MISSING'}, finalModelUrl=${finalModelUrl ? 'present' : 'MISSING'}`);
+    console.log(`[${reqId}] Step 3: Quotes. shippingInfo=${shippingInfo ? 'present' : 'MISSING'}`);
+    console.log(`[${reqId}]   quote url: ${quoteModelUrl ? quoteModelUrl.slice(-50) : 'NONE'} (${finalGlbUrl ? 'scaled_glb' : finalStlUrl ? 'scaled_stl' : 'original_glb'})`);
 
-    if (shippingInfo && finalModelUrl) {
+    if (shippingInfo && quoteModelUrl) {
       try {
-        console.log(`💰 [${reqId}] Fetching CraftCloud quotes...`);
-
-        // Download model file for CraftCloud upload
-        const fileResp = await fetchWithTimeout(finalModelUrl, { timeoutMs: 30000 });
-        if (!fileResp.ok) throw new Error(`Download failed (${fileResp.status})`);
-        const fileBytes = new Uint8Array(await fileResp.arrayBuffer());
-        const fileName = finalModelUrl.split('/').pop()?.split('?')[0] || 'model.glb';
+        console.log(`💰 [${reqId}] Downloading model for quotes...`);
+        const modelResp = await fetchWithTimeout(quoteModelUrl, { timeoutMs: 30000 });
+        if (!modelResp.ok) throw new Error(`Model download failed (${modelResp.status})`);
+        const modelBytes = new Uint8Array(await modelResp.arrayBuffer());
+        const modelFileName = quoteModelUrl.split('/').pop()?.split('?')[0] || 'model.glb';
+        console.log(`💰 [${reqId}] Downloaded ${modelFileName}: ${modelBytes.length.toLocaleString()} bytes`);
 
         // Upload to CraftCloud once, reuse for all materials
-        const ccModelId = await uploadModelToCraftcloud(fileBytes, fileName);
+        const ccModelId = await uploadModelToCraftcloud(modelBytes, modelFileName);
         await pollModelReady(ccModelId);
-
         const countryCode = shippingInfo.country || 'US';
 
         // Fetch all 3 material quotes in parallel
         const [colorResult, monoResult, slsResult] = await Promise.allSettled([
-          getQuoteForMaterial(fileBytes, fileName, ccModelId, COLOR_CONFIG_ID, countryCode),
-          getQuoteForMaterial(fileBytes, fileName, ccModelId, MONO_CONFIG_ID, countryCode),
-          getQuoteForMaterial(fileBytes, fileName, ccModelId, SLS_CONFIG_ID, countryCode),
+          getQuoteForMaterial(modelBytes, modelFileName, ccModelId, COLOR_CONFIG_ID, countryCode),
+          getQuoteForMaterial(modelBytes, modelFileName, ccModelId, MONO_CONFIG_ID, countryCode),
+          getQuoteForMaterial(modelBytes, modelFileName, ccModelId, SLS_CONFIG_ID, countryCode),
         ]);
 
         if (colorResult.status === 'fulfilled' && colorResult.value) {
           quoteUpdate.color_quotes = colorResult.value;
-          console.log(`✅ [${reqId}] Color quotes:`, colorResult.value.vendors.length, 'vendors');
+          console.log(`✅ [${reqId}] Color quotes:`, colorResult.value.vendors.length, 'vendors, cheapest:', colorResult.value.vendors[0]?.totalPrice);
+        } else {
+          console.warn(`⚠️ [${reqId}] Color quotes failed:`, colorResult.status === 'rejected' ? colorResult.reason?.message : 'no vendors');
         }
         if (monoResult.status === 'fulfilled' && monoResult.value) {
           quoteUpdate.mono_quotes = monoResult.value;
-          console.log(`✅ [${reqId}] Mono quotes:`, monoResult.value.vendors.length, 'vendors');
+          console.log(`✅ [${reqId}] Mono quotes:`, monoResult.value.vendors.length, 'vendors, cheapest:', monoResult.value.vendors[0]?.totalPrice);
         }
         if (slsResult.status === 'fulfilled' && slsResult.value) {
           quoteUpdate.sls_quotes = slsResult.value;
-          console.log(`✅ [${reqId}] SLS quotes:`, slsResult.value.vendors.length, 'vendors');
+          console.log(`✅ [${reqId}] SLS quotes:`, slsResult.value.vendors.length, 'vendors, cheapest:', slsResult.value.vendors[0]?.totalPrice);
         }
       } catch (quoteErr: any) {
         console.error(`⚠️ [${reqId}] CraftCloud quoting failed (non-critical):`, quoteErr.message);
       }
     } else {
       if (!shippingInfo) console.log(`[${reqId}] ℹ️ No shipping info — skipping quotes`);
-      if (!finalModelUrl) console.log(`[${reqId}] ℹ️ No model URL available — skipping quotes`);
+      if (!monoQuoteUrl) console.log(`[${reqId}] ℹ️ No model URL available — skipping quotes`);
     }
 
     // ── Step 4: Mark completed ──

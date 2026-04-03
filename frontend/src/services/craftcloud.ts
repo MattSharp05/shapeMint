@@ -18,6 +18,7 @@ interface CraftcloudQuoteParams {
   // For multicolor materials: OBJ+MTL are zipped server-side
   objUrl?: string;
   mtlUrl?: string;
+  textureUrls?: string[];
 }
 
 export interface CraftcloudVendorOption {
@@ -69,6 +70,7 @@ export async function getQuote(params: CraftcloudQuoteParams): Promise<Craftclou
       shippingAddress: params.shippingAddress,
       ...(params.objUrl && { objUrl: params.objUrl }),
       ...(params.mtlUrl && { mtlUrl: params.mtlUrl }),
+      ...(params.textureUrls?.length && { textureUrls: params.textureUrls }),
     }),
   });
 

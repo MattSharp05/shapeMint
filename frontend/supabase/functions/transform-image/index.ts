@@ -88,11 +88,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const result = await falResponse.json();
-    const images = result.images?.map((img: any) => img.url) || [];
-    console.log(`fal.ai returned ${images.length} images`);
+    const outputImages = result.images?.map((img: any) => img.url) || [];
+    console.log(`fal.ai returned ${outputImages.length} images`);
 
     return new Response(
-      JSON.stringify({ success: true, images }),
+      JSON.stringify({ success: true, images: outputImages }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error: any) {

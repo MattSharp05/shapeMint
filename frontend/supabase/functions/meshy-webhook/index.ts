@@ -201,8 +201,8 @@ async function pollPrices(priceId: string): Promise<{ quotes: any[]; shippings: 
   throw new Error('CC price polling timed out');
 }
 
-function buildVendorOptions(quotes: any[], shippings: any[]) {
-  return quotes.map(q => {
+async function buildVendorOptions(quotes: any[], shippings: any[]) {
+  const options = quotes.map(q => {
     const vendorShips = shippings.filter(s => s.vendorId === q.vendorId);
     const cheapest = vendorShips.length > 0 ? vendorShips.reduce((b, s) => s.price < b.price ? s : b) : null;
     const shipPrice = cheapest?.price ?? 0;
@@ -217,8 +217,65 @@ function buildVendorOptions(quotes: any[], shippings: any[]) {
       craftcloudShippingId: cheapest?.shippingId ?? '',
       shippingName: cheapest?.name ?? '',
       shippingDeliveryTime: cheapest?.deliveryTime ?? '',
+      minimumFee: undefined as number | undefined,
+      cartId: undefined as string | undefined,
     };
   }).sort((a, b) => a.totalPrice - b.totalPrice);
+
+  // Verify real totals via cart creation for top vendors (catches minimum order fees)
+  const topVendors = options.slice(0, 8);
+  const cartResults = await Promise.allSettled(
+    topVendors.map(async (v) => {
+      const cartPayload: any = {
+        quotes: [{ id: v.craftcloudQuoteId }],
+        currency: 'USD',
+      };
+      if (v.craftcloudShippingId) {
+        cartPayload.shippingIds = [v.craftcloudShippingId];
+      }
+      const resp = await fetchWithTimeout(`https://api.craftcloud3d.com/v5/cart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cartPayload),
+        timeoutMs: 10000,
+      });
+      if (!resp.ok) return null;
+      return resp.json();
+    })
+  );
+
+  for (let i = 0; i < topVendors.length; i++) {
+    const result = cartResults[i];
+    if (result.status !== 'fulfilled' || !result.value) continue;
+    const cartData = result.value;
+
+    const amounts = cartData?.amounts?.total;
+    const cartQuote = cartData?.quotes?.[0];
+    const cartShipping = cartData?.shippings?.[0];
+    const cartTotal = amounts?.totalNetPrice
+      ?? Number(((cartQuote?.price ?? 0) + (cartShipping?.price ?? 0)).toFixed(2));
+
+    const rawTotal = topVendors[i].totalPrice;
+    const minProd = cartData?.minimumProductionPrice;
+    let minimumFee = 0;
+
+    // Check for minimum production fee (explicit or derived)
+    if (minProd) {
+      const vendorMin = minProd[topVendors[i].vendorId];
+      if (vendorMin?.productionFee) minimumFee = vendorMin.productionFee;
+    }
+    if (minimumFee === 0 && cartTotal > rawTotal + 0.01) {
+      minimumFee = Number((cartTotal - rawTotal).toFixed(2));
+    }
+
+    topVendors[i].totalPrice = Number(cartTotal.toFixed(2));
+    topVendors[i].minimumFee = minimumFee > 0 ? Number(minimumFee.toFixed(2)) : undefined;
+    topVendors[i].cartId = cartData.cartId;
+  }
+
+  // Re-sort after price adjustments
+  options.sort((a, b) => a.totalPrice - b.totalPrice);
+  return options;
 }
 
 async function getQuoteForMaterial(
@@ -232,7 +289,7 @@ async function getQuoteForMaterial(
     const priceId = await requestPrices(ccModelId, materialConfigId, 1, countryCode);
     const { quotes, shippings } = await pollPrices(priceId);
     if (quotes.length === 0) return null;
-    return { vendors: buildVendorOptions(quotes, shippings), craftcloudPriceId: priceId, currency: 'USD' };
+    return { vendors: await buildVendorOptions(quotes, shippings), craftcloudPriceId: priceId, currency: 'USD' };
   } catch (err: any) {
     console.error(`Quote failed for material ${materialConfigId}:`, err.message);
     return null;

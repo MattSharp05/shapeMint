@@ -174,7 +174,7 @@ Deno.serve(async (req: Request) => {
     const orderPayload = {
       cartId,
       user: {
-        emailAddress: shippingAddress.email,
+        emailAddress: 'matthew@gogentic.ai',  // Use our email for CraftCloud comms — customers get ShapeMint emails only
         shipping: {
           firstName: shippingAddress.firstName,
           lastName: shippingAddress.lastName,

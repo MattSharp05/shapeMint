@@ -48,10 +48,13 @@ serve(async (req) => {
 
     try {
       // Verify webhook signature
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      console.log('🔑 Verifying signature. Secret starts with:', webhookSecret.slice(0, 10) + '...');
+      console.log('🔑 Signature header:', signature.slice(0, 40) + '...');
+      console.log('🔑 Body length:', body.length);
+      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
       console.log('✅ Webhook signature verified:', event.type);
-    } catch (err) {
-      console.error('❌ Webhook signature verification failed:', err);
+    } catch (err: any) {
+      console.error('❌ Webhook signature verification failed:', err.message || err);
       return new Response('Invalid signature', { status: 400 });
     }
 
@@ -73,8 +76,8 @@ serve(async (req) => {
           .update({
             status: 'paid',
             stripe_session_id: session.id,
-            stripe_payment_intent_id: session.payment_intent as string,
-            payment_method: session.payment_method_types?.[0] || 'card',
+            amount_paid: (session.amount_total || 0) / 100,
+            payment_status: 'paid',
             updated_at: new Date().toISOString()
           })
           .eq('id', orderId);
@@ -187,7 +190,7 @@ serve(async (req) => {
                 const executeResp = await fetch(`${CRAFTCLOUD_API}/v5/payment/invoice/${paymentId}`, {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(executeBody),
+                  body: JSON.stringify({}),
                 });
 
                 console.log('📦 [CraftCloud Invoice] Step 2 response status:', executeResp.status);

@@ -93,16 +93,8 @@ export function OrderSuccess() {
 
             console.log('✅ Found Craftcloud order:', order.id, 'status:', order.status);
 
-            // Update order status from pending_payment to submitted
-            const { error: updateErr } = await supabase
-              .from('orders')
-              .update({ status: 'submitted', updated_at: new Date().toISOString() })
-              .eq('id', order.id)
-              .eq('status', 'pending_payment');
-
-            if (updateErr) {
-              console.warn('Failed to update order status:', updateErr.message);
-            }
+            // Don't update status here — the stripe webhook owns the status lifecycle
+            // (pending_payment → paid → confirmed). Updating here would overwrite the webhook's status.
 
             setError(null);
             setOrderData({

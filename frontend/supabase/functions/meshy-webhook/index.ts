@@ -201,8 +201,8 @@ async function pollPrices(priceId: string): Promise<{ quotes: any[]; shippings: 
   throw new Error('CC price polling timed out');
 }
 
-function buildVendorOptions(quotes: any[], shippings: any[]) {
-  return quotes.map(q => {
+async function buildVendorOptions(quotes: any[], shippings: any[]) {
+  const options = quotes.map(q => {
     const vendorShips = shippings.filter(s => s.vendorId === q.vendorId);
     const cheapest = vendorShips.length > 0 ? vendorShips.reduce((b, s) => s.price < b.price ? s : b) : null;
     const shipPrice = cheapest?.price ?? 0;
@@ -217,8 +217,65 @@ function buildVendorOptions(quotes: any[], shippings: any[]) {
       craftcloudShippingId: cheapest?.shippingId ?? '',
       shippingName: cheapest?.name ?? '',
       shippingDeliveryTime: cheapest?.deliveryTime ?? '',
+      minimumFee: undefined as number | undefined,
+      cartId: undefined as string | undefined,
     };
   }).sort((a, b) => a.totalPrice - b.totalPrice);
+
+  // Verify real totals via cart creation for top vendors (catches minimum order fees)
+  const topVendors = options.slice(0, 8);
+  const cartResults = await Promise.allSettled(
+    topVendors.map(async (v) => {
+      const cartPayload: any = {
+        quotes: [{ id: v.craftcloudQuoteId }],
+        currency: 'USD',
+      };
+      if (v.craftcloudShippingId) {
+        cartPayload.shippingIds = [v.craftcloudShippingId];
+      }
+      const resp = await fetchWithTimeout(`https://api.craftcloud3d.com/v5/cart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cartPayload),
+        timeoutMs: 10000,
+      });
+      if (!resp.ok) return null;
+      return resp.json();
+    })
+  );
+
+  for (let i = 0; i < topVendors.length; i++) {
+    const result = cartResults[i];
+    if (result.status !== 'fulfilled' || !result.value) continue;
+    const cartData = result.value;
+
+    const amounts = cartData?.amounts?.total;
+    const cartQuote = cartData?.quotes?.[0];
+    const cartShipping = cartData?.shippings?.[0];
+    const cartTotal = amounts?.totalNetPrice
+      ?? Number(((cartQuote?.price ?? 0) + (cartShipping?.price ?? 0)).toFixed(2));
+
+    const rawTotal = topVendors[i].totalPrice;
+    const minProd = cartData?.minimumProductionPrice;
+    let minimumFee = 0;
+
+    // Check for minimum production fee (explicit or derived)
+    if (minProd) {
+      const vendorMin = minProd[topVendors[i].vendorId];
+      if (vendorMin?.productionFee) minimumFee = vendorMin.productionFee;
+    }
+    if (minimumFee === 0 && cartTotal > rawTotal + 0.01) {
+      minimumFee = Number((cartTotal - rawTotal).toFixed(2));
+    }
+
+    topVendors[i].totalPrice = Number(cartTotal.toFixed(2));
+    topVendors[i].minimumFee = minimumFee > 0 ? Number(minimumFee.toFixed(2)) : undefined;
+    topVendors[i].cartId = cartData.cartId;
+  }
+
+  // Re-sort after price adjustments
+  options.sort((a, b) => a.totalPrice - b.totalPrice);
+  return options;
 }
 
 async function getQuoteForMaterial(
@@ -232,7 +289,7 @@ async function getQuoteForMaterial(
     const priceId = await requestPrices(ccModelId, materialConfigId, 1, countryCode);
     const { quotes, shippings } = await pollPrices(priceId);
     if (quotes.length === 0) return null;
-    return { vendors: buildVendorOptions(quotes, shippings), craftcloudPriceId: priceId, currency: 'USD' };
+    return { vendors: await buildVendorOptions(quotes, shippings), craftcloudPriceId: priceId, currency: 'USD' };
   } catch (err: any) {
     console.error(`Quote failed for material ${materialConfigId}:`, err.message);
     return null;
@@ -352,9 +409,13 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[${reqId}] Found DB record: id=${record.id}, status=${record.status}, type=${record.type}, meshy_task_id=${record.meshy_task_id}, meshy_refine_task_id=${record.meshy_refine_task_id}`);
 
-    // Idempotency: skip if already completed
+    // Idempotency: skip if already completed or being processed by another webhook execution
     if (record.status === 'completed') {
-      console.log(`⚡ [${reqId}] Record already completed — skipping`);
+      console.log(`⚡ [${reqId}] Record already completed — skipping duplicate webhook`);
+      return new Response(JSON.stringify({ received: true, skipped: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    if (record.processing_status === 'processing' || record.processing_status === 'completed') {
+      console.log(`⚡ [${reqId}] Processing already ${record.processing_status} — skipping duplicate webhook`);
       return new Response(JSON.stringify({ received: true, skipped: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -386,7 +447,7 @@ Deno.serve(async (req: Request) => {
         const refineResp = await fetch('https://api.meshy.ai/v2/text-to-3d', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${meshyApiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'refine', preview_task_id: meshyTaskId, enable_pbr: true }),
+          body: JSON.stringify({ mode: 'refine', preview_task_id: meshyTaskId, enable_pbr: false }),
         });
         if (refineResp.ok) {
           const refineData = await refineResp.json();
@@ -438,7 +499,7 @@ Deno.serve(async (req: Request) => {
       console.error(`[${reqId}] ❌ No model URLs and no MESHY_API_KEY to poll — cannot proceed`);
     }
 
-    // ── Step 1c: Store GLB in Supabase ──
+    // ── Step 1c: Store GLB in Supabase (for ModelViewer — keeps colors in browser) ──
     let storedGlbUrl = meshyGlbUrl || '';
     console.log(`[${reqId}] Step 1c: Store GLB. meshyGlbUrl=${meshyGlbUrl ? 'present' : 'MISSING'}`);
     if (meshyGlbUrl) {
@@ -446,109 +507,129 @@ Deno.serve(async (req: Request) => {
       console.log(`[${reqId}] GLB stored: ${storedGlbUrl === meshyGlbUrl ? 'kept original' : 'uploaded to Supabase'}`);
     }
 
-    // Update DB with model URLs
+    // ── Step 1d: Save Meshy CDN URLs to DB (skip downloading OBJ/MTL to save memory) ──
+    const storedObjUrl = meshyObjUrl || '';
+    const storedMtlUrl = meshyMtlUrl || '';
+    const storedTextureUrls: string[] = [];
+    console.log(`[${reqId}] Step 1d: Saving Meshy URLs to DB (OBJ/MTL not downloaded to save memory)`);
+
+    // Update DB with model URLs (using Supabase GLB URL, Meshy CDN for others)
     const urlUpdate: any = {
       glb_url: storedGlbUrl || null,
-      model_url: storedGlbUrl || null,
-      obj_url: meshyObjUrl || null,
+      model_url: storedGlbUrl || null,  // Keep GLB as model_url for ModelViewer
+      obj_url: storedObjUrl || meshyObjUrl || null,
       stl_url: meshyStlUrl || null,
-      mtl_url: meshyMtlUrl || null,
+      mtl_url: storedMtlUrl || meshyMtlUrl || null,
       fbx_url: meshyFbxUrl || null,
       usdz_url: meshyUsdzUrl || null,
       thumbnail_url: thumbnailUrl || null,
+      texture_urls: storedTextureUrls.length > 0 ? storedTextureUrls : null,
       updated_at: new Date().toISOString(),
     };
     if (meshyGlbUrl && meshyGlbUrl !== storedGlbUrl) {
-      urlUpdate.notes = `Original Meshy URL: ${meshyGlbUrl}`;
+      urlUpdate.notes = `Original Meshy GLB: ${meshyGlbUrl}`;
     }
     const { error: urlUpdateErr } = await supabase.from('generated_models').update(urlUpdate).eq('id', recordId);
     if (urlUpdateErr) {
       console.error(`[${reqId}] ❌ URL update failed:`, urlUpdateErr.message);
     } else {
-      console.log(`[${reqId}] ✅ Model URLs saved to DB`);
+      console.log(`[${reqId}] ✅ Model URLs saved to DB (GLB stored, OBJ/MTL/STL as Meshy CDN URLs)`);
     }
 
-    // ── Step 2: Scale model if dimensions were requested ──
-    let finalModelUrl = storedGlbUrl;
+    // ── Step 2: Scale model via Blender (hollowing disabled) ──
+    // process-model is now SYNCHRONOUS — it waits for Modal and returns the results directly.
+    let finalStlUrl: string | null = null;
+    let finalGlbUrl: string | null = null;
     const dims = record.target_dimensions;
-    console.log(`[${reqId}] Step 2: Scale. target_dimensions=${dims ? JSON.stringify(dims) : 'none'}, hasModelUrl=${!!storedGlbUrl}`);
+    console.log(`[${reqId}] Step 2: Process (scale). target_dimensions=${dims ? JSON.stringify(dims) : 'none'}, hasGlbUrl=${!!storedGlbUrl}`);
     if (dims && storedGlbUrl) {
       try {
-        console.log(`📐 [${reqId}] Scaling model...`, dims);
-        const { data: scaleData, error: scaleErr } = await supabase.functions.invoke('scale-model', {
+        console.log(`📐 [${reqId}] Calling process-model (synchronous — waits for Blender)...`, dims);
+        const processStart = Date.now();
+        const { data: processData, error: processErr } = await supabase.functions.invoke('process-model', {
           body: {
             glbUrl: storedGlbUrl,
             modelId: recordId,
             userId: userId || '00000000-0000-0000-0000-000000000000',
-            targetValue: dims.value,
-            unit: dims.unit,
-            target: dims.target,
+            scaleValue: dims.value,
+            scaleUnit: dims.unit,
+            scaleTarget: dims.target,
+            wallThickness: 0,   // Hollowing disabled for now — scale only
+            drainHoles: 0,
+            holeDiameter: 0,
           },
         });
+        const processDuration = ((Date.now() - processStart) / 1000).toFixed(1);
 
-        if (!scaleErr && scaleData?.success) {
-          finalModelUrl = scaleData.data.scaledUrl;
-          console.log(`✅ [${reqId}] Scaled. Updating DB...`);
-          await supabase.from('generated_models').update({
-            model_url: finalModelUrl,
-            stl_url: finalModelUrl,
-            notes: `Scaled model. Original: ${storedGlbUrl}. Target: ${dims.value}${dims.unit} ${dims.target}`,
-            updated_at: new Date().toISOString(),
-          }).eq('id', recordId);
+        if (!processErr && processData?.success) {
+          finalStlUrl = processData.scaledStlUrl || null;
+          finalGlbUrl = processData.scaledGlbUrl || null;
+          const report = processData.report;
+          console.log(`✅ [${reqId}] Processing completed in ${processDuration}s.`);
+          console.log(`✅ [${reqId}]   scaled_stl=${finalStlUrl ? finalStlUrl.slice(-60) : 'NONE'}`);
+          console.log(`✅ [${reqId}]   scaled_glb=${finalGlbUrl ? finalGlbUrl.slice(-60) : 'NONE'}`);
+          if (report) {
+            console.log(`✅ [${reqId}]   dims=${report.final?.dimensions_m?.map((d: number) => (d * 100).toFixed(1) + 'cm')}, material_saved=${report.material_saved_percent}%`);
+          }
         } else {
-          console.warn(`⚠️ [${reqId}] Scaling failed (non-critical):`, scaleErr?.message || scaleData?.error);
+          console.warn(`⚠️ [${reqId}] Processing failed after ${processDuration}s:`, processErr?.message || processData?.error);
         }
-      } catch (scaleErr: any) {
-        console.warn(`⚠️ [${reqId}] Scale error (non-critical):`, scaleErr.message);
+      } catch (processErr: any) {
+        console.warn(`⚠️ [${reqId}] Process error (non-critical):`, processErr.message);
       }
     }
+
+    // Use scaled GLB for ALL quotes (has colors for color quotes, geometry for mono/SLS).
+    // One upload to CraftCloud, reused for all 3 material types.
+    const quoteModelUrl = finalGlbUrl || finalStlUrl || storedGlbUrl;
 
     // ── Step 3: Fetch CraftCloud quotes ──
     const shippingInfo = record.shipping_info;
     let quoteUpdate: Record<string, any> = {};
-    console.log(`[${reqId}] Step 3: Quotes. shippingInfo=${shippingInfo ? 'present' : 'MISSING'}, finalModelUrl=${finalModelUrl ? 'present' : 'MISSING'}`);
+    console.log(`[${reqId}] Step 3: Quotes. shippingInfo=${shippingInfo ? 'present' : 'MISSING'}`);
+    console.log(`[${reqId}]   quote url: ${quoteModelUrl ? quoteModelUrl.slice(-50) : 'NONE'} (${finalGlbUrl ? 'scaled_glb' : finalStlUrl ? 'scaled_stl' : 'original_glb'})`);
 
-    if (shippingInfo && finalModelUrl) {
+    if (shippingInfo && quoteModelUrl) {
       try {
-        console.log(`💰 [${reqId}] Fetching CraftCloud quotes...`);
-
-        // Download model file for CraftCloud upload
-        const fileResp = await fetchWithTimeout(finalModelUrl, { timeoutMs: 30000 });
-        if (!fileResp.ok) throw new Error(`Download failed (${fileResp.status})`);
-        const fileBytes = new Uint8Array(await fileResp.arrayBuffer());
-        const fileName = finalModelUrl.split('/').pop()?.split('?')[0] || 'model.glb';
+        console.log(`💰 [${reqId}] Downloading model for quotes...`);
+        const modelResp = await fetchWithTimeout(quoteModelUrl, { timeoutMs: 30000 });
+        if (!modelResp.ok) throw new Error(`Model download failed (${modelResp.status})`);
+        const modelBytes = new Uint8Array(await modelResp.arrayBuffer());
+        const modelFileName = quoteModelUrl.split('/').pop()?.split('?')[0] || 'model.glb';
+        console.log(`💰 [${reqId}] Downloaded ${modelFileName}: ${modelBytes.length.toLocaleString()} bytes`);
 
         // Upload to CraftCloud once, reuse for all materials
-        const ccModelId = await uploadModelToCraftcloud(fileBytes, fileName);
+        const ccModelId = await uploadModelToCraftcloud(modelBytes, modelFileName);
         await pollModelReady(ccModelId);
-
         const countryCode = shippingInfo.country || 'US';
 
         // Fetch all 3 material quotes in parallel
         const [colorResult, monoResult, slsResult] = await Promise.allSettled([
-          getQuoteForMaterial(fileBytes, fileName, ccModelId, COLOR_CONFIG_ID, countryCode),
-          getQuoteForMaterial(fileBytes, fileName, ccModelId, MONO_CONFIG_ID, countryCode),
-          getQuoteForMaterial(fileBytes, fileName, ccModelId, SLS_CONFIG_ID, countryCode),
+          getQuoteForMaterial(modelBytes, modelFileName, ccModelId, COLOR_CONFIG_ID, countryCode),
+          getQuoteForMaterial(modelBytes, modelFileName, ccModelId, MONO_CONFIG_ID, countryCode),
+          getQuoteForMaterial(modelBytes, modelFileName, ccModelId, SLS_CONFIG_ID, countryCode),
         ]);
 
         if (colorResult.status === 'fulfilled' && colorResult.value) {
           quoteUpdate.color_quotes = colorResult.value;
-          console.log(`✅ [${reqId}] Color quotes:`, colorResult.value.vendors.length, 'vendors');
+          console.log(`✅ [${reqId}] Color quotes:`, colorResult.value.vendors.length, 'vendors, cheapest:', colorResult.value.vendors[0]?.totalPrice);
+        } else {
+          console.warn(`⚠️ [${reqId}] Color quotes failed:`, colorResult.status === 'rejected' ? colorResult.reason?.message : 'no vendors');
         }
         if (monoResult.status === 'fulfilled' && monoResult.value) {
           quoteUpdate.mono_quotes = monoResult.value;
-          console.log(`✅ [${reqId}] Mono quotes:`, monoResult.value.vendors.length, 'vendors');
+          console.log(`✅ [${reqId}] Mono quotes:`, monoResult.value.vendors.length, 'vendors, cheapest:', monoResult.value.vendors[0]?.totalPrice);
         }
         if (slsResult.status === 'fulfilled' && slsResult.value) {
           quoteUpdate.sls_quotes = slsResult.value;
-          console.log(`✅ [${reqId}] SLS quotes:`, slsResult.value.vendors.length, 'vendors');
+          console.log(`✅ [${reqId}] SLS quotes:`, slsResult.value.vendors.length, 'vendors, cheapest:', slsResult.value.vendors[0]?.totalPrice);
         }
       } catch (quoteErr: any) {
         console.error(`⚠️ [${reqId}] CraftCloud quoting failed (non-critical):`, quoteErr.message);
       }
     } else {
       if (!shippingInfo) console.log(`[${reqId}] ℹ️ No shipping info — skipping quotes`);
-      if (!finalModelUrl) console.log(`[${reqId}] ℹ️ No model URL available — skipping quotes`);
+      if (!quoteModelUrl) console.log(`[${reqId}] ℹ️ No model URL available — skipping quotes`);
     }
 
     // ── Step 4: Mark completed ──

@@ -139,7 +139,6 @@ export function BeamsBackground({
       if (!canvas || !ctx) return;
 
       ctx.clearRect(0, 0, cssWidth, cssHeight);
-      ctx.filter = "blur(35px)";
 
       const totalBeams = beamsRef.current.length;
       beamsRef.current.forEach((beam, index) => {
@@ -171,23 +170,10 @@ export function BeamsBackground({
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full"
-        style={{ filter: "blur(15px)" }}
+        style={{ filter: "blur(40px)", willChange: "transform" }}
       />
 
-      <motion.div
-        className="absolute inset-0 bg-brand-dark/5"
-        animate={{
-          opacity: [0.05, 0.15, 0.05],
-        }}
-        transition={{
-          duration: 10,
-          ease: "easeInOut",
-          repeat: Infinity,
-        }}
-        style={{
-          backdropFilter: "blur(50px)",
-        }}
-      />
+      <div className="absolute inset-0 bg-brand-dark/5" />
 
       <div className="relative z-10">{children}</div>
     </div>

@@ -71,11 +71,11 @@ export function ImageVariationPicker({
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900">
+      <h3 className="text-lg font-semibold text-white">
         {loading && !hasAnyImages ? 'Generating Variations...' : 'Choose Your Variation'}
       </h3>
       {hasAnyImages && (
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-white/60">
           {loading
             ? `${loadedCount}/4 variations ready. Select the image that best matches your vision.`
             : 'Select the image that best matches your vision. Click to view full size.'}
@@ -94,7 +94,7 @@ export function ImageVariationPicker({
                 className={`relative aspect-square rounded-lg overflow-hidden border-3 transition-all ${
                   selectedIndex === index
                     ? 'border-brand-primary ring-2 ring-brand-primary ring-offset-2'
-                    : 'border-gray-200 hover:border-gray-300'
+                    : 'border-white/20 hover:border-white/40'
                 }`}
               >
                 <img
@@ -117,16 +117,16 @@ export function ImageVariationPicker({
           return (
             <div
               key={index}
-              className="aspect-square rounded-lg bg-gray-100 animate-pulse flex items-center justify-center"
+              className="aspect-square rounded-lg bg-white/5 animate-pulse flex items-center justify-center"
             >
-              <Loader2 className="h-8 w-8 text-gray-300 animate-spin" />
+              <Loader2 className="h-8 w-8 text-white/30 animate-spin" />
             </div>
           );
         })}
       </div>
 
       {!loading && !hasAnyImages && (
-        <p className="text-sm text-gray-500 text-center">
+        <p className="text-sm text-white/50 text-center">
           This may take 15-30 seconds...
         </p>
       )}

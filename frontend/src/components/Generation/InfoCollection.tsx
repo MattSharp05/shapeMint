@@ -65,8 +65,8 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
     if (error) setError(null);
   };
 
-  const inputClasses = "w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50";
-  const inputClassesNoIcon = "w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50";
+  const inputClasses = "w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50";
+  const inputClassesNoIcon = "w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50";
   const selectClasses = "w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50 [&>option]:bg-brand-dark [&>option]:text-white";
   const labelClasses = "block text-sm font-medium text-white/70 mb-1";
 
@@ -210,7 +210,7 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
                   ))}
                 </div>
               )}
-              <p className="text-sm text-white/30 mt-4 text-center truncate">{prompt}</p>
+              <p className="text-sm text-white/50 mt-4 text-center truncate">{prompt}</p>
             </div>
           </FadeIn>
 
@@ -255,7 +255,7 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
 
                       {/* Email */}
                       <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/30" />
+                        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/50" />
                         <input
                           type="email"
                           placeholder="Email address"
@@ -268,19 +268,19 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
 
                       {/* Password */}
                       <div className="relative">
-                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/30" />
+                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/50" />
                         <input
                           type={showPassword ? 'text' : 'password'}
                           placeholder={isSignIn ? 'Password' : 'Create password (min 6 characters)'}
                           value={form.password}
                           onChange={(e) => update('password', e.target.value)}
-                          className="w-full pl-10 pr-12 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50"
+                          className="w-full pl-10 pr-12 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50"
                           required
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/30 hover:text-white/60"
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/50 hover:text-white/60"
                         >
                           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
@@ -298,13 +298,13 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
                   {(!isSignIn || isAuthenticated) && (
                     <>
                       <div className="border-t border-white/5 pt-5 mt-2">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-white/30 mb-4">Shipping Information</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-4">Shipping Information</p>
                       </div>
 
                       {/* Name */}
                       <div className="grid grid-cols-2 gap-3">
                         <div className="relative">
-                          <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/30" />
+                          <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/50" />
                           <input
                             type="text"
                             placeholder="First name"
@@ -326,7 +326,7 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
 
                       {/* Phone */}
                       <div className="relative">
-                        <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/30" />
+                        <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/50" />
                         <input
                           type="tel"
                           placeholder="Phone number"
@@ -339,7 +339,7 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
 
                       {/* Address */}
                       <div className="relative">
-                        <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/30" />
+                        <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/50" />
                         <input
                           type="text"
                           placeholder="Street address"
@@ -417,7 +417,7 @@ export function InfoCollection({ selectedImage, prompt, onSubmit, loading, angle
                   </Button>
 
                   {isSignIn && !isAuthenticated && (
-                    <p className="text-xs text-white/30 text-center">
+                    <p className="text-xs text-white/50 text-center">
                       You'll enter shipping details on the next page.
                     </p>
                   )}

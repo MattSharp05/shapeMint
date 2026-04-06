@@ -1,3 +1,8 @@
+export interface StylePreset {
+  label: string;
+  prompt: string;
+}
+
 export interface PrintType {
   slug: string;
   title: string;
@@ -13,6 +18,8 @@ export interface PrintType {
   angleSystemPrompt: string;
   /** Emoji or icon identifier for the card */
   icon: string;
+  /** Pre-defined style options for image mode (shown as selectable cards) */
+  stylePresets?: StylePreset[];
 }
 
 const BASE_VARIATION_PROMPT = `You are an expert image-generation engine. You must ALWAYS produce an image. Produce NO TEXT. Just an Image.
@@ -111,6 +118,12 @@ SPECIFIC TO THIS TASK: You are creating an action figure of a real person. The f
     angleSystemPrompt: `${BASE_ANGLE_PROMPT}
 
 SPECIFIC TO THIS TASK: This is an action figure. Maintain exact facial likeness, clothing details, and pose across all views. Keep the display base consistent.`,
+    stylePresets: [
+      { label: 'Superhero', prompt: 'Transform this person into a superhero action figure with a cape, dynamic heroic pose, and a display base' },
+      { label: 'Bobblehead', prompt: 'Transform this person into a bobblehead figurine with an oversized head, small body, and a round base' },
+      { label: 'Anime Style', prompt: 'Transform this person into an anime-style action figure with stylized features, dynamic pose, and a display base' },
+      { label: 'Warrior', prompt: 'Transform this person into a fantasy warrior action figure with armor, a weapon, and a rocky display base' },
+    ],
   },
   {
     slug: 'cake-topper',

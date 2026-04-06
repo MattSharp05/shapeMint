@@ -12,6 +12,7 @@ import { Loader2, Package, Truck, MapPin, Link2, Check, ChevronRight, X, Palette
 import { useAuth } from '../hooks/useAuth';
 import { CRAFTCLOUD_MATERIALS, getCraftcloudMaterialConfigId } from '../data/craftcloudMaterials';
 import { US_STATES } from '../types/order';
+import { BeamsBackground } from '../components/UI/BeamsBackground';
 
 const COLOR_CONFIG_ID = 'a69b05d8-39b9-5f3e-bd47-9df42b4b84c3';
 const MONO_CONFIG_ID = '6250ed03-5e96-5de8-bf06-44a13b952058';  // SLA Resin
@@ -34,6 +35,14 @@ interface ModelData {
   user_id: string;
   meshy_task_id: string;
   type: string;
+  // Pipeline fields (scale + hollow via Blender/Modal)
+  scaled_obj_url?: string;
+  scaled_stl_url?: string;
+  obj_url?: string;
+  mtl_url?: string;
+  texture_urls?: string[];
+  processing_status?: string;
+  processing_report?: any;
 }
 
 interface QuoteSet {
@@ -134,10 +143,30 @@ export function ModelResult() {
         stl_url: data.stl_url || '(empty)',
         original_from_notes: originalFromNotes || '(none)',
       });
+      console.log('🔧 Pipeline status:', {
+        processing_status: data.processing_status || '(not started)',
+        scaled_obj_url: data.scaled_obj_url ? '✅ ' + data.scaled_obj_url.slice(-60) : '❌ (empty)',
+        scaled_stl_url: data.scaled_stl_url ? '✅ ' + data.scaled_stl_url.slice(-60) : '❌ (empty)',
+        obj_url: data.obj_url ? '✅' : '❌ (empty)',
+        mtl_url: data.mtl_url ? '✅' : '❌ (empty)',
+        texture_urls: data.texture_urls?.length ?? 0,
+      });
+      if (data.processing_report) {
+        const report = data.processing_report;
+        console.log('📊 Processing report:', {
+          scaled_to: report.params ? `${report.params.scale_value}${report.params.scale_unit} (${report.params.scale_target})` : '(unknown)',
+          final_dims_cm: report.final?.dimensions_m?.map((d: number) => (d * 100).toFixed(1) + 'cm'),
+          material_saved: report.material_saved_percent ? report.material_saved_percent + '%' : '(unknown)',
+          hollowing: report.expansion?.converged ? 'converged' : 'partial',
+        });
+      }
       const viewerUrl = originalFromNotes || data.glb_url || data.model_url;
-      const quoteUrl = data.glb_url || data.model_url;
+      // Quotes use scaled files if available, otherwise fall back to original
+      const monoStlUrl = data.scaled_stl_url || data.stl_url || data.glb_url || data.model_url;
+      const colorObjUrl = data.scaled_obj_url || data.obj_url;
       console.log('🖥️ ModelViewer will display:', viewerUrl, '— source:', originalFromNotes ? 'notes (original colored)' : data.glb_url ? 'glb_url' : 'model_url');
-      console.log('💰 Quotes will use:', quoteUrl, '— column:', data.glb_url ? 'glb_url' : 'model_url');
+      console.log('💰 Mono/SLS quotes will use:', monoStlUrl, '— source:', data.scaled_stl_url ? 'scaled_stl_url (processed)' : data.stl_url ? 'stl_url (original)' : 'glb_url (fallback)');
+      console.log('🎨 Color quotes will use:', colorObjUrl ? `OBJ: ${colorObjUrl.slice(-60)}` : 'GLB fallback', '— source:', data.scaled_obj_url ? 'scaled_obj_url (processed)' : data.obj_url ? 'obj_url (original)' : 'glb_url (fallback)');
 
       if (data.shipping_info) {
         setShippingForm({
@@ -155,6 +184,7 @@ export function ModelResult() {
         setShippingForm(prev => ({ ...prev, email: user.email }));
       }
 
+      // Load cached quotes from DB (the webhook generates these from the scaled model)
       if (data.color_quotes?.vendors?.length > 0) {
         setColorQuote({ vendors: data.color_quotes.vendors, craftcloudPriceId: data.color_quotes.craftcloudPriceId, currency: data.color_quotes.currency || 'USD', loading: false });
       }
@@ -201,14 +231,21 @@ export function ModelResult() {
         }
 
         if (newData.status === 'completed' || newData.status === 'failed') {
-          if (newData.color_quotes?.vendors?.length > 0) {
-            setColorQuote({ vendors: newData.color_quotes.vendors, craftcloudPriceId: newData.color_quotes.craftcloudPriceId, currency: newData.color_quotes.currency || 'USD', loading: false });
-          }
-          if (newData.mono_quotes?.vendors?.length > 0) {
-            setMonoQuote({ vendors: newData.mono_quotes.vendors, craftcloudPriceId: newData.mono_quotes.craftcloudPriceId, currency: newData.mono_quotes.currency || 'USD', loading: false });
-          }
-          if (newData.sls_quotes?.vendors?.length > 0) {
-            setSlsQuote({ vendors: newData.sls_quotes.vendors, craftcloudPriceId: newData.sls_quotes.craftcloudPriceId, currency: newData.sls_quotes.currency || 'USD', loading: false });
+          // If processing (scale+hollow) is still running, don't load stale quotes from webhook.
+          // The processing completion poller will handle re-fetching with correct scaled files.
+          const processingPending = newData.processing_status && newData.processing_status !== 'completed' && newData.processing_status !== 'failed';
+          if (processingPending) {
+            console.log('⏳ Model completed but processing still running — skipping stale webhook quotes');
+          } else {
+            if (newData.color_quotes?.vendors?.length > 0) {
+              setColorQuote({ vendors: newData.color_quotes.vendors, craftcloudPriceId: newData.color_quotes.craftcloudPriceId, currency: newData.color_quotes.currency || 'USD', loading: false });
+            }
+            if (newData.mono_quotes?.vendors?.length > 0) {
+              setMonoQuote({ vendors: newData.mono_quotes.vendors, craftcloudPriceId: newData.mono_quotes.craftcloudPriceId, currency: newData.mono_quotes.currency || 'USD', loading: false });
+            }
+            if (newData.sls_quotes?.vendors?.length > 0) {
+              setSlsQuote({ vendors: newData.sls_quotes.vendors, craftcloudPriceId: newData.sls_quotes.craftcloudPriceId, currency: newData.sls_quotes.currency || 'USD', loading: false });
+            }
           }
         }
       })
@@ -216,6 +253,60 @@ export function ModelResult() {
 
     return () => { supabase.removeChannel(channel); };
   }, [model?.status, id, shippingForm.firstName]);
+
+  // Poll for processing (scale+hollow) completion after model generation finishes.
+  // The webhook waits for processing before quoting, so by the time processing_status
+  // is 'completed', the DB should also have the correct quotes from the scaled model.
+  useEffect(() => {
+    if (!model || !id) return;
+    if (model.status !== 'completed') return; // Model still generating
+    if (!model.processing_status || model.processing_status === 'completed' || model.processing_status === 'failed') return; // Processing done or not started
+
+    console.log(`⏳ Processing status: ${model.processing_status} — polling for completion...`);
+    let cancelled = false;
+
+    const poll = async () => {
+      while (!cancelled) {
+        await new Promise(r => setTimeout(r, 3000));
+        if (cancelled) break;
+
+        const { data } = await supabase.from('generated_models')
+          .select('processing_status, scaled_obj_url, scaled_stl_url, obj_url, mtl_url, texture_urls, processing_report, color_quotes, mono_quotes, sls_quotes')
+          .eq('id', id).single();
+
+        console.log(`⏳ Processing poll: ${data?.processing_status}, scaled_stl=${!!data?.scaled_stl_url}`);
+
+        if (data?.processing_status === 'completed') {
+          console.log('✅ Processing completed! Loading scaled URLs + quotes from DB...');
+          console.log('🔧 Scaled STL:', data.scaled_stl_url?.slice(-60));
+          console.log('🔧 Scaled OBJ:', data.scaled_obj_url?.slice(-60));
+          setModel(prev => prev ? { ...prev, ...data } : prev);
+          // Load the webhook's quotes (generated from the scaled model)
+          if (data.color_quotes?.vendors?.length > 0) {
+            console.log('💰 Loading color quotes from DB:', data.color_quotes.vendors.length, 'vendors, cheapest:', data.color_quotes.vendors[0]?.totalPrice);
+            setColorQuote({ vendors: data.color_quotes.vendors, craftcloudPriceId: data.color_quotes.craftcloudPriceId, currency: data.color_quotes.currency || 'USD', loading: false });
+          }
+          if (data.mono_quotes?.vendors?.length > 0) {
+            console.log('💰 Loading mono quotes from DB:', data.mono_quotes.vendors.length, 'vendors, cheapest:', data.mono_quotes.vendors[0]?.totalPrice);
+            setMonoQuote({ vendors: data.mono_quotes.vendors, craftcloudPriceId: data.mono_quotes.craftcloudPriceId, currency: data.mono_quotes.currency || 'USD', loading: false });
+          }
+          if (data.sls_quotes?.vendors?.length > 0) {
+            console.log('💰 Loading SLS quotes from DB:', data.sls_quotes.vendors.length, 'vendors, cheapest:', data.sls_quotes.vendors[0]?.totalPrice);
+            setSlsQuote({ vendors: data.sls_quotes.vendors, craftcloudPriceId: data.sls_quotes.craftcloudPriceId, currency: data.sls_quotes.currency || 'USD', loading: false });
+          }
+          break;
+        }
+        if (data?.processing_status === 'failed') {
+          console.warn('❌ Processing failed');
+          setModel(prev => prev ? { ...prev, processing_status: 'failed', processing_report: data.processing_report } : prev);
+          break;
+        }
+      }
+    };
+
+    poll();
+    return () => { cancelled = true; };
+  }, [model?.status, model?.processing_status, id]);
 
   // Poll Meshy for visual progress updates while model is processing
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -275,13 +366,21 @@ export function ModelResult() {
 
   const fetchQuotes = useCallback(async () => {
     if (!model) return;
-    const modelUrl = model.glb_url || model.model_url;
-    if (!modelUrl) return;
+    const fallbackUrl = model.glb_url || model.model_url;
+    if (!fallbackUrl) return;
     const addr = getShippingAddress();
     if (!addr) { setShowShippingForm(true); return; }
 
-    console.log('💰 fetchQuotes — file being sent for quotes:', modelUrl);
-    console.log('💰 fetchQuotes — source column:', model.glb_url ? 'glb_url' : 'model_url');
+    // Use scaled/hollowed files for quotes when available
+    const monoStlUrl = model.scaled_stl_url || model.stl_url || fallbackUrl;
+    const colorObjUrl = model.scaled_obj_url || model.obj_url;
+    const colorModelUrl = colorObjUrl || monoStlUrl; // For color, OBJ+MTL is preferred but falls back to STL
+
+    console.log('💰 fetchQuotes — mono/SLS URL:', monoStlUrl, '— source:', model.scaled_stl_url ? 'scaled_stl_url (processed)' : model.stl_url ? 'stl_url (original)' : 'glb_url (fallback)');
+    console.log('🎨 fetchQuotes — color URL:', colorModelUrl, '— source:', colorObjUrl ? (model.scaled_obj_url ? 'scaled_obj_url (processed)' : 'obj_url (original)') : 'same as mono');
+    if (colorObjUrl) {
+      console.log('🎨 fetchQuotes — color extras: mtl_url=%s, texture_urls=%d', model.mtl_url ? 'yes' : 'no', model.texture_urls?.length ?? 0);
+    }
 
     // Always refetch all
     setColorQuote(prev => ({ ...prev, loading: true, error: undefined, vendors: [] }));
@@ -292,9 +391,15 @@ export function ModelResult() {
     setSelectedSlsVendor(0);
 
     const [colorResult, monoResult, slsResult] = await Promise.allSettled([
-      getCraftcloudQuote({ modelUrl, materialConfigId: COLOR_CONFIG_ID, quantity: 1, shippingAddress: addr }),
-      getCraftcloudQuote({ modelUrl, materialConfigId: MONO_CONFIG_ID, quantity: 1, shippingAddress: addr }),
-      getCraftcloudQuote({ modelUrl, materialConfigId: SLS_CONFIG_ID, quantity: 1, shippingAddress: addr }),
+      getCraftcloudQuote({
+        modelUrl: colorModelUrl,
+        materialConfigId: COLOR_CONFIG_ID,
+        quantity: 1,
+        shippingAddress: addr,
+        ...(colorObjUrl && { objUrl: colorObjUrl, mtlUrl: model.mtl_url, textureUrls: model.texture_urls }),
+      }),
+      getCraftcloudQuote({ modelUrl: monoStlUrl, materialConfigId: MONO_CONFIG_ID, quantity: 1, shippingAddress: addr }),
+      getCraftcloudQuote({ modelUrl: monoStlUrl, materialConfigId: SLS_CONFIG_ID, quantity: 1, shippingAddress: addr }),
     ]);
 
     const quoteUpdate: Record<string, any> = {};
@@ -331,22 +436,35 @@ export function ModelResult() {
 
   const fetchCustomQuote = useCallback(async () => {
     if (!model) return;
-    const modelUrl = model.glb_url || model.model_url;
-    if (!modelUrl) return;
+    const fallbackUrl = model.glb_url || model.model_url;
+    if (!fallbackUrl) return;
 
-    console.log('🎨 fetchCustomQuote — file being sent:', modelUrl);
-    console.log('🎨 fetchCustomQuote — source column:', model.glb_url ? 'glb_url' : 'model_url');
     const addr = getShippingAddress();
     if (!addr) { setShowShippingForm(true); return; }
 
     const configId = getCraftcloudMaterialConfigId(customMaterialId, customColorId, customFinishId);
     if (!configId) { setCustomQuote(prev => ({ ...prev, error: 'Invalid material combination', loading: false })); return; }
 
+    // Determine if this is a multicolor material
+    const isMulticolor = ['cc-multicolor-pla', 'cc-full-color', 'cc-mjf-multicolor'].includes(customMaterialId);
+    const colorObjUrl = model.scaled_obj_url || model.obj_url;
+    const monoStlUrl = model.scaled_stl_url || model.stl_url || fallbackUrl;
+    const modelUrl = (isMulticolor && colorObjUrl) ? colorObjUrl : monoStlUrl;
+
+    console.log('🎨 fetchCustomQuote — file being sent:', modelUrl);
+    console.log('🎨 fetchCustomQuote — source:', isMulticolor ? (model.scaled_obj_url ? 'scaled_obj_url' : 'obj_url') : (model.scaled_stl_url ? 'scaled_stl_url' : model.stl_url ? 'stl_url' : 'glb_url'));
+
     setCustomQuote({ vendors: [], craftcloudPriceId: '', currency: 'USD', loading: true, error: undefined });
     setSelectedCustomVendor(0);
 
     try {
-      const result = await getCraftcloudQuote({ modelUrl, materialConfigId: configId, quantity: 1, shippingAddress: addr });
+      const result = await getCraftcloudQuote({
+        modelUrl,
+        materialConfigId: configId,
+        quantity: 1,
+        shippingAddress: addr,
+        ...(isMulticolor && colorObjUrl && { objUrl: colorObjUrl, mtlUrl: model.mtl_url, textureUrls: model.texture_urls }),
+      });
       if (result.vendorOptions?.length > 0) {
         setCustomQuote({ vendors: result.vendorOptions, craftcloudPriceId: result.craftcloudPriceId, currency: result.currency || 'USD', loading: false });
       } else {
@@ -357,13 +475,25 @@ export function ModelResult() {
     }
   }, [model, getShippingAddress, customMaterialId, customColorId, customFinishId]);
 
-  // Auto-fetch if completed with shipping but no quotes
+  // Auto-fetch quotes only as a fallback when the webhook didn't produce quotes
+  // (e.g. no shipping info at generation time, or webhook quoting failed).
+  // The webhook is the primary quote source — it waits for processing and quotes with the scaled model.
   useEffect(() => {
-    if (model?.status === 'completed' && colorQuote.vendors.length === 0 && monoQuote.vendors.length === 0 && slsQuote.vendors.length === 0 && !colorQuote.loading && !monoQuote.loading && !slsQuote.loading && !colorQuote.error && !monoQuote.error && !slsQuote.error) {
-      const addr = getShippingAddress();
-      if (addr) fetchQuotes();
+    if (model?.status !== 'completed') return;
+    // Don't fetch while processing is still running — webhook will handle it
+    const processingActive = model.processing_status && model.processing_status !== 'completed' && model.processing_status !== 'failed';
+    if (processingActive) return;
+    // Only fetch if webhook didn't produce any quotes
+    if (colorQuote.vendors.length > 0 || monoQuote.vendors.length > 0 || slsQuote.vendors.length > 0) return;
+    if (colorQuote.loading || monoQuote.loading || slsQuote.loading) return;
+    if (colorQuote.error || monoQuote.error || slsQuote.error) return;
+
+    const addr = getShippingAddress();
+    if (addr) {
+      console.log('💰 No quotes from webhook — fetching as fallback. processing_status:', model.processing_status);
+      fetchQuotes();
     }
-  }, [model?.status, colorQuote.vendors.length, monoQuote.vendors.length, slsQuote.vendors.length, colorQuote.loading, monoQuote.loading, slsQuote.loading, colorQuote.error, monoQuote.error, slsQuote.error, getShippingAddress, fetchQuotes]);
+  }, [model?.status, model?.processing_status, colorQuote.vendors.length, monoQuote.vendors.length, slsQuote.vendors.length, colorQuote.loading, monoQuote.loading, slsQuote.loading, colorQuote.error, monoQuote.error, slsQuote.error, getShippingAddress, fetchQuotes]);
 
   const handleShippingSubmit = async () => {
     setShippingError(null);
@@ -435,7 +565,7 @@ export function ModelResult() {
 
   if (model.status !== 'completed' && model.status !== 'failed') {
     return (
-      <div className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center">
+      <BeamsBackground className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center" intensity="medium">
         <div className="text-center max-w-md mx-4">
           {model.selected_2d_preview && (
             <img src={model.selected_2d_preview} alt="Preview" className="w-48 h-48 object-cover rounded-2xl mx-auto mb-6 shadow-lg" />
@@ -460,7 +590,7 @@ export function ModelResult() {
             </p>
           </div>
         </div>
-      </div>
+      </BeamsBackground>
     );
   }
 
@@ -550,7 +680,7 @@ export function ModelResult() {
   );
 
   return (
-    <div className="pt-16 min-h-screen bg-brand-dark">
+    <BeamsBackground className="pt-16 min-h-screen bg-brand-dark" intensity="subtle">
       <div className="max-w-[1400px] mx-auto">
         <div className="flex flex-col lg:flex-row">
           {/* Left — Model viewer */}
@@ -950,6 +1080,6 @@ export function ModelResult() {
           </div>
         </div>
       )}
-    </div>
+    </BeamsBackground>
   );
 }

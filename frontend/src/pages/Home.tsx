@@ -28,14 +28,17 @@ export function Home() {
   const [featuredDesigns, setFeaturedDesigns] = useState<FeaturedDesign[]>([]);
   const navigate = useNavigate();
 
+  // Hardcoded showcase models — curated selection
+  const SHOWCASE_IDS = [
+    'b1860618-99c9-44ca-87de-8db2251c7622',
+    '6fa0bc03-4853-494f-9ed5-df3312719ce8',
+    'c8a98c4d-1696-45eb-8452-b1eac803249d',
+  ];
   useEffect(() => {
     supabase
       .from('generated_models')
       .select('id, name, prompt, thumbnail_url, glb_url, stl_url, obj_url')
-      .eq('status', 'completed')
-      .not('thumbnail_url', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(4)
+      .in('id', SHOWCASE_IDS)
       .then(({ data }) => { if (data) setFeaturedDesigns(data); });
   }, []);
 
@@ -222,7 +225,7 @@ export function Home() {
               </div>
             </RevealOnScroll>
 
-            <StaggerList className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StaggerList className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-4xl mx-auto">
               {featuredDesigns.map((design) => (
                 <StaggerItem key={design.id}>
                   <div

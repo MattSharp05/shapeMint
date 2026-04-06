@@ -447,7 +447,7 @@ Deno.serve(async (req: Request) => {
         const refineResp = await fetch('https://api.meshy.ai/v2/text-to-3d', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${meshyApiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'refine', preview_task_id: meshyTaskId, enable_pbr: true }),
+          body: JSON.stringify({ mode: 'refine', preview_task_id: meshyTaskId, enable_pbr: false }),
         });
         if (refineResp.ok) {
           const refineData = await refineResp.json();
@@ -507,88 +507,13 @@ Deno.serve(async (req: Request) => {
       console.log(`[${reqId}] GLB stored: ${storedGlbUrl === meshyGlbUrl ? 'kept original' : 'uploaded to Supabase'}`);
     }
 
-    // ── Step 1d: Store OBJ + MTL + textures in Supabase (for color printing — Meshy CDN URLs expire) ──
-    let storedObjUrl = meshyObjUrl || '';
-    let storedMtlUrl = meshyMtlUrl || '';
+    // ── Step 1d: Save Meshy CDN URLs to DB (skip downloading OBJ/MTL to save memory) ──
+    const storedObjUrl = meshyObjUrl || '';
+    const storedMtlUrl = meshyMtlUrl || '';
     const storedTextureUrls: string[] = [];
+    console.log(`[${reqId}] Step 1d: Saving Meshy URLs to DB (OBJ/MTL not downloaded to save memory)`);
 
-    if (meshyObjUrl) {
-      console.log(`[${reqId}] Step 1d: Storing OBJ+MTL+textures in Supabase...`);
-      const basePath = userId ? `models/${userId}` : 'models';
-
-      // Store OBJ
-      try {
-        const objResp = await fetch(meshyObjUrl);
-        if (objResp.ok) {
-          const objData = await objResp.arrayBuffer();
-          const objPath = `${basePath}/${recordId}.obj`;
-          const { error: objErr } = await supabase.storage.from('3d-models').upload(objPath, objData, { contentType: 'application/octet-stream', upsert: true });
-          if (!objErr) {
-            storedObjUrl = supabase.storage.from('3d-models').getPublicUrl(objPath).data.publicUrl;
-            console.log(`[${reqId}]   ✅ OBJ stored: ${objData.byteLength} bytes`);
-          } else {
-            console.error(`[${reqId}]   ❌ OBJ upload failed:`, objErr.message);
-          }
-        }
-      } catch (e: any) { console.error(`[${reqId}]   ❌ OBJ download failed:`, e.message); }
-
-      // Store MTL and parse for texture references
-      if (meshyMtlUrl) {
-        try {
-          const mtlResp = await fetch(meshyMtlUrl);
-          if (mtlResp.ok) {
-            let mtlText = await mtlResp.text();
-            const mtlBaseUrl = meshyMtlUrl.substring(0, meshyMtlUrl.lastIndexOf('/') + 1);
-
-            // Find all texture references in the MTL
-            const texRegex = /\bmap_\w+\s+(.+)/g;
-            let match;
-            const textureFiles = new Set<string>();
-            while ((match = texRegex.exec(mtlText)) !== null) {
-              textureFiles.add(match[1].trim());
-            }
-            console.log(`[${reqId}]   Found ${textureFiles.size} texture references in MTL`);
-
-            // Download and store each texture, rewrite MTL paths
-            for (const texFile of textureFiles) {
-              try {
-                const texUrl = texFile.startsWith('http') ? texFile : mtlBaseUrl + texFile;
-                const texResp = await fetch(texUrl);
-                if (texResp.ok) {
-                  const texData = await texResp.arrayBuffer();
-                  const texName = texFile.split('/').pop() || texFile;
-                  const texPath = `${basePath}/${recordId}_${texName}`;
-                  const { error: texErr } = await supabase.storage.from('3d-models').upload(texPath, texData, { contentType: 'application/octet-stream', upsert: true });
-                  if (!texErr) {
-                    const texPublicUrl = supabase.storage.from('3d-models').getPublicUrl(texPath).data.publicUrl;
-                    storedTextureUrls.push(texPublicUrl);
-                    // Rewrite MTL to use the simple filename (for ZIP bundling)
-                    mtlText = mtlText.split(texFile).join(texName);
-                    console.log(`[${reqId}]   ✅ Texture stored: ${texName} (${texData.byteLength} bytes)`);
-                  } else {
-                    console.error(`[${reqId}]   ❌ Texture upload failed (${texFile}):`, texErr.message);
-                  }
-                }
-              } catch (texE: any) { console.error(`[${reqId}]   ❌ Texture download failed (${texFile}):`, texE.message); }
-            }
-
-            // Store the rewritten MTL
-            const mtlData = new TextEncoder().encode(mtlText);
-            const mtlPath = `${basePath}/${recordId}.mtl`;
-            const { error: mtlErr } = await supabase.storage.from('3d-models').upload(mtlPath, mtlData, { contentType: 'text/plain', upsert: true });
-            if (!mtlErr) {
-              storedMtlUrl = supabase.storage.from('3d-models').getPublicUrl(mtlPath).data.publicUrl;
-              console.log(`[${reqId}]   ✅ MTL stored (rewritten with ${storedTextureUrls.length} texture paths)`);
-            } else {
-              console.error(`[${reqId}]   ❌ MTL upload failed:`, mtlErr.message);
-            }
-          }
-        } catch (e: any) { console.error(`[${reqId}]   ❌ MTL download failed:`, e.message); }
-      }
-      console.log(`[${reqId}] Step 1d complete: obj=${storedObjUrl ? 'stored' : 'MISSING'}, mtl=${storedMtlUrl ? 'stored' : 'MISSING'}, textures=${storedTextureUrls.length}`);
-    }
-
-    // Update DB with model URLs (using Supabase URLs, not Meshy CDN)
+    // Update DB with model URLs (using Supabase GLB URL, Meshy CDN for others)
     const urlUpdate: any = {
       glb_url: storedGlbUrl || null,
       model_url: storedGlbUrl || null,  // Keep GLB as model_url for ModelViewer
@@ -608,23 +533,22 @@ Deno.serve(async (req: Request) => {
     if (urlUpdateErr) {
       console.error(`[${reqId}] ❌ URL update failed:`, urlUpdateErr.message);
     } else {
-      console.log(`[${reqId}] ✅ Model URLs saved to DB (GLB + OBJ + MTL + ${storedTextureUrls.length} textures)`);
+      console.log(`[${reqId}] ✅ Model URLs saved to DB (GLB stored, OBJ/MTL/STL as Meshy CDN URLs)`);
     }
 
-    // ── Step 2: Scale + Hollow model via Blender (replaces old THREE.js scaling) ──
+    // ── Step 2: Scale model via Blender (hollowing disabled) ──
     // process-model is now SYNCHRONOUS — it waits for Modal and returns the results directly.
     let finalStlUrl: string | null = null;
     let finalGlbUrl: string | null = null;
     const dims = record.target_dimensions;
-    console.log(`[${reqId}] Step 2: Process (scale+hollow). target_dimensions=${dims ? JSON.stringify(dims) : 'none'}, hasGlbUrl=${!!storedGlbUrl}, hasObjUrl=${!!storedObjUrl}`);
-    if (dims && (storedGlbUrl || storedObjUrl)) {
+    console.log(`[${reqId}] Step 2: Process (scale). target_dimensions=${dims ? JSON.stringify(dims) : 'none'}, hasGlbUrl=${!!storedGlbUrl}`);
+    if (dims && storedGlbUrl) {
       try {
         console.log(`📐 [${reqId}] Calling process-model (synchronous — waits for Blender)...`, dims);
         const processStart = Date.now();
         const { data: processData, error: processErr } = await supabase.functions.invoke('process-model', {
           body: {
-            glbUrl: storedGlbUrl || undefined,
-            objUrl: storedObjUrl || undefined,
+            glbUrl: storedGlbUrl,
             modelId: recordId,
             userId: userId || '00000000-0000-0000-0000-000000000000',
             scaleValue: dims.value,
@@ -652,26 +576,6 @@ Deno.serve(async (req: Request) => {
         }
       } catch (processErr: any) {
         console.warn(`⚠️ [${reqId}] Process error (non-critical):`, processErr.message);
-      }
-    } else if (dims && !storedObjUrl && storedGlbUrl) {
-      // Fallback: no OBJ available, try old scale-model with GLB
-      console.warn(`⚠️ [${reqId}] No OBJ URL available — falling back to old scale-model for GLB`);
-      try {
-        const { data: scaleData, error: scaleErr } = await supabase.functions.invoke('scale-model', {
-          body: {
-            glbUrl: storedGlbUrl,
-            modelId: recordId,
-            userId: userId || '00000000-0000-0000-0000-000000000000',
-            targetValue: dims.value,
-            unit: dims.unit,
-            target: dims.target,
-          },
-        });
-        if (!scaleErr && scaleData?.success) {
-          finalStlUrl = scaleData.data.scaledUrl;
-        }
-      } catch (e: any) {
-        console.warn(`⚠️ [${reqId}] Fallback scale failed:`, e.message);
       }
     }
 
@@ -725,7 +629,7 @@ Deno.serve(async (req: Request) => {
       }
     } else {
       if (!shippingInfo) console.log(`[${reqId}] ℹ️ No shipping info — skipping quotes`);
-      if (!monoQuoteUrl) console.log(`[${reqId}] ℹ️ No model URL available — skipping quotes`);
+      if (!quoteModelUrl) console.log(`[${reqId}] ℹ️ No model URL available — skipping quotes`);
     }
 
     // ── Step 4: Mark completed ──

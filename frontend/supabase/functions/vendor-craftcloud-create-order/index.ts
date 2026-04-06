@@ -1,9 +1,10 @@
 // deno-lint-ignore-file no-explicit-any
 // Craftcloud Create Order edge function
-// Flow: create cart → create order → get Stripe checkout URL → return
+// Flow: create cart → create order → create ShapeMint Stripe checkout → on payment webhook: invoice CraftCloud (POST + PATCH)
 declare const Deno: any;
 import { corsHeaders } from '../_shared/cors.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import Stripe from 'https://esm.sh/stripe@14.9.0?target=deno';
 
 const CRAFTCLOUD_API = 'https://api.craftcloud3d.com';
 
@@ -173,7 +174,7 @@ Deno.serve(async (req: Request) => {
     const orderPayload = {
       cartId,
       user: {
-        emailAddress: shippingAddress.email,
+        emailAddress: 'matthew@gogentic.ai',  // Use our email for CraftCloud comms — customers get ShapeMint emails only
         shipping: {
           firstName: shippingAddress.firstName,
           lastName: shippingAddress.lastName,
@@ -222,40 +223,68 @@ Deno.serve(async (req: Request) => {
 
     console.log(JSON.stringify({ evt: 'cc_order_created', orderId, orderNumber }));
 
-    // Step 3: Get CraftCloud's Stripe checkout URL (direct payment to CraftCloud)
+    // Step 3: Create ShapeMint Stripe checkout session (we collect payment, then pay CraftCloud via invoice)
     const customerTotal = cartTotal;
-
-    console.log(JSON.stringify({ evt: 'cc_getting_payment_url', orderId }));
-
-    const paymentResp = await fetchWithTimeout(`${CRAFTCLOUD_API}/v5/payment/stripe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        orderId,
-        returnUrl: `${successUrl}${successUrl.includes('?') ? '&' : '?'}order_id=${orderId}`,
-        cancelUrl: `${cancelUrl}${cancelUrl.includes('?') ? '&' : '?'}order_id=${orderId}`,
-      }),
-      timeoutMs: 15000,
-    });
-
-    if (!paymentResp.ok) {
-      const errText = await paymentResp.text().catch(() => '');
-      console.error(JSON.stringify({ evt: 'cc_payment_url_failed', status: paymentResp.status, body: errText }));
-      throw new Error(`Craftcloud payment URL request failed (${paymentResp.status}): ${errText}`);
-    }
-
-    const paymentData = await paymentResp.json();
-    const stripeCheckoutUrl = paymentData?.url || paymentData?.checkoutUrl || paymentData?.stripeUrl;
-    if (!stripeCheckoutUrl) {
-      console.error(JSON.stringify({ evt: 'cc_no_payment_url', paymentData }));
-      throw new Error('Craftcloud did not return a payment URL');
-    }
-
-    console.log(JSON.stringify({ evt: 'cc_payment_url_received', orderId }));
-
-    // Step 4: Insert order in our DB
     const internalOrderId = crypto.randomUUID();
 
+    console.log(JSON.stringify({ evt: 'cc_creating_stripe_session', orderId, internalOrderId, customerTotal }));
+
+    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
+    if (!stripeKey) {
+      console.error(JSON.stringify({ evt: 'cc_missing_stripe_key' }));
+      throw new Error('Missing STRIPE_SECRET_KEY — cannot create checkout session');
+    }
+
+    const stripe = new Stripe(stripeKey, {
+      apiVersion: '2023-10-16',
+      httpClient: Stripe.createFetchHttpClient(),
+    });
+
+    const stripeSession = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: '3D Print Order',
+              description: `ShapeMint 3D Print — Order ${orderNumber || orderId}`,
+            },
+            unit_amount: Math.round(customerTotal * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      mode: 'payment',
+      success_url: `${successUrl}${successUrl.includes('?') ? '&' : '?'}order_id=${internalOrderId}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${cancelUrl}${cancelUrl.includes('?') ? '&' : '?'}order_id=${internalOrderId}`,
+      metadata: {
+        order_id: internalOrderId,
+        user_id: userId || '',
+        payment_type: 'craftcloud_invoice',
+        craftcloud_order_id: orderId,
+        craftcloud_order_number: orderNumber || '',
+        craftcloud_cart_id: cartId,
+        craftcloud_total: String(cartTotal),
+      },
+    });
+
+    const stripeCheckoutUrl = stripeSession.url;
+    if (!stripeCheckoutUrl) {
+      console.error(JSON.stringify({ evt: 'cc_stripe_session_no_url', sessionId: stripeSession.id }));
+      throw new Error('Stripe session did not return a checkout URL');
+    }
+
+    console.log(JSON.stringify({
+      evt: 'cc_stripe_session_created',
+      sessionId: stripeSession.id,
+      orderId: internalOrderId,
+      craftcloudOrderId: orderId,
+      total: customerTotal,
+      paymentType: 'craftcloud_invoice',
+    }));
+
+    // Step 4: Insert order in our DB
     const { data: inserted, error: insErr } = await supabase
       .from('orders')
       .insert({
@@ -279,6 +308,7 @@ Deno.serve(async (req: Request) => {
         total_price: customerTotal,
         currency: 'USD',
         status: 'pending_payment',
+        stripe_session_id: stripeSession.id,
         vendor_order_id: orderId,
         customer_name: `${shippingAddress.firstName} ${shippingAddress.lastName}`.trim(),
         customer_email: shippingAddress.email,
@@ -287,7 +317,7 @@ Deno.serve(async (req: Request) => {
           orderNumber,
           cartData,
           craftcloudTotal: cartTotal,
-          paymentMethod: 'craftcloud_direct_stripe',
+          paymentMethod: 'shapemint_stripe_to_craftcloud_invoice',
         },
       })
       .select()
@@ -295,8 +325,9 @@ Deno.serve(async (req: Request) => {
 
     if (insErr) {
       console.error(JSON.stringify({ evt: 'cc_db_insert_error', error: insErr.message, code: insErr.code, details: insErr.details, hint: insErr.hint }));
-      // Don't block — order exists on CraftCloud, user can still pay
-      console.warn('DB insert failed but continuing with CraftCloud payment URL');
+      console.warn('⚠️ DB insert failed but Stripe session exists — user can still pay');
+    } else {
+      console.log(JSON.stringify({ evt: 'cc_db_order_inserted', internalOrderId, stripeSessionId: stripeSession.id }));
     }
 
     try {
@@ -305,7 +336,15 @@ Deno.serve(async (req: Request) => {
           order_id: inserted.id,
           user_id: userId,
           evt_type: 'order_created',
-          evt_data: { vendor: 'craftcloud', orderId, orderNumber, cartTotal },
+          evt_data: {
+            vendor: 'craftcloud',
+            craftcloudOrderId: orderId,
+            orderNumber,
+            cartTotal,
+            customerTotal,
+            stripeSessionId: stripeSession.id,
+            paymentMethod: 'shapemint_stripe_to_craftcloud_invoice',
+          },
         });
       }
     } catch { /* ignore */ }
@@ -322,14 +361,13 @@ Deno.serve(async (req: Request) => {
       stripeCheckoutUrl,
     };
 
-    // --- FUTURE: ShapeMint Stripe + CraftCloud invoice flow ---
-    // When ready to switch back, replace Step 3 with:
-    // 1. Create ShapeMint Stripe checkout session (charge customer)
-    // 2. On webhook checkout.session.completed, call CraftCloud /v5/payment/invoice
-    // See git history for the full implementation.
-    // ---
-
-    console.log(JSON.stringify({ evt: 'cc_order_success', orderId: response.orderId }));
+    console.log(JSON.stringify({
+      evt: 'cc_order_success',
+      orderId: response.orderId,
+      vendorOrderId: response.vendorOrderId,
+      total: response.totalPrice,
+      paymentFlow: 'shapemint_stripe → craftcloud_invoice',
+    }));
 
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

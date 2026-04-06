@@ -150,17 +150,25 @@ export function Order() {
       return confirmedStlUrl;
     }
 
-    // 2. Gather candidate STL URLs
+    // 2. Gather candidate STL URLs — prefer scaled_stl_url (processed by Blender)
     let candidateStlUrl: string | null = null;
     const modelId = modelData?.id;
     if (modelId) {
       try {
         const { data: record } = await supabase
           .from('generated_models')
-          .select('stl_url')
+          .select('scaled_stl_url, stl_url, processing_status')
           .eq('id', modelId)
           .single();
-        if (record?.stl_url) candidateStlUrl = record.stl_url;
+        if (record?.scaled_stl_url) {
+          candidateStlUrl = record.scaled_stl_url;
+          console.log('Using scaled+hollowed STL for printing');
+        } else if (record?.stl_url) {
+          candidateStlUrl = record.stl_url;
+        }
+        if (record?.processing_status === 'processing') {
+          console.warn('Model is still being processed (scale+hollow). STL may not be ready yet.');
+        }
       } catch (e: any) {
         console.error('STL lookup error:', e?.message);
       }
@@ -336,18 +344,27 @@ export function Order() {
           return;
         }
 
-        // For multicolor materials, fetch OBJ+MTL URLs from DB
+        // For multicolor materials, fetch OBJ+MTL+texture URLs from DB
+        // Prefer scaled_obj_url (processed by Blender, correct dimensions + hollowed)
         const isMulticolor = ['cc-multicolor-pla', 'cc-full-color', 'cc-mjf-multicolor'].includes(wizardState.materialId!);
         let objUrl: string | undefined;
         let mtlUrl: string | undefined;
+        let textureUrls: string[] | undefined;
         if (isMulticolor && modelData?.id) {
           const { data: record } = await supabase
             .from('generated_models')
-            .select('obj_url, mtl_url')
+            .select('scaled_obj_url, obj_url, mtl_url, texture_urls')
             .eq('id', modelData.id)
             .single();
-          objUrl = record?.obj_url || undefined;
+          // Use scaled OBJ if available (correctly sized + hollowed), fall back to original
+          objUrl = record?.scaled_obj_url || record?.obj_url || undefined;
           mtlUrl = record?.mtl_url || undefined;
+          textureUrls = record?.texture_urls || undefined;
+          if (record?.scaled_obj_url) {
+            console.log('Using scaled+hollowed OBJ for color quote');
+          } else if (record?.obj_url) {
+            console.warn('Using original unscaled OBJ for color quote (scaled version not ready)');
+          }
         }
 
         const data = await getCraftcloudQuote({
@@ -365,7 +382,7 @@ export function Order() {
             country: 'US',
             phone: shippingInfo.phone!
           },
-          ...(isMulticolor && objUrl && { objUrl, mtlUrl }),
+          ...(isMulticolor && objUrl && { objUrl, mtlUrl, textureUrls }),
         });
         if (!data.vendorOptions || data.vendorOptions.length === 0) {
           setQuoteState({ loading: false, error: 'No print vendors returned quotes for this material and model.' });

@@ -12,6 +12,7 @@ import { Loader2, Package, Truck, MapPin, Link2, Check, ChevronRight, X, Palette
 import { useAuth } from '../hooks/useAuth';
 import { CRAFTCLOUD_MATERIALS, getCraftcloudMaterialConfigId } from '../data/craftcloudMaterials';
 import { US_STATES } from '../types/order';
+import { BeamsBackground } from '../components/UI/BeamsBackground';
 
 const COLOR_CONFIG_ID = 'a69b05d8-39b9-5f3e-bd47-9df42b4b84c3';
 const MONO_CONFIG_ID = '6250ed03-5e96-5de8-bf06-44a13b952058';  // SLA Resin
@@ -564,7 +565,7 @@ export function ModelResult() {
 
   if (model.status !== 'completed' && model.status !== 'failed') {
     return (
-      <div className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center">
+      <BeamsBackground className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center" intensity="medium">
         <div className="text-center max-w-md mx-4">
           {model.selected_2d_preview && (
             <img src={model.selected_2d_preview} alt="Preview" className="w-48 h-48 object-cover rounded-2xl mx-auto mb-6 shadow-lg" />
@@ -589,7 +590,7 @@ export function ModelResult() {
             </p>
           </div>
         </div>
-      </div>
+      </BeamsBackground>
     );
   }
 
@@ -679,7 +680,7 @@ export function ModelResult() {
   );
 
   return (
-    <div className="pt-16 min-h-screen bg-brand-dark">
+    <BeamsBackground className="pt-16 min-h-screen bg-brand-dark" intensity="subtle">
       <div className="max-w-[1400px] mx-auto">
         <div className="flex flex-col lg:flex-row">
           {/* Left — Model viewer */}
@@ -1079,6 +1080,6 @@ export function ModelResult() {
           </div>
         </div>
       )}
-    </div>
+    </BeamsBackground>
   );
 }

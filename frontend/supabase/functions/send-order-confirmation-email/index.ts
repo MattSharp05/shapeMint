@@ -97,11 +97,11 @@ serve(async (req) => {
     // Build subtotal + shipping rows if available
     const breakdownRows = (formattedSubtotal && formattedShipping) ? `
           <tr>
-            <td style="color:rgba(255,255,255,0.6); font-size:14px; padding:6px 0;">Item Subtotal</td>
+            <td style="color:rgba(255,255,255,0.6); font-size:14px; padding:6px 0; white-space:nowrap; padding-right:16px;">Item Subtotal</td>
             <td style="color:#ffffff; font-size:14px; padding:6px 0; text-align:right;">${formattedSubtotal}</td>
           </tr>
           <tr>
-            <td style="color:rgba(255,255,255,0.6); font-size:14px; padding:6px 0;">Shipping</td>
+            <td style="color:rgba(255,255,255,0.6); font-size:14px; padding:6px 0; white-space:nowrap; padding-right:16px;">Shipping</td>
             <td style="color:#ffffff; font-size:14px; padding:6px 0; text-align:right;">${formattedShipping}</td>
           </tr>` : '';
 
@@ -136,16 +136,16 @@ serve(async (req) => {
         <p style="color:rgba(255,255,255,0.45); font-size:11px; text-transform:uppercase; letter-spacing:1.5px; margin:0 0 12px 0;">Order Summary</p>
         <table style="width:100%; border-collapse:collapse;">
           <tr>
-            <td style="color:rgba(255,255,255,0.6); font-size:14px; padding:6px 0;">Order Number</td>
+            <td style="color:rgba(255,255,255,0.6); font-size:14px; padding:6px 0; white-space:nowrap; padding-right:16px;">Order Number</td>
             <td style="color:#ffffff; font-size:14px; padding:6px 0; text-align:right; font-weight:600;">#${orderNumber}</td>
           </tr>
           <tr>
-            <td style="color:rgba(255,255,255,0.6); font-size:14px; padding:6px 0;">Material</td>
+            <td style="color:rgba(255,255,255,0.6); font-size:14px; padding:6px 0; white-space:nowrap; padding-right:16px;">Material</td>
             <td style="color:#ffffff; font-size:14px; padding:6px 0; text-align:right;">${materialType}</td>
           </tr>
           ${breakdownRows}
           <tr>
-            <td style="color:rgba(255,255,255,0.6); font-size:14px; padding:6px 0; border-top:1px solid rgba(255,255,255,0.08); padding-top:12px;">Total Paid</td>
+            <td style="color:rgba(255,255,255,0.6); font-size:14px; padding:6px 0; border-top:1px solid rgba(255,255,255,0.08); padding-top:12px; white-space:nowrap; padding-right:16px;">Total Paid</td>
             <td style="color:#EDAE49; font-size:18px; padding:6px 0; text-align:right; font-weight:700; border-top:1px solid rgba(255,255,255,0.08); padding-top:12px;">${formattedTotal}</td>
           </tr>
         </table>

@@ -318,7 +318,7 @@ serve(async (req) => {
                 itemSubtotal: order.item_subtotal,
                 shippingPrice: order.shipping_price,
                 currency: order.currency || 'USD',
-                materialType: order.material_id || 'Standard',
+                materialType: order.profile || 'Standard 3D Print',
                 vendorId: order.vendor || 'craftcloud',
                 shippingAddress: shippingAddr,
                 paymentMethodBrand,

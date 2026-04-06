@@ -149,7 +149,7 @@ export class MeshyService {
         style: params.style || 'base',
         negative_prompt: params.negative_prompt || '',
         seed: params.seed || Math.floor(Math.random() * 1000000),
-        enable_pbr: true
+        enable_pbr: false
       }, { headers: this.headers });
 
       console.log('Preview task creation response:', previewResponse.data);
@@ -212,7 +212,7 @@ export class MeshyService {
       const refineResponse = await axios.post(`${MESHY_API_BASE}/text-to-3d`, {
         mode: 'refine',
         preview_task_id: preview.taskId,
-        enable_pbr: true
+        enable_pbr: false
       }, { headers: this.headers });
 
       console.log('Full refine response:', refineResponse.data);
@@ -288,7 +288,7 @@ export class MeshyService {
     const payload = {
       image_url: imageDataUri,
       ai_model: 'meshy-4', // Using advanced model for better quality
-      enable_pbr: options.enable_pbr ?? true, // Enable PBR by default for better quality
+      enable_pbr: false, // Disabled — PBR makes models too shiny for 3D printing
       should_remesh: true,
       should_texture: true,
       topology: 'triangle',

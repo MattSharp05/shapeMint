@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Upload, Type, Settings, X, Loader2, Ruler, Wand2 } from 'lucide-react';
+import { Upload, Type, Settings, X, Loader2, Ruler, Wand2, Pen } from 'lucide-react';
 import { Button } from '../UI/Button';
 import { Card } from '../UI/Card';
 import { useAuth } from '../../hooks/useAuth';
+import type { StylePreset } from '../../data/printTypes';
 import { modelService } from '../../services/modelService';
 import type { DimensionUnit, DimensionTarget } from '../../utils/modelScaler';
 
@@ -36,6 +37,8 @@ interface GenerationFormProps {
   defaultDimensions?: ModelDimensions;
   /** When true, shows the full form (text mode, dimensions, style/quality, transform prompt). When false, shows simplified image-only form. */
   isCustom?: boolean;
+  /** Pre-defined style options for image mode */
+  stylePresets?: StylePreset[];
 }
 
 export function GenerationForm({
@@ -56,6 +59,7 @@ export function GenerationForm({
   setImagePrompt,
   defaultDimensions,
   isCustom = true,
+  stylePresets,
 }: GenerationFormProps) {
   const { user } = useAuth();
   const [error, setError] = useState<string | null>(null);
@@ -242,7 +246,7 @@ export function GenerationForm({
     }
   }, [setImageFile, setImagePreview, mode, setMode]);
 
-  const inputClasses = "w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50";
+  const inputClasses = "w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50";
   const selectClasses = "w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:ring-2 focus:ring-brand-accent/50 focus:border-brand-accent/50 [&>option]:bg-brand-dark [&>option]:text-white";
   const labelClasses = "block text-sm font-medium text-white/70 mb-1";
 
@@ -318,11 +322,11 @@ export function GenerationForm({
                   id="image-upload"
                 />
                 <label htmlFor="image-upload" className="cursor-pointer">
-                  <Upload className="h-8 w-8 text-white/30 mx-auto mb-2" />
+                  <Upload className="h-8 w-8 text-white/50 mx-auto mb-2" />
                   <p className="text-sm text-white/50">
                     {imageFile ? imageFile.name : 'Click to upload or drag and drop'}
                   </p>
-                  <p className="text-xs text-white/30 mt-1">PNG, JPG up to 10MB</p>
+                  <p className="text-xs text-white/50 mt-1">PNG, JPG up to 10MB</p>
                 </label>
                 {imagePreview && (
                   <div className="mt-4 relative">
@@ -337,6 +341,55 @@ export function GenerationForm({
                 )}
               </div>
 
+              {/* Style presets — show for non-custom print types with presets */}
+              {!isCustom && stylePresets && stylePresets.length > 0 && (
+                <div className="mt-4">
+                  <label className={labelClasses}>
+                    <div className="flex items-center space-x-1">
+                      <Wand2 className="h-4 w-4 text-brand-accent" />
+                      <span>Choose a style</span>
+                    </div>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {stylePresets.map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setImagePrompt(preset.prompt)}
+                        className={`px-3 py-2.5 rounded-lg text-sm text-left transition-all ${
+                          imagePrompt === preset.prompt
+                            ? 'bg-brand-accent/20 border border-brand-accent/50 text-brand-accent'
+                            : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:border-white/20'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => { if (imagePrompt === '' || stylePresets.some(p => p.prompt === imagePrompt)) setImagePrompt(''); }}
+                      className={`px-3 py-2.5 rounded-lg text-sm text-left transition-all flex items-center gap-2 ${
+                        imagePrompt !== '' && !stylePresets.some(p => p.prompt === imagePrompt)
+                          ? 'bg-brand-accent/20 border border-brand-accent/50 text-brand-accent'
+                          : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      <Pen className="h-3 w-3" /> Custom
+                    </button>
+                  </div>
+                  {/* Custom prompt input — show when "Custom" is selected */}
+                  {imagePrompt !== '' && !stylePresets.some(p => p.prompt === imagePrompt) && (
+                    <textarea
+                      value={imagePrompt}
+                      onChange={(e) => setImagePrompt(e.target.value)}
+                      placeholder="Describe your custom style..."
+                      className={`${inputClasses} resize-none mt-2`}
+                      rows={2}
+                    />
+                  )}
+                </div>
+              )}
+
               {/* Image Transform Prompt — only show for custom */}
               {isCustom && (
                 <div className="mt-4">
@@ -344,7 +397,7 @@ export function GenerationForm({
                     <div className="flex items-center space-x-1">
                       <Wand2 className="h-4 w-4 text-brand-accent" />
                       <span>Describe how to transform this image</span>
-                      <span className="text-white/30 font-normal">(optional)</span>
+                      <span className="text-white/50 font-normal">(optional)</span>
                     </div>
                   </label>
                   <textarea
@@ -354,7 +407,7 @@ export function GenerationForm({
                     className={`${inputClasses} resize-none`}
                     rows={3}
                   />
-                  <p className="text-xs text-white/30 mt-1">
+                  <p className="text-xs text-white/50 mt-1">
                     {imagePrompt.trim()
                       ? 'Your image will be transformed with AI before 3D generation. You will choose from 4 variations.'
                       : 'Leave empty to convert the image directly to 3D.'}
@@ -368,7 +421,7 @@ export function GenerationForm({
           {isCustom && (
             <div className="space-y-4">
               <div className="flex items-center space-x-2">
-                <Ruler className="h-4 w-4 text-white/30" />
+                <Ruler className="h-4 w-4 text-white/50" />
                 <h3 className="text-sm font-medium text-white/70">Model Size</h3>
               </div>
 
@@ -413,7 +466,7 @@ export function GenerationForm({
                 </div>
               </div>
 
-              <p className="text-xs text-white/30">
+              <p className="text-xs text-white/50">
                 Your model will be scaled so the {dimensions.target} is {dimensions.value} {dimensions.unit}
               </p>
             </div>
@@ -423,7 +476,7 @@ export function GenerationForm({
           {isCustom && (
             <div className="space-y-4">
               <div className="flex items-center space-x-2">
-                <Settings className="h-4 w-4 text-white/30" />
+                <Settings className="h-4 w-4 text-white/50" />
                 <h3 className="text-sm font-medium text-white/70">Generation Settings</h3>
               </div>
 

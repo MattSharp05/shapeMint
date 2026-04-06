@@ -80,7 +80,7 @@ export function GenerationProgress({ progress, status, estimatedTime }: Generati
               />
             </div>
 
-            <p className="text-xs text-white/20 mt-4">
+            <p className="text-xs text-white/40 mt-4">
               Usually takes 1-3 minutes
             </p>
           </>

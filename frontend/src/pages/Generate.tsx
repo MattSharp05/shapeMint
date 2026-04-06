@@ -406,6 +406,7 @@ export function Generate({ printType }: GenerateProps = {}) {
                 setImagePrompt={setImagePrompt}
                 defaultDimensions={printType?.defaultDimensions as ModelDimensions | undefined}
                 isCustom={!printType || printType.slug === 'custom'}
+                stylePresets={printType?.stylePresets}
               />
             )}
           </FadeInUp>

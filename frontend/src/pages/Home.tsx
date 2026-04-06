@@ -23,6 +23,7 @@ interface FeaturedDesign {
   obj_url: string | null;
 }
 
+
 export function Home() {
   const [featuredDesigns, setFeaturedDesigns] = useState<FeaturedDesign[]>([]);
   const navigate = useNavigate();
@@ -92,7 +93,7 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── Print types ───────────────────────────────────────────────── */}
+      {/* ── Print types (expandable image gallery) ────────────────────── */}
       <section className="py-24 relative">
         <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <RevealOnScroll>
@@ -104,28 +105,50 @@ export function Home() {
             </h2>
           </RevealOnScroll>
 
-          <StaggerList className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {PRINT_TYPES.map((pt) => {
+          <StaggerList className="grid grid-cols-2 lg:grid-cols-3 gap-5">
+            {PRINT_TYPES.map((pt, idx) => {
               const hasLandingPage = pt.slug === 'statue-bust' || pt.slug === 'cake-topper';
               const linkTo = hasLandingPage ? `/landing/${pt.slug}` : `/create/${pt.slug}`;
+              const imgMap: Record<string, string> = {
+                'statue-bust': '/images/character-bust.png',
+                'pet-portrait': '/images/pet-figurine.png',
+                'action-figure': '/images/action-figure-hero.png',
+                'cake-topper': '/images/wedding-cake-topper.png',
+                'custom': '/images/steampunk-dragon.png',
+              };
+              // Last item spans full width on even grids
+              const isLast = idx === PRINT_TYPES.length - 1 && PRINT_TYPES.length % 3 !== 0;
               return (
-              <StaggerItem key={pt.slug}>
-                <Link
-                  to={linkTo}
-                  className="group card-glow rounded-2xl bg-brand-dark-card p-6 h-full flex flex-col hover:bg-brand-dark-card/80 transition-colors"
-                >
-                  <div className="text-4xl mb-4">{pt.icon}</div>
-                  <h3 className="font-semibold text-white mb-2 group-hover:text-brand-accent transition-colors">
-                    {pt.title}
-                  </h3>
-                  <p className="text-sm text-[#9ca3af] leading-relaxed flex-1">
-                    {pt.subtitle}
-                  </p>
-                  <div className="mt-4 flex items-center text-sm font-medium text-brand-accent opacity-0 group-hover:opacity-100 transition-opacity">
-                    Get started <ChevronRight className="h-4 w-4 ml-1" />
-                  </div>
-                </Link>
-              </StaggerItem>
+                <StaggerItem key={pt.slug} className={isLast ? 'col-span-2 lg:col-span-1' : ''}>
+                  <Link
+                    to={linkTo}
+                    className="group relative block rounded-2xl overflow-hidden bg-brand-dark-card aspect-[3/4] transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_8px_40px_rgba(237,174,73,0.15)]"
+                  >
+                    <img
+                      src={imgMap[pt.slug]}
+                      alt={pt.title}
+                      className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                    {/* Gradient overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                    {/* Accent border glow on hover */}
+                    <div className="absolute inset-0 rounded-2xl border border-white/5 group-hover:border-brand-accent/30 transition-colors duration-300" />
+                    {/* Label */}
+                    <div className="absolute bottom-0 left-0 right-0 p-5">
+                      <h3 className="font-semibold text-white text-lg group-hover:text-brand-accent transition-colors duration-300">
+                        {pt.title}
+                      </h3>
+                      <p className="text-white/50 text-sm mt-1 leading-relaxed">
+                        {pt.subtitle}
+                      </p>
+                      <div className="mt-3 flex items-center text-sm font-medium text-brand-accent opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300">
+                        Get started <ChevronRight className="h-4 w-4 ml-1" />
+                      </div>
+                    </div>
+                  </Link>
+                </StaggerItem>
               );
             })}
           </StaggerList>

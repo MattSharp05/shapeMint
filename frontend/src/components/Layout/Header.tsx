@@ -115,14 +115,40 @@ export function Header() {
       {mobileOpen && (
         <div className="md:hidden border-t border-white/5 bg-brand-dark animate-fade-in">
           <div className="px-4 py-3 space-y-1">
+            {/* Print type links */}
+            <p className="px-4 pt-1 pb-1 text-xs font-semibold uppercase tracking-wider text-brand-accent/70">Create</p>
+            <Link to="/landing/statue-bust" onClick={() => setMobileOpen(false)}
+              className="block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white">
+              Custom Statue Bust
+            </Link>
+            <Link to="/landing/print-my-pet" onClick={() => setMobileOpen(false)}
+              className="block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white">
+              Print My Pet
+            </Link>
+            <Link to="/landing/fantasy-miniatures" onClick={() => setMobileOpen(false)}
+              className="block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white">
+              Fantasy Miniatures
+            </Link>
+            <Link to="/landing/cake-topper" onClick={() => setMobileOpen(false)}
+              className="block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white">
+              Custom Cake Toppers
+            </Link>
+            <Link to="/create/custom" onClick={() => setMobileOpen(false)}
+              className="block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white">
+              Custom Creation
+            </Link>
+
             {user && (
-              <Link
-                to="/dashboard"
-                onClick={() => setMobileOpen(false)}
-                className="block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white"
-              >
-                My Models
-              </Link>
+              <>
+                <div className="border-t border-white/5 pt-2 mt-2" />
+                <Link
+                  to="/dashboard"
+                  onClick={() => setMobileOpen(false)}
+                  className="block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white"
+                >
+                  My Models
+                </Link>
+              </>
             )}
             <div className="border-t border-white/5 pt-2 mt-2">
               {user ? (
@@ -142,7 +168,7 @@ export function Header() {
                     Sign In
                   </Link>
                   <Link
-                    to="/generate"
+                    to="/create/custom"
                     onClick={() => setMobileOpen(false)}
                     className="block px-4 py-2.5 rounded-full text-sm font-semibold bg-gradient-to-r from-brand-accent to-brand-accent-dark text-brand-dark text-center mt-1"
                   >

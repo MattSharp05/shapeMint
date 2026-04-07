@@ -166,14 +166,15 @@ export function BeamsBackground({
   }, [intensity]);
 
   return (
-    <div ref={containerRef} className={`relative w-full overflow-hidden ${className}`}>
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 w-full h-full"
-        style={{ filter: "blur(40px)", willChange: "transform" }}
-      />
-
-      <div className="absolute inset-0 bg-brand-dark/5" />
+    <div ref={containerRef} className={`relative w-full ${className}`}>
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ filter: "blur(40px)", transform: "translateZ(0)" }}
+        />
+        <div className="absolute inset-0 bg-brand-dark/5" />
+      </div>
 
       <div className="relative z-10">{children}</div>
     </div>

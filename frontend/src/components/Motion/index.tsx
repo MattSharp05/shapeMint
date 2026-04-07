@@ -57,7 +57,7 @@ export function FadeIn({
     ...(viewport
       ? {
           whileInView: { opacity: 1, y: 0, x: 0 },
-          viewport: { once: true, margin: '-60px' },
+          viewport: { once: true, margin: '-20px' },
         }
       : {
           animate: { opacity: 1, y: 0, x: 0 },
@@ -99,7 +99,7 @@ export function RevealOnScroll({
     <motion.div
       initial={reduced ? { opacity: 1 } : { opacity: 0, y }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-60px' }}
+      viewport={{ once: true, margin: '-20px' }}
       transition={{ duration, delay, ease: EASE_OUT }}
       className={className}
       {...rest}
@@ -145,7 +145,7 @@ export function StaggerList({ children, className, ...rest }: StaggerListProps) 
       variants={staggerContainerVariants}
       initial="hidden"
       whileInView="visible"
-      viewport={{ once: true, margin: '-40px' }}
+      viewport={{ once: true, margin: '-20px' }}
       className={className}
       {...rest}
     >

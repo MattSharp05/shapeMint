@@ -22,6 +22,7 @@ import { LandingFantasyMiniatures } from './pages/LandingFantasyMiniatures';
 import { LandingPrintMyPet } from './pages/LandingPrintMyPet';
 import { LandingCakeTopper } from './pages/LandingCakeTopper';
 import { LandingStatueBust } from './pages/LandingStatueBust';
+import { AdminDashboard } from './pages/AdminDashboard';
 import { AuthProvider } from './hooks/useAuth';
 
 function ScrollToTop() {
@@ -55,6 +56,7 @@ function App() {
               <Route path="/order-success" element={<OrderSuccess />} />
               <Route path="/thumbnail-test" element={<ThumbnailTest />} />
               <Route path="/testing-env" element={<TestingEnv />} />
+              <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/landing/fantasy-miniatures" element={<LandingFantasyMiniatures />} />
               <Route path="/landing/print-my-pet" element={<LandingPrintMyPet />} />
               <Route path="/landing/cake-topper" element={<LandingCakeTopper />} />

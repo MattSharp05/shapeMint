@@ -142,6 +142,40 @@ async function storeGlbInSupabase(
   }
 }
 
+async function storeThumbnailInSupabase(
+  meshyThumbnailUrl: string,
+  recordId: string,
+  userId: string | null,
+  supabase: any
+): Promise<string> {
+  try {
+    console.log('🖼️ Downloading thumbnail from Meshy CDN...');
+    const resp = await fetch(meshyThumbnailUrl);
+    if (!resp.ok) { console.error('❌ Thumbnail download failed:', resp.status); return meshyThumbnailUrl; }
+
+    const imgData = await resp.arrayBuffer();
+    const contentType = resp.headers.get('content-type') || 'image/png';
+    const ext = contentType.includes('jpeg') || contentType.includes('jpg') ? 'jpg' : 'png';
+    const storagePath = userId
+      ? `thumbnails/${userId}/${recordId}.${ext}`
+      : `thumbnails/${recordId}.${ext}`;
+
+    console.log(`📤 Uploading thumbnail to Supabase: ${storagePath} (${imgData.byteLength} bytes)`);
+    const { error: uploadError } = await supabase.storage
+      .from('3d-models')
+      .upload(storagePath, imgData, { contentType, upsert: true });
+
+    if (uploadError) { console.error('❌ Thumbnail upload error:', uploadError); return meshyThumbnailUrl; }
+
+    const { data: { publicUrl } } = supabase.storage.from('3d-models').getPublicUrl(storagePath);
+    console.log('✅ Thumbnail stored:', publicUrl);
+    return publicUrl;
+  } catch (err: any) {
+    console.error('❌ storeThumbnailInSupabase error:', err.message);
+    return meshyThumbnailUrl;
+  }
+}
+
 // ── CraftCloud quoting (inline — avoids cross-function HTTP) ────────
 
 async function uploadModelToCraftcloud(fileBytes: Uint8Array, fileName: string): Promise<string> {
@@ -507,6 +541,13 @@ Deno.serve(async (req: Request) => {
       console.log(`[${reqId}] GLB stored: ${storedGlbUrl === meshyGlbUrl ? 'kept original' : 'uploaded to Supabase'}`);
     }
 
+    // ── Step 1c2: Store thumbnail in Supabase (prevents Meshy CDN expiration) ──
+    let storedThumbnailUrl = thumbnailUrl || '';
+    if (thumbnailUrl) {
+      storedThumbnailUrl = await storeThumbnailInSupabase(thumbnailUrl, recordId, userId, supabase);
+      console.log(`[${reqId}] Thumbnail stored: ${storedThumbnailUrl === thumbnailUrl ? 'kept original' : 'uploaded to Supabase'}`);
+    }
+
     // ── Step 1d: Save Meshy CDN URLs to DB (skip downloading OBJ/MTL to save memory) ──
     const storedObjUrl = meshyObjUrl || '';
     const storedMtlUrl = meshyMtlUrl || '';
@@ -522,7 +563,7 @@ Deno.serve(async (req: Request) => {
       mtl_url: storedMtlUrl || meshyMtlUrl || null,
       fbx_url: meshyFbxUrl || null,
       usdz_url: meshyUsdzUrl || null,
-      thumbnail_url: thumbnailUrl || null,
+      thumbnail_url: storedThumbnailUrl || null,
       texture_urls: storedTextureUrls.length > 0 ? storedTextureUrls : null,
       updated_at: new Date().toISOString(),
     };

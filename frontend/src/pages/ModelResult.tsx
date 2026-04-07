@@ -680,10 +680,7 @@ export function ModelResult() {
             <div>
               <span className="text-2xl font-bold text-white">${vendor.totalPrice.toFixed(2)}</span>
               <div className="text-xs text-white/30 mt-0.5">
-                ${vendor.itemPrice.toFixed(2)} print + ${vendor.shippingPrice.toFixed(2)} shipping
-              </div>
-              <div className="text-xs text-white/40 mt-1">
-                via {vendor.vendorId} · {vendor.productionTimeFast}-{vendor.productionTimeSlow} day production
+                Shipping included
               </div>
             </div>
             <div className="flex items-center gap-1 text-white/30 group-hover:text-brand-accent transition-colors">
@@ -992,10 +989,7 @@ export function ModelResult() {
                               <div>
                                 <span className="text-2xl font-bold text-white">${vendor.totalPrice.toFixed(2)}</span>
                                 <div className="text-xs text-white/30 mt-0.5">
-                                  ${vendor.itemPrice.toFixed(2)} print + ${vendor.shippingPrice.toFixed(2)} shipping
-                                </div>
-                                <div className="text-xs text-white/40 mt-1">
-                                  via {vendor.vendorId} · {vendor.productionTimeFast}-{vendor.productionTimeSlow} day production
+                                  Shipping included
                                 </div>
                               </div>
                               {customQuote.vendors.length > 1 && (
@@ -1086,7 +1080,7 @@ export function ModelResult() {
                     <div className="text-right">
                       <div className="text-lg font-bold text-white">${vendor.totalPrice.toFixed(2)}</div>
                       <div className="text-[10px] text-white/30">
-                        ${vendor.itemPrice.toFixed(2)} + ${vendor.shippingPrice.toFixed(2)} ship
+                        Shipping included
                       </div>
                     </div>
                   </div>

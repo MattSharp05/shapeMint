@@ -70,6 +70,7 @@ export function GenerationForm({
   const [dimensions, setDimensions] = useState<ModelDimensions>(
     defaultDimensions || { value: 10, unit: 'cm', target: 'longest' }
   );
+  const [sizeInputValue, setSizeInputValue] = useState<string>(String(dimensions.value));
 
   useEffect(() => {
     if (prefilledData) {
@@ -432,8 +433,25 @@ export function GenerationForm({
                     type="number"
                     min="1"
                     max="1000"
-                    value={dimensions.value}
-                    onChange={(e) => setDimensions({ ...dimensions, value: Math.max(1, Number(e.target.value)) })}
+                    value={sizeInputValue}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setSizeInputValue(raw);
+                      const num = Number(raw);
+                      if (raw !== '' && !isNaN(num) && num >= 1) {
+                        setDimensions({ ...dimensions, value: num });
+                      }
+                    }}
+                    onBlur={() => {
+                      const num = Number(sizeInputValue);
+                      if (!sizeInputValue || isNaN(num) || num < 1) {
+                        setSizeInputValue(String(dimensions.value));
+                      } else {
+                        const clamped = Math.min(1000, Math.max(1, Math.round(num)));
+                        setSizeInputValue(String(clamped));
+                        setDimensions({ ...dimensions, value: clamped });
+                      }
+                    }}
                     className={inputClasses}
                   />
                 </div>

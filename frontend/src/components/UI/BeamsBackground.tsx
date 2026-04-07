@@ -171,7 +171,7 @@ export function BeamsBackground({
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full"
-          style={{ filter: "blur(40px)", transform: "translateZ(0)" }}
+          style={{ filter: "blur(20px)", transform: "translateZ(0)", willChange: "transform" }}
         />
         <div className="absolute inset-0 bg-brand-dark/5" />
       </div>

@@ -164,8 +164,16 @@
 }
 
 /* Smooth scrolling */
-* {
+html {
   scroll-behavior: smooth;
+}
+
+/* Prevent Safari from aggressively unloading offscreen composited layers */
+@supports (-webkit-touch-callout: none) {
+  section {
+    -webkit-transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+  }
 }
 
 /* Reduce motion for users who prefer it */

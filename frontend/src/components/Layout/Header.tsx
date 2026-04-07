@@ -53,16 +53,6 @@ export function Header() {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
-            <Link
-              to="/generate"
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                isActive('/generate')
-                  ? 'bg-white/10 text-brand-accent'
-                  : 'text-[#9ca3af] hover:text-white hover:bg-white/5'
-              }`}
-            >
-              Create
-            </Link>
             {user && (
               <Link
                 to="/dashboard"
@@ -125,13 +115,6 @@ export function Header() {
       {mobileOpen && (
         <div className="md:hidden border-t border-white/5 bg-brand-dark animate-fade-in">
           <div className="px-4 py-3 space-y-1">
-            <Link
-              to="/generate"
-              onClick={() => setMobileOpen(false)}
-              className="block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white"
-            >
-              Create
-            </Link>
             {user && (
               <Link
                 to="/dashboard"

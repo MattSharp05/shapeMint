@@ -71,12 +71,12 @@ export function Home() {
 
             <FadeInUp delay={0.55}>
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                <Link to="/generate">
+                <a href="#choose-print">
                   <MotionButton className="btn-glow w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-brand-accent to-brand-accent-dark text-brand-dark text-sm font-semibold uppercase tracking-wider rounded-full hover:shadow-[0_0_30px_rgba(237,174,73,0.5)] transition-shadow">
                     Start Creating
                     <ArrowRight className="inline-block ml-2 h-4 w-4" />
                   </MotionButton>
-                </Link>
+                </a>
                 <a
                   href="#how-it-works"
                   className="w-full sm:w-auto px-10 py-4 text-[#9ca3af] text-sm font-medium uppercase tracking-wider rounded-full hover:text-white transition-all flex items-center justify-center gap-2"
@@ -96,8 +96,8 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── Print types (expandable image gallery) ────────────────────── */}
-      <section className="py-24 relative">
+      {/* ── Print types ────────────────────────────────────────────────── */}
+      <section id="choose-print" className="py-24 relative">
         <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <RevealOnScroll>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-accent text-center mb-4">
@@ -110,8 +110,13 @@ export function Home() {
 
           <StaggerList className="grid grid-cols-2 lg:grid-cols-3 gap-5">
             {PRINT_TYPES.map((pt, idx) => {
-              const hasLandingPage = pt.slug === 'statue-bust' || pt.slug === 'cake-topper';
-              const linkTo = hasLandingPage ? `/landing/${pt.slug}` : `/create/${pt.slug}`;
+              const landingPageMap: Record<string, string> = {
+                'statue-bust': '/landing/statue-bust',
+                'cake-topper': '/landing/cake-topper',
+                'pet-portrait': '/landing/print-my-pet',
+                'action-figure': '/landing/fantasy-miniatures',
+              };
+              const linkTo = landingPageMap[pt.slug] || `/create/${pt.slug}`;
               const imgMap: Record<string, string> = {
                 'statue-bust': '/images/character-bust.png',
                 'pet-portrait': '/images/pet-figurine.png',
@@ -255,11 +260,6 @@ export function Home() {
                         alt={design.name || design.prompt}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
-                    </div>
-                    <div className="p-3">
-                      <p className="text-sm text-white/50 truncate group-hover:text-white/70 transition-colors">
-                        {design.name || design.prompt || 'Untitled'}
-                      </p>
                     </div>
                   </div>
                 </StaggerItem>

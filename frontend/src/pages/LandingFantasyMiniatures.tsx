@@ -194,7 +194,7 @@ export function LandingFantasyMiniatures() {
             </FadeIn>
 
             <FadeInUp delay={0.65}>
-              <Link to="/create/custom">
+              <Link to="/create/action-figure">
                 <MotionButton
                   className={`${epicGradient} text-brand-dark px-8 py-4 rounded-full text-sm font-semibold uppercase tracking-wider flex items-center gap-2 hover:shadow-[0_0_40px_rgba(139,92,246,0.3)] transition-shadow`}
                 >
@@ -515,7 +515,7 @@ export function LandingFantasyMiniatures() {
             <p className="text-lg text-white/45 mb-12 max-w-md mx-auto">
               Describe your character, approve the preview, and hold your hero in your hands.
             </p>
-            <Link to="/create/custom">
+            <Link to="/create/action-figure">
               <MotionButton
                 className={`${epicGradient} text-brand-dark px-10 py-5 rounded-full text-sm font-semibold uppercase tracking-wider hover:shadow-[0_0_50px_rgba(139,92,246,0.3)] transition-shadow`}
               >

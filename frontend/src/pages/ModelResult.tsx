@@ -215,9 +215,11 @@ export function ModelResult() {
         console.log('🔄 Realtime update:', newData.status, 'progress:', newData.progress);
         setModel(prev => {
           if (!prev) return prev;
-          // Never let Realtime decrease progress — polling gives more accurate values
+          // Never let progress decrease — take max of current, DB value, and realtime value
           const mergedProgress = Math.max(prev.progress || 0, newData.progress || 0);
-          return { ...prev, ...newData, progress: mergedProgress };
+          // Spread newData but exclude progress (we handle it separately)
+          const { progress: _ignored, ...restData } = newData;
+          return { ...prev, ...restData, progress: mergedProgress };
         });
 
         if (newData.shipping_info && !shippingForm.firstName) {
@@ -326,8 +328,13 @@ export function ModelResult() {
       try {
         const result = await modelService.checkModelStatus(model.meshy_task_id, meshyType);
         console.log('📊 Poll progress:', result.progress, 'status:', result.status);
-        if (result.progress !== undefined && result.progress > (model.progress || 0)) {
-          setModel(prev => prev ? { ...prev, progress: result.progress! } : prev);
+        if (result.progress !== undefined) {
+          setModel(prev => {
+            if (!prev) return prev;
+            // Never decrease progress — use max of current and polled value
+            const newProgress = Math.max(prev.progress || 0, result.progress!);
+            return newProgress > (prev.progress || 0) ? { ...prev, progress: newProgress } : prev;
+          });
         }
         // If poll sees completed/failed, stop polling — webhook + Realtime will handle the rest
         if (result.status === 'completed' || result.status === 'failed') {
@@ -564,25 +571,50 @@ export function ModelResult() {
   }
 
   if (model.status !== 'completed' && model.status !== 'failed') {
+    const progress = model.progress || 0;
+    const isPostGeneration = progress >= 100;
+
     return (
       <BeamsBackground className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center" intensity="medium">
         <div className="text-center max-w-md mx-4">
           {model.selected_2d_preview && (
             <img src={model.selected_2d_preview} alt="Preview" className="w-48 h-48 object-cover rounded-2xl mx-auto mb-6 shadow-lg" />
           )}
-          <div className="relative w-20 h-20 mx-auto mb-6">
-            <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
-              <circle cx="40" cy="40" r="36" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
-              <circle cx="40" cy="40" r="36" fill="none" stroke="#EDAE49" strokeWidth="4"
-                strokeDasharray={`${(model.progress || 0) * 2.26} 226`} strokeLinecap="round" />
-            </svg>
-            <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">{model.progress || 0}%</span>
-          </div>
-          <h2 className="text-xl font-bold text-white mb-2">Generating Your Model</h2>
-          <p className="text-white/40 mb-2">This usually takes around 3 minutes.</p>
-          <p className="text-white/30 text-sm mb-4">
-            Stay on this page and you'll be redirected when it's ready.
-          </p>
+
+          {isPostGeneration ? (
+            <>
+              {/* Post-generation: scaling + quoting phase */}
+              <div className="relative w-20 h-20 mx-auto mb-6">
+                <svg className="w-20 h-20 animate-spin" style={{ animationDuration: '3s' }} viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="36" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
+                  <circle cx="40" cy="40" r="36" fill="none" stroke="#EDAE49" strokeWidth="4"
+                    strokeDasharray="60 166" strokeLinecap="round" />
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-lg text-brand-accent">&#10003;</span>
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">Model Generated</h2>
+              <p className="text-white/50 mb-2">Scaling your model and fetching print quotes...</p>
+              <p className="text-white/30 text-sm">This takes about a minute.</p>
+            </>
+          ) : (
+            <>
+              {/* Generation in progress */}
+              <div className="relative w-20 h-20 mx-auto mb-6">
+                <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="36" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
+                  <circle cx="40" cy="40" r="36" fill="none" stroke="#EDAE49" strokeWidth="4"
+                    strokeDasharray={`${progress * 2.26} 226`} strokeLinecap="round" />
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">{progress}%</span>
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">Generating Your Model</h2>
+              <p className="text-white/40 mb-2">This usually takes around 3 minutes.</p>
+              <p className="text-white/30 text-sm mb-4">
+                Stay on this page and you'll be redirected when it's ready.
+              </p>
+            </>
+          )}
+
           <div className="mt-4 p-3 rounded-xl bg-white/5 border border-white/10 text-left">
             <p className="text-white/40 text-xs leading-relaxed">
               You can also close this page — we'll email you a link to your model with a price quote when it's done.

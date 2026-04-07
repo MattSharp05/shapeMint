@@ -74,7 +74,7 @@ serve(async (req) => {
     const formattedSubtotal = itemSubtotal != null ? fmt(itemSubtotal) : null;
     const formattedShipping = shippingPrice != null ? fmt(shippingPrice) : null;
 
-    const trackOrderUrl = `https://shape-mint.vercel.app/dashboard`;
+    const trackOrderUrl = `https://shapemint.dev/dashboard`;
 
     // Format payment method display
     let paymentDisplay = 'Card';
@@ -196,7 +196,7 @@ serve(async (req) => {
     </div>
 
     <p style="color:rgba(255,255,255,0.25); font-size:12px; text-align:center; margin-top:24px; line-height:1.6;">
-      Questions about your order? Reply to this email or visit <a href="https://shape-mint.vercel.app" style="color:rgba(237,174,73,0.6); text-decoration:none;">shapemint.dev</a>
+      Questions about your order? Reply to this email or visit <a href="https://shapemint.dev" style="color:rgba(237,174,73,0.6); text-decoration:none;">shapemint.dev</a>
     </p>
   </div>
 </body>

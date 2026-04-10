@@ -15,6 +15,7 @@ import {
   X,
   Package,
   ExternalLink,
+  DollarSign,
 } from 'lucide-react';
 import { Button } from '../components/UI/Button';
 import { BeamsBackground } from '../components/UI/BeamsBackground';
@@ -147,6 +148,8 @@ function ModelsTab({ onFilterUser }: { onFilterUser: (userId: string) => void })
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [viewingModel, setViewingModel] = useState<AdminModel | null>(null);
+  const [viewingQuotes, setViewingQuotes] = useState<AdminModel | null>(null);
+  const [quoteTab, setQuoteTab] = useState<'mono' | 'sls' | 'color'>('mono');
   const [downloading, setDownloading] = useState<string | null>(null);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -242,7 +245,7 @@ function ModelsTab({ onFilterUser }: { onFilterUser: (userId: string) => void })
                 <th className="text-left py-3 px-4 text-white/50 font-medium">Prompt</th>
                 <th className="text-left py-3 px-4 text-white/50 font-medium">User</th>
                 <th className="text-left py-3 px-4 text-white/50 font-medium">Status</th>
-                <th className="text-left py-3 px-4 text-white/50 font-medium">Print Ready</th>
+                <th className="text-left py-3 px-4 text-white/50 font-medium">Quotes</th>
                 <th className="text-left py-3 px-4 text-white/50 font-medium">Date</th>
                 <th className="text-right py-3 px-4 text-white/50 font-medium">Actions</th>
               </tr>
@@ -279,10 +282,20 @@ function ModelsTab({ onFilterUser }: { onFilterUser: (userId: string) => void })
                     </span>
                   </td>
                   <td className="py-3 px-4">
-                    {model.print_ready != null && (
-                      <span className={model.print_ready ? 'text-green-400' : 'text-white/30'}>
-                        {model.print_ready ? 'Yes' : 'No'}
-                      </span>
+                    {(model.mono_quotes?.vendors?.length || model.sls_quotes?.vendors?.length || model.color_quotes?.vendors?.length) ? (
+                      <button
+                        onClick={() => {
+                          setViewingQuotes(model);
+                          const firstTab = model.mono_quotes?.vendors?.length ? 'mono' : model.sls_quotes?.vendors?.length ? 'sls' : 'color';
+                          setQuoteTab(firstTab);
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-brand-accent border border-brand-accent/30 hover:bg-brand-accent/10 transition-colors"
+                      >
+                        <DollarSign className="h-3 w-3" />
+                        View
+                      </button>
+                    ) : (
+                      <span className="text-white/20 text-xs">None</span>
                     )}
                   </td>
                   <td className="py-3 px-4 text-white/40">
@@ -385,6 +398,93 @@ function ModelsTab({ onFilterUser }: { onFilterUser: (userId: string) => void })
               modelUrl={viewingModel.glb_url}
               className="w-full h-[500px]"
             />
+          </div>
+        </div>
+      )}
+
+      {/* Quotes Modal */}
+      {viewingQuotes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setViewingQuotes(null)}>
+          <div
+            className="bg-brand-dark-card border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <div>
+                <h3 className="text-white font-semibold truncate max-w-sm">
+                  Quotes: {viewingQuotes.prompt || viewingQuotes.name || 'Untitled'}
+                </h3>
+                <p className="text-white/40 text-sm">{viewingQuotes.user_email}</p>
+              </div>
+              <button
+                onClick={() => setViewingQuotes(null)}
+                className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/5"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {/* Quote type tabs */}
+            {(() => {
+              const quoteTabs = [
+                { id: 'mono' as const, label: 'SLA (Resin)', quotes: viewingQuotes.mono_quotes },
+                { id: 'sls' as const, label: 'SLS (Nylon)', quotes: viewingQuotes.sls_quotes },
+                { id: 'color' as const, label: 'Color', quotes: viewingQuotes.color_quotes },
+              ];
+              const activeQuotes = quoteTabs.find((t) => t.id === quoteTab)?.quotes;
+              return (
+                <>
+                  <div className="flex border-b border-white/10">
+                    {quoteTabs.map((tab) => {
+                      const hasData = !!tab.quotes?.vendors?.length;
+                      return (
+                        <button
+                          key={tab.id}
+                          onClick={() => setQuoteTab(tab.id)}
+                          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+                            quoteTab === tab.id
+                              ? 'text-brand-accent border-b-2 border-brand-accent'
+                              : hasData
+                                ? 'text-white/50 hover:text-white/70'
+                                : 'text-white/20 cursor-default'
+                          }`}
+                        >
+                          {tab.label}
+                          {hasData && (
+                            <span className="ml-1.5 text-xs text-white/30">({tab.quotes!.vendors.length})</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="p-4 max-h-[50vh] overflow-y-auto">
+                    {activeQuotes?.vendors?.length ? (
+                      <div className="space-y-1.5">
+                        {activeQuotes.vendors.map((v, i) => (
+                          <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.03] border border-white/5">
+                            <span className="text-sm text-white/70">
+                              {v.vendorId || `Vendor ${i + 1}`}
+                            </span>
+                            <div className="flex items-center gap-4 text-sm">
+                              <span className="text-white/40">
+                                Item: ${v.itemPrice?.toFixed(2) ?? '-'}
+                              </span>
+                              <span className="text-white/40">
+                                Ship: ${v.shippingPrice?.toFixed(2) ?? '-'}
+                              </span>
+                              <span className="text-white font-medium">
+                                ${v.totalPrice?.toFixed(2) ?? '-'} {activeQuotes.currency || 'USD'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-center text-white/30 text-sm py-6">No quotes available for this type</p>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

@@ -10,6 +10,9 @@ export interface AdminModel {
   status: string;
   progress?: number;
   print_ready?: boolean;
+  mono_quotes?: { vendors: { vendorId?: string; totalPrice: number; itemPrice: number; shippingPrice: number }[]; currency?: string } | null;
+  sls_quotes?: { vendors: { vendorId?: string; totalPrice: number; itemPrice: number; shippingPrice: number }[]; currency?: string } | null;
+  color_quotes?: { vendors: { vendorId?: string; totalPrice: number; itemPrice: number; shippingPrice: number }[]; currency?: string } | null;
   glb_url: string;
   stl_url: string;
   obj_url: string;
@@ -94,6 +97,7 @@ class AdminService {
   }
 
   private resolveEmail(userId: string): string {
+    if (!userId) return 'N/A';
     return this.userEmailCache[userId] || userId.slice(0, 8) + '...';
   }
 
@@ -133,6 +137,14 @@ class AdminService {
   async fetchOrders(page: number, filters?: { status?: string; vendor?: string; search?: string }): Promise<PaginatedResult<AdminOrder>> {
     await this.loadUserEmails();
 
+    console.log('[AdminService] fetchOrders called', { page, filters });
+
+    // First, do a raw count to check table access
+    const { count: rawCount, error: countError } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true });
+    console.log('[AdminService] Raw orders count:', rawCount, 'error:', countError);
+
     let query = supabase
       .from('orders')
       .select('*', { count: 'exact' })
@@ -150,6 +162,7 @@ class AdminService {
     }
 
     const { data, error, count } = await query;
+    console.log('[AdminService] Orders query result:', { dataLength: data?.length, count, error, firstRow: data?.[0] });
     if (error) {
       console.error('Failed to fetch orders:', error);
       throw error;

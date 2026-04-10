@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Upload, Type, X, Loader2, RotateCcw, Send, Image as ImageIcon, Settings2, Ruler, Printer, Download, Trash2, Check, Plus } from 'lucide-react';
+import { Upload, Type, X, Loader2, RotateCcw, Send, Image as ImageIcon, Settings2, Ruler, Printer, Download, Trash2, Check, Plus, Box } from 'lucide-react';
 import { ModelViewer } from '../components/3D/ModelViewer';
 import { falImageService, TransformOptions } from '../services/falImageService';
 import { printReferenceService, PrintReference } from '../services/printReferenceService';
@@ -69,7 +69,7 @@ interface LogEntry {
   type: 'info' | 'error' | 'success';
 }
 
-type AppMode = 'pipeline' | 'print-preview';
+type AppMode = 'pipeline' | 'print-preview' | 'hollow-test';
 
 export function TestingEnv() {
   const { user } = useAuth();
@@ -99,6 +99,22 @@ export function TestingEnv() {
   const [refsLoading, setRefsLoading] = useState(false);
   const [refUploading, setRefUploading] = useState(false);
   const [printResults, setPrintResults] = useState<string[] | null>(null);
+
+  // Hollow test state
+  const [hollowModelUrl, setHollowModelUrl] = useState('');
+  const [hollowConfig, setHollowConfig] = useState({
+    wallThickness: 2.0,
+    drainHoles: 2,
+    holeDiameter: 3.0,
+    voxelSize: 0.5,
+  });
+  const [hollowResult, setHollowResult] = useState<{
+    success: boolean;
+    stlUrl?: string;
+    report?: any;
+    error?: string;
+  } | null>(null);
+  const [hollowStatus, setHollowStatus] = useState<'idle' | 'processing' | 'completed' | 'failed'>('idle');
 
   // fal.ai config
   const [falConfig, setFalConfig] = useState({
@@ -563,6 +579,74 @@ export function TestingEnv() {
     pollingRef.current = setInterval(check, 10000);
   };
 
+  // ── Hollow Test: Run hollowing ──────────────────────────���───────
+  const handleRunHollow = async () => {
+    if (!hollowModelUrl.trim()) {
+      addLog('[Hollow] Enter a model URL first', 'error');
+      return;
+    }
+
+    setHollowStatus('processing');
+    setHollowResult(null);
+    addLog(`[Hollow] Starting hollow v2 test`, 'info');
+    addLog(`[Hollow] Model: ${hollowModelUrl.slice(0, 80)}...`, 'info');
+    addLog(`[Hollow] Params: wall=${hollowConfig.wallThickness}mm, holes=${hollowConfig.drainHoles}x${hollowConfig.holeDiameter}mm, voxel=${hollowConfig.voxelSize}mm`, 'info');
+
+    const startTime = Date.now();
+
+    try {
+      const { data, error } = await supabase.functions.invoke('hollow-test', {
+        body: {
+          modelUrl: hollowModelUrl.trim(),
+          wallThickness: hollowConfig.wallThickness,
+          drainHoles: hollowConfig.drainHoles,
+          holeDiameter: hollowConfig.holeDiameter,
+          voxelSize: hollowConfig.voxelSize,
+          userId: user?.id || 'test',
+        },
+      });
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+      if (error) {
+        addLog(`[Hollow] Edge function error after ${elapsed}s: ${error.message}`, 'error');
+        setHollowResult({ success: false, error: error.message });
+        setHollowStatus('failed');
+        return;
+      }
+
+      if (data?.success) {
+        addLog(`[Hollow] Success in ${elapsed}s`, 'success');
+        addLog(`[Hollow] Material saved: ${data.report?.material_saved_percent ?? '?'}%`, 'success');
+        addLog(`[Hollow] STL size: ${((data.stlSizeBytes || 0) / 1024).toFixed(0)} KB`, 'info');
+        addLog(`[Hollow] STL URL: ${data.stlUrl?.slice(0, 80)}...`, 'info');
+
+        // Log step timing
+        if (data.report?.steps) {
+          addLog(`[Hollow] Step timing:`, 'info');
+          for (const [step, info] of Object.entries(data.report.steps) as [string, any][]) {
+            addLog(`  ${step}: ${info.time}s (${info.status})`, 'info');
+          }
+        }
+
+        setHollowResult({ success: true, stlUrl: data.stlUrl, report: data.report });
+        setHollowStatus('completed');
+      } else {
+        addLog(`[Hollow] Failed after ${elapsed}s: ${data?.error || 'Unknown error'}`, 'error');
+        if (data?.report?.error) {
+          addLog(`[Hollow] Blender error: ${data.report.error}`, 'error');
+        }
+        setHollowResult({ success: false, error: data?.error, report: data?.report });
+        setHollowStatus('failed');
+      }
+    } catch (err: any) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      addLog(`[Hollow] Exception after ${elapsed}s: ${err.message}`, 'error');
+      setHollowResult({ success: false, error: err.message });
+      setHollowStatus('failed');
+    }
+  };
+
   // ── Clear all ──────────────────────────────────────────────────
   const handleClearAll = () => {
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
@@ -582,6 +666,9 @@ export function TestingEnv() {
     setPrintResults(null);
     setPrintModelImage(null);
     setPrintModelPreview(null);
+    setHollowModelUrl('');
+    setHollowResult(null);
+    setHollowStatus('idle');
   };
 
   const isTransforming = status === 'transforming';
@@ -1142,6 +1229,270 @@ export function TestingEnv() {
     );
   };
 
+  // ── Render: Hollow Test Left Panel ─────────────────��────────
+  const renderHollowTestPanel = () => (
+    <div className="space-y-5">
+      {/* Model URL Input */}
+      <section>
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Model URL</h3>
+        <input
+          type="text"
+          value={hollowModelUrl}
+          onChange={(e) => setHollowModelUrl(e.target.value)}
+          placeholder="Paste GLB or STL URL from Supabase storage..."
+          className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+        />
+        <p className="text-xs text-gray-400 mt-1">Use a GLB URL from an existing model in storage</p>
+      </section>
+
+      {/* Use generated model if available */}
+      {generatedModelUrl && (
+        <button
+          onClick={() => setHollowModelUrl(generatedModelUrl)}
+          className="w-full text-xs text-blue-600 hover:text-blue-700 border border-blue-200 rounded-lg px-3 py-2 hover:bg-blue-50 transition-colors text-left"
+        >
+          Use generated model from Pipeline tab
+        </button>
+      )}
+
+      {/* Hollow Parameters */}
+      <section>
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Hollow Parameters</h3>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-gray-600 block mb-1">Wall Thickness (mm)</label>
+            <input
+              type="number"
+              value={hollowConfig.wallThickness}
+              onChange={(e) => setHollowConfig(c => ({ ...c, wallThickness: parseFloat(e.target.value) || 0 }))}
+              min={0.5}
+              max={10}
+              step={0.5}
+              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 block mb-1">Voxel Remesh Size (mm)</label>
+            <input
+              type="number"
+              value={hollowConfig.voxelSize}
+              onChange={(e) => setHollowConfig(c => ({ ...c, voxelSize: parseFloat(e.target.value) || 0 }))}
+              min={0}
+              max={2}
+              step={0.1}
+              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+            />
+            <p className="text-xs text-gray-400 mt-0.5">0 = skip remesh. Lower = more detail but slower.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Drain Holes</label>
+              <input
+                type="number"
+                value={hollowConfig.drainHoles}
+                onChange={(e) => setHollowConfig(c => ({ ...c, drainHoles: parseInt(e.target.value) || 0 }))}
+                min={0}
+                max={6}
+                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Hole Diameter (mm)</label>
+              <input
+                type="number"
+                value={hollowConfig.holeDiameter}
+                onChange={(e) => setHollowConfig(c => ({ ...c, holeDiameter: parseFloat(e.target.value) || 0 }))}
+                min={1}
+                max={10}
+                step={0.5}
+                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Run Button */}
+      <button
+        onClick={handleRunHollow}
+        disabled={hollowStatus === 'processing' || !hollowModelUrl.trim()}
+        className="w-full bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
+      >
+        {hollowStatus === 'processing' ? (
+          <><Loader2 className="h-4 w-4 animate-spin" /> Hollowing...</>
+        ) : (
+          <><Box className="h-4 w-4" /> Run Hollow Test</>
+        )}
+      </button>
+
+      {/* Result Summary */}
+      {hollowResult && (
+        <section className="border border-gray-200 rounded-lg p-3 bg-white">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Result</h3>
+          {hollowResult.success ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
+                <Check className="h-4 w-4" /> Hollowing Successful
+              </div>
+              {hollowResult.report && (
+                <div className="text-xs text-gray-600 space-y-1">
+                  <p>Material saved: <span className="font-medium">{hollowResult.report.material_saved_percent}%</span></p>
+                  <p>Original: {hollowResult.report.original?.vertices?.toLocaleString()} verts, {hollowResult.report.original?.faces?.toLocaleString()} faces</p>
+                  <p>Hollowed: {hollowResult.report.hollowed?.vertices?.toLocaleString()} verts, {hollowResult.report.hollowed?.faces?.toLocaleString()} faces</p>
+                  <p>Total time: {hollowResult.report.total_time}s</p>
+                </div>
+              )}
+              {hollowResult.stlUrl && (
+                <a
+                  href={hollowResult.stlUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                >
+                  <Download className="h-3 w-3" /> Download Hollowed STL
+                </a>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-red-600 text-sm font-medium">
+                <X className="h-4 w-4" /> Hollowing Failed
+              </div>
+              <p className="text-xs text-red-600">{hollowResult.error}</p>
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+
+  // ── Render: Hollow Test Results ────────────────────────────────
+  const renderHollowTestResults = () => {
+    if (hollowStatus === 'processing') {
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
+          <Loader2 className="h-12 w-12 animate-spin text-teal-500 mb-4" />
+          <p className="text-sm text-gray-600 font-medium">Hollowing model...</p>
+          <p className="text-xs text-gray-400 mt-1">Voxel remesh + solidify + drain holes</p>
+          <p className="text-xs text-gray-400">This may take 30-120 seconds</p>
+        </div>
+      );
+    }
+
+    if (hollowResult?.success && hollowResult.report) {
+      const report = hollowResult.report;
+      return (
+        <div className="w-full h-full overflow-auto p-6">
+          <div className="max-w-2xl mx-auto space-y-4">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-teal-700">{report.material_saved_percent}%</p>
+                <p className="text-xs text-teal-600">Material Saved</p>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-blue-700">{report.total_time}s</p>
+                <p className="text-xs text-blue-600">Total Time</p>
+              </div>
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-purple-700">{((report.hollowed?.stl_size_bytes || 0) / 1024 / 1024).toFixed(1)}MB</p>
+                <p className="text-xs text-purple-600">STL Size</p>
+              </div>
+            </div>
+
+            {/* Before/After Comparison */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="border border-gray-200 rounded-lg p-3">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Original</h4>
+                <div className="text-xs text-gray-600 space-y-1">
+                  <p>Vertices: {report.original?.vertices?.toLocaleString()}</p>
+                  <p>Faces: {report.original?.faces?.toLocaleString()}</p>
+                  {report.original?.dimensions_mm && (
+                    <p>Dims: {report.original.dimensions_mm.map((d: number) => `${d.toFixed(1)}mm`).join(' x ')}</p>
+                  )}
+                </div>
+              </div>
+              <div className="border border-gray-200 rounded-lg p-3">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Hollowed</h4>
+                <div className="text-xs text-gray-600 space-y-1">
+                  <p>Vertices: {report.hollowed?.vertices?.toLocaleString()}</p>
+                  <p>Faces: {report.hollowed?.faces?.toLocaleString()}</p>
+                  {report.hollowed?.dimensions_mm && (
+                    <p>Dims: {report.hollowed.dimensions_mm.map((d: number) => `${d.toFixed(1)}mm`).join(' x ')}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Step Timing */}
+            {report.steps && (
+              <div className="border border-gray-200 rounded-lg p-3">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Step Timing</h4>
+                <div className="space-y-1">
+                  {Object.entries(report.steps).map(([step, info]: [string, any]) => (
+                    <div key={step} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-600 capitalize">{step}</span>
+                      <span className={`font-mono ${info.status === 'ok' ? 'text-green-600' : info.status === 'skipped' ? 'text-gray-400' : 'text-red-600'}`}>
+                        {info.time}s ({info.status})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Remesh Details */}
+            {report.steps?.remesh?.status === 'ok' && (
+              <div className="border border-gray-200 rounded-lg p-3">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Voxel Remesh</h4>
+                <div className="text-xs text-gray-600 space-y-1">
+                  <p>Voxel size: {report.steps.remesh.voxel_size_mm}mm</p>
+                  <p>Before: {report.steps.remesh.before_verts?.toLocaleString()} verts, {report.steps.remesh.before_faces?.toLocaleString()} faces</p>
+                  <p>After: {report.steps.remesh.after_verts?.toLocaleString()} verts, {report.steps.remesh.after_faces?.toLocaleString()} faces</p>
+                  <p>Non-manifold remaining: {report.steps.remesh.non_manifold_remaining}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Download */}
+            {hollowResult.stlUrl && (
+              <a
+                href={hollowResult.stlUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm rounded-lg transition-colors"
+              >
+                <Download className="h-4 w-4" /> Download Hollowed STL
+              </a>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (hollowResult && !hollowResult.success) {
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 p-8">
+          <div className="w-20 h-20 rounded-full border-2 border-red-300 flex items-center justify-center mb-4">
+            <X className="h-8 w-8 text-red-400" />
+          </div>
+          <p className="text-sm text-red-600 font-medium mb-1">Hollowing Failed</p>
+          <p className="text-xs text-red-500 max-w-md text-center">{hollowResult.error}</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
+        <div className="w-20 h-20 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center mb-4">
+          <Box className="h-8 w-8" />
+        </div>
+        <p className="text-sm text-gray-500">Hollow test results will appear here</p>
+        <p className="text-xs text-gray-400 mt-1">Paste a model URL and run the hollow test</p>
+      </div>
+    );
+  };
+
   return (
     <div className="pt-16 min-h-screen bg-white text-gray-900">
       {/* Header */}
@@ -1167,6 +1518,14 @@ export function TestingEnv() {
             >
               <Printer className="h-3 w-3" /> Print Preview
             </button>
+            <button
+              onClick={() => setAppMode('hollow-test')}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1 ${
+                appMode === 'hollow-test' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Box className="h-3 w-3" /> Hollow Test
+            </button>
           </div>
         </div>
         <button onClick={handleClearAll} className="text-sm text-gray-500 hover:text-gray-900 transition-colors px-3 py-1 rounded border border-gray-300 hover:border-gray-400">
@@ -1177,7 +1536,7 @@ export function TestingEnv() {
       <div className="flex h-[calc(100vh-49px-4rem)]">
         {/* ── Left Panel: Controls ── */}
         <div className="w-[420px] min-w-[420px] overflow-y-auto border-r border-gray-200 p-4 bg-gray-50">
-          {appMode === 'print-preview' ? renderPrintPreviewPanel() : renderPipelinePanel()}
+          {appMode === 'print-preview' ? renderPrintPreviewPanel() : appMode === 'hollow-test' ? renderHollowTestPanel() : renderPipelinePanel()}
         </div>
 
         {/* ── Right Panel: Results + Log ── */}
@@ -1185,7 +1544,7 @@ export function TestingEnv() {
 
           {/* Main Viewer Area */}
           <div className="flex-1 min-h-0 relative bg-gray-100">
-            {appMode === 'print-preview' ? renderPrintPreviewResults() : renderPipelineResults()}
+            {appMode === 'print-preview' ? renderPrintPreviewResults() : appMode === 'hollow-test' ? renderHollowTestResults() : renderPipelineResults()}
 
             {/* Status badge */}
             {status !== 'idle' && (

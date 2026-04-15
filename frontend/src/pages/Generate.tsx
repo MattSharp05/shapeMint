@@ -174,6 +174,67 @@ export function Generate({ printType }: GenerateProps = {}) {
     }
   };
 
+  // Resume recovery for angle views: re-fire fal.ai for any angle slots
+  // that were null on the draft row. Mirrors retryMissingVariations but
+  // for the post-variation angles stage. Without this, a user who leaves
+  // the page mid-angle-generation would see the loading screen forever
+  // because the in-flight promises were lost with the page.
+  const retryMissingAngles = async (
+    modelId: string,
+    referenceUrl: string,
+    slots: number[]
+  ) => {
+    if (slots.length === 0) return;
+    try {
+      await Promise.all(slots.map((i) =>
+        falImageService.transformImage(
+          ANGLE_PROMPTS[i],
+          referenceUrl,
+          {
+            systemPrompt: ANGLE_SYSTEM_PROMPT,
+            numImages: 1,
+            resolution: '1K',
+            aspectRatio: '1:1',
+            outputFormat: 'png',
+            modelId,
+          }
+        )
+          .then(result => {
+            if (result.images.length > 0) {
+              setAngleImages(prev => {
+                const updated = [...(prev || [null, null, null, null])];
+                updated[i] = result.images[0];
+                return updated;
+              });
+              draftModel.recordAngle(modelId, i, result.images[0]).catch(() => {});
+            }
+          })
+          .catch(err => {
+            if (err instanceof RateLimitError) throw err;
+            console.error(`Retry ${ANGLE_LABELS[i]} angle failed:`, err);
+          })
+      ));
+      // All missing slots filled — advance to info collection.
+      setStatus('info_collection');
+    } catch (err: any) {
+      if (err instanceof RateLimitError) {
+        if (err.scope === 'anon_user_lifetime') {
+          setSaveModal({
+            required: true,
+            heading: 'Create a free account to finish your model',
+            subheading: 'Save your progress — just one step left before your 3D preview.',
+            onSuccess: () => {
+              setSaveModal(null);
+              retryMissingAngles(modelId, referenceUrl, slots);
+            },
+          });
+        } else {
+          setAngleError(err.message || "You've hit today's generation limit. Try again tomorrow.");
+        }
+      }
+    }
+  };
+
   // Phase 5: resume a partial generation from the dashboard. Load the row
   // and rehydrate React state so the user picks up exactly where they
   // left off. Runs once per `?resume=<id>` change, only after the auth
@@ -256,7 +317,24 @@ export function Generate({ printType }: GenerateProps = {}) {
           const padded: (string | null)[] = [null, null, null, null];
           angles.slice(0, 4).forEach((a, i) => { padded[i] = a; });
           setAngleImages(padded);
-          setStatus(data.stage === 'angles_ready' ? 'info_collection' : 'generating_angles');
+
+          // If we're resuming mid-angle-generation (reference_selected with
+          // null slots), the in-flight fal promises were lost when the page
+          // unmounted. Re-fire them for the missing slots so the user
+          // doesn't get stuck on the loading screen forever.
+          const missingAngleSlots: number[] = [];
+          for (let i = 0; i < 4; i++) {
+            if (!padded[i]) missingAngleSlots.push(i);
+          }
+
+          if (data.stage === 'angles_ready' || missingAngleSlots.length === 0) {
+            setStatus('info_collection');
+          } else {
+            setStatus('generating_angles');
+            if (data.thumbnail_url) {
+              void retryMissingAngles(data.id, data.thumbnail_url, missingAngleSlots);
+            }
+          }
           break;
         }
         case 'generating_3d':

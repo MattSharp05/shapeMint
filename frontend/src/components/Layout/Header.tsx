@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Menu, X, User, LogOut, CheckCircle } from 'lucide-react';
+import { Menu, X, User, LogOut, CheckCircle, ShoppingCart } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useCart } from '../../hooks/useCart';
+import { AccountModal } from '../Account/AccountModal';
 
 export function Header() {
   const { user, logout } = useAuth();
+  const { open: openCart, count: cartCount } = useCart();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showLogoutSuccess, setShowLogoutSuccess] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -68,13 +72,32 @@ export function Header() {
           </nav>
 
           {/* Right side */}
-          <div className="hidden md:flex items-center gap-3">
-            {user ? (
+          <div className="hidden md:flex items-center gap-2">
+            {/* Cart — always available (anon users can add to cart) */}
+            <button
+              onClick={openCart}
+              className="relative p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+              title="Cart"
+              aria-label="Open cart"
+            >
+              <ShoppingCart className="h-5 w-5" />
+              {cartCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-accent text-brand-dark text-[10px] font-bold flex items-center justify-center">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+
+            {user && !user.isAnonymous ? (
               <>
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5">
+                <button
+                  onClick={() => setAccountOpen(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                  title="My Account"
+                >
                   <User className="h-4 w-4 text-white/50" />
                   <span className="text-sm font-medium text-white">{user.name}</span>
-                </div>
+                </button>
                 <button
                   onClick={handleLogout}
                   className="p-2 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors"
@@ -101,13 +124,27 @@ export function Header() {
             )}
           </div>
 
-          {/* Mobile hamburger */}
-          <button
-            className="md:hidden p-2 rounded-lg text-white/60 hover:bg-white/5"
-            onClick={() => setMobileOpen(!mobileOpen)}
-          >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          {/* Mobile: cart + hamburger */}
+          <div className="md:hidden flex items-center gap-1">
+            <button
+              onClick={openCart}
+              className="relative p-2 rounded-lg text-white/60 hover:bg-white/5"
+              aria-label="Open cart"
+            >
+              <ShoppingCart className="h-5 w-5" />
+              {cartCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-brand-accent text-brand-dark text-[10px] font-bold flex items-center justify-center">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+            <button
+              className="p-2 rounded-lg text-white/60 hover:bg-white/5"
+              onClick={() => setMobileOpen(!mobileOpen)}
+            >
+              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -148,6 +185,14 @@ export function Header() {
                 >
                   My Models
                 </Link>
+                {!user.isAnonymous && (
+                  <button
+                    onClick={() => { setMobileOpen(false); setAccountOpen(true); }}
+                    className="w-full text-left block px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white"
+                  >
+                    My Account
+                  </button>
+                )}
               </>
             )}
             <div className="border-t border-white/5 pt-2 mt-2">
@@ -180,6 +225,8 @@ export function Header() {
           </div>
         </div>
       )}
+
+      <AccountModal isOpen={accountOpen} onClose={() => setAccountOpen(false)} />
     </header>
   );
 }

@@ -11,7 +11,7 @@ import { logger } from '../utils/logger';
 import { useAutoThumbnail } from '../hooks/useAutoThumbnail';
 import { supabase } from '../supabaseClient';
 import { modelService } from '../services/model';
-import type { GeneratedModel } from '../types/model';
+import type { GeneratedModel, ModelStage } from '../types/model';
 import { ContactSubmissions } from '../components/Admin/ContactSubmissions';
 import { BeamsBackground } from '../components/UI/BeamsBackground';
 
@@ -98,6 +98,38 @@ function getTrackingInfo(order: Order): { trackingNumber?: string; trackingUrl?:
     return { trackingNumber: vs.tracking_number };
   }
   return {};
+}
+
+// Phase 5: stages that are still pre-3D-generation and should resume
+// back into the Generate flow rather than the completed ModelResult page.
+const RESUMABLE_STAGES: ReadonlySet<ModelStage> = new Set([
+  'uploaded',
+  'variations_ready',
+  'reference_selected',
+  'angles_ready',
+]);
+
+const STAGE_LABELS: Partial<Record<ModelStage, string>> = {
+  uploaded: 'Uploaded',
+  variations_ready: 'Pick a design',
+  reference_selected: 'Generating angles',
+  angles_ready: 'Ready for 3D',
+  generating_3d: 'Generating 3D',
+  model_ready: 'Ready',
+  ordered: 'Ordered',
+  failed: 'Failed',
+};
+
+function handleModelClick(model: GeneratedModel, navigate: (path: string) => void) {
+  const stage = model.stage;
+  if (stage && RESUMABLE_STAGES.has(stage)) {
+    navigate(`/generate?resume=${model.id}`);
+    return;
+  }
+  // Completed / in-progress 3D gens go to the result page as before.
+  if (model.status === 'completed' || stage === 'generating_3d' || stage === 'model_ready' || stage === 'ordered') {
+    navigate(`/model/${model.id}`);
+  }
 }
 
 function getCheapestPrice(model: GeneratedModel): number | null {
@@ -392,11 +424,7 @@ export function Dashboard() {
                         whileHover={{ y: -6 }}
                         transition={{ type: 'spring', stiffness: 300 }}
                         className="group relative flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/5 bg-brand-dark-card text-center shadow-sm transition-shadow duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:border-white/10 cursor-pointer"
-                        onClick={() => {
-                          if (model.status === 'completed' && model.id) {
-                            navigate(`/model/${model.id}`);
-                          }
-                        }}
+                        onClick={() => handleModelClick(model, navigate)}
                       >
                         {/* Thumbnail */}
                         <div className="relative flex w-full items-center justify-center bg-black">
@@ -461,6 +489,10 @@ export function Dashboard() {
                               <span className="text-2xl font-bold text-brand-accent">${cheapest.toFixed(2)}</span>
                               <span className="text-xs text-white/30 uppercase tracking-wider">Starting at</span>
                             </div>
+                          ) : model.stage && RESUMABLE_STAGES.has(model.stage) ? (
+                            <span className="inline-block text-sm px-3 py-1 rounded-full font-medium bg-brand-accent/10 text-brand-accent border border-brand-accent/20">
+                              {STAGE_LABELS[model.stage]} · Continue →
+                            </span>
                           ) : (
                             <span className={`inline-block text-sm px-3 py-1 rounded-full font-medium ${
                               model.status === 'completed'
@@ -469,7 +501,7 @@ export function Dashboard() {
                                 ? 'bg-yellow-900/30 text-yellow-400'
                                 : 'bg-red-900/30 text-red-400'
                             }`}>
-                              {model.status}
+                              {(model.stage && STAGE_LABELS[model.stage]) || model.status}
                             </span>
                           )}
                         </div>

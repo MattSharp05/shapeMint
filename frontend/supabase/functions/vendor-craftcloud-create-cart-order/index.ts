@@ -1,6 +1,20 @@
 // deno-lint-ignore-file no-explicit-any
-// Craftcloud Create Order edge function
-// Flow: create cart → create order → create ShapeMint Stripe checkout → on payment webhook: invoice CraftCloud (POST + PATCH)
+// Craftcloud Multi-Item Cart Order edge function
+//
+// Variant of vendor-craftcloud-create-order that accepts N line items from
+// the user's ShapeMint cart and creates a single CraftCloud order with
+// multiple quotes in one cart. One Stripe checkout covers all items.
+//
+// Contract:
+//   body.items: [
+//     { craftcloudQuoteId, craftcloudShippingId?, craftcloudPriceId, quantity, modelUrl? }
+//   ]
+//   body.shippingAddress: { firstName, lastName, email, address1, city, state, zipCode, country, phone }
+//   body.successUrl / body.cancelUrl
+//
+// The webhook (stripe-webhook) is responsible for invoicing CraftCloud and
+// clearing the user's cart on successful payment (using metadata.cart_item_ids).
+
 declare const Deno: any;
 import { corsHeaders } from '../_shared/cors.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -8,38 +22,39 @@ import Stripe from 'https://esm.sh/stripe@14.9.0?target=deno';
 
 const CRAFTCLOUD_API = 'https://api.craftcloud3d.com';
 
-interface CreateOrderInput {
+interface CartItem {
   craftcloudQuoteId: string;
-  craftcloudShippingId: string;
+  craftcloudShippingId?: string;
   craftcloudPriceId: string;
   quantity: number;
-  shippingAddress: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    address1: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
-    phone?: string;
-  };
+  modelUrl?: string;
+  cartItemId?: string; // our cart_items.id — used to clear on success
+}
+
+interface ShippingAddress {
+  firstName: string;
+  lastName: string;
+  email: string;
+  address1: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  country: string;
+  phone?: string;
+}
+
+interface CreateCartOrderInput {
+  items: CartItem[];
+  shippingAddress: ShippingAddress;
   successUrl: string;
   cancelUrl: string;
-  priorQuote?: {
-    itemTotal: number;
-    shippingTotal: number;
-    total: number;
-  };
-  quoteId?: string; // Our internal quote ID for reference
-  modelUrl?: string; // URL of the model file (STL/GLB)
 }
 
 async function fetchWithTimeout(
   resource: string,
   options: RequestInit & { timeoutMs?: number } = {}
 ): Promise<Response> {
-  const { timeoutMs = 15000, ...rest } = options;
+  const { timeoutMs = 20000, ...rest } = options;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -54,21 +69,23 @@ async function fetchWithTimeout(
   }
 }
 
-function validateInput(body: any): CreateOrderInput {
+function validateInput(body: any): CreateCartOrderInput {
   if (!body || typeof body !== 'object') throw new Error('invalid_payload');
-  const { craftcloudQuoteId, craftcloudShippingId, craftcloudPriceId, quantity, shippingAddress, successUrl, cancelUrl } = body;
-  if (!craftcloudQuoteId) throw new Error('missing_craftcloudQuoteId');
-  if (!craftcloudPriceId) throw new Error('missing_craftcloudPriceId');
-  if (!quantity || quantity <= 0 || quantity > 100) throw new Error('invalid_quantity');
+  const { items, shippingAddress, successUrl, cancelUrl } = body;
+  if (!Array.isArray(items) || items.length === 0) throw new Error('items_required');
+  for (const i of items) {
+    if (!i?.craftcloudQuoteId) throw new Error('missing_craftcloudQuoteId');
+    if (!i?.quantity || i.quantity <= 0 || i.quantity > 100) throw new Error('invalid_quantity');
+  }
   if (!successUrl || !cancelUrl) throw new Error('missing_redirect_urls');
   const sa = shippingAddress;
-  // Phone is optional — CraftCloud accepts orders without one.
+  // Phone is optional — CraftCloud accepts orders without one, and we'd rather
+  // ship than block a checkout on a field customers forget.
   const required = ['firstName', 'lastName', 'email', 'address1', 'city', 'state', 'zipCode', 'country'];
   for (const f of required) if (!sa?.[f]) throw new Error(`missing_${f}`);
-  return body as CreateOrderInput;
+  return body as CreateCartOrderInput;
 }
 
-// Map US state codes to full names (Craftcloud may need this)
 function getCountryCode(country: string): string {
   if (country === 'US' || country === 'USA' || country === 'United States') return 'US';
   return country;
@@ -85,7 +102,7 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // Phase 6: anonymous users can't place orders.
+  // Anonymous users can't place orders.
   try {
     const token = authHeader.replace(/^Bearer\s+/i, '');
     const payloadPart = token.split('.')[1] || '';
@@ -111,7 +128,7 @@ Deno.serve(async (req: Request) => {
   }
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  let body: CreateOrderInput;
+  let body: CreateCartOrderInput;
   try {
     body = validateInput(await req.json());
   } catch (e) {
@@ -121,7 +138,6 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // Extract user ID from JWT (optional — allow anonymous users)
   let userId: string | null = null;
   try {
     const jwt = authHeader.replace('Bearer ', '');
@@ -129,38 +145,27 @@ Deno.serve(async (req: Request) => {
     if (payload.sub) userId = payload.sub;
   } catch { /* ignore */ }
 
-  const {
-    craftcloudQuoteId,
-    craftcloudShippingId,
-    craftcloudPriceId,
-    shippingAddress,
-    successUrl,
-    cancelUrl,
-    priorQuote,
-  } = body;
+  const { items, shippingAddress, successUrl, cancelUrl } = body;
 
   try {
-    // Step 1: Create cart
-    // Note: don't include `types` — the base quote is the default.
-    // `types` like ["economy"] or ["expedited"] are optional upgrades and
-    // not all vendors support them. Omitting types uses the standard quote.
+    // Step 1: Create CraftCloud cart with N quotes.
     const cartPayload: any = {
-      quotes: [{ id: craftcloudQuoteId }],
+      quotes: items.map(i => ({ id: i.craftcloudQuoteId })),
       currency: 'USD',
       note: 'Please do not include a printed receipt or invoice in the package. This is a gift fulfillment order.',
     };
-    // Only include shippingIds if we have one
-    if (craftcloudShippingId) {
-      cartPayload.shippingIds = [craftcloudShippingId];
+    const shippingIds = items.map(i => i.craftcloudShippingId).filter(Boolean);
+    if (shippingIds.length > 0) {
+      cartPayload.shippingIds = shippingIds;
     }
 
-    console.log(JSON.stringify({ evt: 'cc_creating_cart', payload: cartPayload }));
+    console.log(JSON.stringify({ evt: 'cc_creating_multi_cart', quoteCount: items.length }));
 
     const cartResp = await fetchWithTimeout(`${CRAFTCLOUD_API}/v5/cart`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cartPayload),
-      timeoutMs: 15000,
+      timeoutMs: 20000,
     });
 
     if (!cartResp.ok) {
@@ -171,28 +176,23 @@ Deno.serve(async (req: Request) => {
 
     const cartData = await cartResp.json();
     const cartId = cartData?.cartId;
-    if (!cartId) {
-      console.error(JSON.stringify({ evt: 'cc_no_cartId', cartData }));
-      throw new Error('Craftcloud cart did not return a cartId');
-    }
+    if (!cartId) throw new Error('Craftcloud cart did not return a cartId');
 
-    console.log(JSON.stringify({ evt: 'cc_cart_created', cartId }));
+    const cartQuotes = cartData?.quotes || [];
+    const cartShippings = cartData?.shippings || [];
+    const itemSubtotal = cartQuotes.reduce((s: number, q: any) => s + (q?.price || 0), 0);
+    const shippingSubtotal = cartShippings.reduce((s: number, sh: any) => s + (sh?.price || 0), 0);
+    const cartTotal = Number((itemSubtotal + shippingSubtotal).toFixed(2));
 
-    // Extract pricing from cart response for verification
-    const cartQuote = cartData?.quotes?.[0];
-    const cartShipping = cartData?.shippings?.[0];
-    const cartItemPrice = cartQuote?.price ?? 0;
-    const cartShippingPrice = cartShipping?.price ?? 0;
-    const cartTotal = Number((cartItemPrice + cartShippingPrice).toFixed(2));
+    console.log(JSON.stringify({ evt: 'cc_multi_cart_created', cartId, cartTotal, itemSubtotal, shippingSubtotal }));
 
-    // Step 2: Create order
+    // Step 2: Create order.
     const countryCode = getCountryCode(shippingAddress.country);
-
     const phone = (shippingAddress.phone || '').trim();
     const orderPayload = {
       cartId,
       user: {
-        emailAddress: 'matthew@gogentic.ai',  // Use our email for CraftCloud comms — customers get ShapeMint emails only
+        emailAddress: 'matthew@gogentic.ai',  // internal CraftCloud comms
         shipping: {
           firstName: shippingAddress.firstName,
           lastName: shippingAddress.lastName,
@@ -215,43 +215,32 @@ Deno.serve(async (req: Request) => {
       appId: 'craftcloud',
     };
 
-    console.log(JSON.stringify({ evt: 'cc_creating_order', cartId }));
-
     const orderResp = await fetchWithTimeout(`${CRAFTCLOUD_API}/v5/order`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(orderPayload),
-      timeoutMs: 15000,
+      timeoutMs: 20000,
     });
 
     if (!orderResp.ok) {
       const errText = await orderResp.text().catch(() => '');
-      console.error(JSON.stringify({ evt: 'cc_order_failed', status: orderResp.status, body: errText }));
+      console.error(JSON.stringify({ evt: 'cc_multi_order_failed', status: orderResp.status, body: errText }));
       throw new Error(`Craftcloud order creation failed (${orderResp.status}): ${errText}`);
     }
 
     const orderData = await orderResp.json();
     const orderId = orderData?.orderId;
     const orderNumber = orderData?.orderNumber;
+    if (!orderId) throw new Error('Craftcloud order did not return an orderId');
 
-    if (!orderId) {
-      console.error(JSON.stringify({ evt: 'cc_no_orderId', orderData }));
-      throw new Error('Craftcloud order did not return an orderId');
-    }
+    console.log(JSON.stringify({ evt: 'cc_multi_order_created', orderId, orderNumber }));
 
-    console.log(JSON.stringify({ evt: 'cc_order_created', orderId, orderNumber }));
-
-    // Step 3: Create ShapeMint Stripe checkout session (we collect payment, then pay CraftCloud via invoice)
+    // Step 3: Create Stripe session.
     const customerTotal = cartTotal;
     const internalOrderId = crypto.randomUUID();
 
-    console.log(JSON.stringify({ evt: 'cc_creating_stripe_session', orderId, internalOrderId, customerTotal }));
-
     const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
-    if (!stripeKey) {
-      console.error(JSON.stringify({ evt: 'cc_missing_stripe_key' }));
-      throw new Error('Missing STRIPE_SECRET_KEY — cannot create checkout session');
-    }
+    if (!stripeKey) throw new Error('Missing STRIPE_SECRET_KEY');
 
     const stripe = new Stripe(stripeKey, {
       apiVersion: '2023-10-16',
@@ -265,8 +254,8 @@ Deno.serve(async (req: Request) => {
           price_data: {
             currency: 'usd',
             product_data: {
-              name: '3D Print Order',
-              description: `ShapeMint 3D Print — Order ${orderNumber || orderId}`,
+              name: `ShapeMint 3D Print Order (${items.length} ${items.length === 1 ? 'item' : 'items'})`,
+              description: `Order ${orderNumber || orderId}`,
             },
             unit_amount: Math.round(customerTotal * 100),
           },
@@ -284,45 +273,34 @@ Deno.serve(async (req: Request) => {
         craftcloud_order_number: orderNumber || '',
         craftcloud_cart_id: cartId,
         craftcloud_total: String(cartTotal),
+        // Pipe-separated IDs so the stripe-webhook can delete them on success.
+        cart_item_ids: (items.map(i => i.cartItemId).filter(Boolean) as string[]).join('|'),
+        is_cart_order: 'true',
       },
     });
 
     const stripeCheckoutUrl = stripeSession.url;
-    if (!stripeCheckoutUrl) {
-      console.error(JSON.stringify({ evt: 'cc_stripe_session_no_url', sessionId: stripeSession.id }));
-      throw new Error('Stripe session did not return a checkout URL');
-    }
+    if (!stripeCheckoutUrl) throw new Error('Stripe session did not return a checkout URL');
 
-    console.log(JSON.stringify({
-      evt: 'cc_stripe_session_created',
-      sessionId: stripeSession.id,
-      orderId: internalOrderId,
-      craftcloudOrderId: orderId,
-      total: customerTotal,
-      paymentType: 'craftcloud_invoice',
-    }));
-
-    // Step 4: Insert order in our DB
-    const { data: inserted, error: insErr } = await supabase
+    // Step 4: Insert order row.
+    const { error: insErr } = await supabase
       .from('orders')
       .insert({
         id: internalOrderId,
         user_id: userId,
         vendor: 'craftcloud',
-        file_url: body.modelUrl || 'unknown',
+        file_url: items[0]?.modelUrl || 'cart_order',
         quote_id: null,
-        material_id: body.craftcloudQuoteId,
+        material_id: null,
         selections: {
-          craftcloudQuoteId,
-          craftcloudShippingId,
-          craftcloudPriceId,
           cartId,
+          items,
         },
-        quantity: body.quantity,
+        quantity: items.reduce((s, i) => s + i.quantity, 0),
         shipping_address: shippingAddress,
         shipping_zip: shippingAddress.zipCode,
-        item_subtotal: cartItemPrice,
-        shipping_price: cartShippingPrice,
+        item_subtotal: itemSubtotal,
+        shipping_price: shippingSubtotal,
         total_price: customerTotal,
         currency: 'USD',
         status: 'pending_payment',
@@ -336,39 +314,15 @@ Deno.serve(async (req: Request) => {
           cartData,
           craftcloudTotal: cartTotal,
           paymentMethod: 'shapemint_stripe_to_craftcloud_invoice',
+          isCartOrder: true,
         },
-      })
-      .select()
-      .maybeSingle();
+      });
 
     if (insErr) {
-      console.error(JSON.stringify({ evt: 'cc_db_insert_error', error: insErr.message, code: insErr.code, details: insErr.details, hint: insErr.hint }));
-      console.warn('⚠️ DB insert failed but Stripe session exists — user can still pay');
-    } else {
-      console.log(JSON.stringify({ evt: 'cc_db_order_inserted', internalOrderId, stripeSessionId: stripeSession.id }));
+      console.error(JSON.stringify({ evt: 'cc_multi_db_insert_error', error: insErr.message }));
     }
 
-    try {
-      if (inserted) {
-        await supabase.from('order_events').insert({
-          order_id: inserted.id,
-          user_id: userId,
-          evt_type: 'order_created',
-          evt_data: {
-            vendor: 'craftcloud',
-            craftcloudOrderId: orderId,
-            orderNumber,
-            cartTotal,
-            customerTotal,
-            stripeSessionId: stripeSession.id,
-            paymentMethod: 'shapemint_stripe_to_craftcloud_invoice',
-          },
-        });
-      }
-    } catch { /* ignore */ }
-
-    // Step 5: Return response
-    const response = {
+    return new Response(JSON.stringify({
       orderId: internalOrderId,
       orderNumber: orderNumber || orderId,
       vendorOrderId: orderId,
@@ -377,35 +331,19 @@ Deno.serve(async (req: Request) => {
       currency: 'USD',
       status: 'pending_payment',
       stripeCheckoutUrl,
-    };
-
-    console.log(JSON.stringify({
-      evt: 'cc_order_success',
-      orderId: response.orderId,
-      vendorOrderId: response.vendorOrderId,
-      total: response.totalPrice,
-      paymentFlow: 'shapemint_stripe → craftcloud_invoice',
-    }));
-
-    return new Response(JSON.stringify(response), {
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (e) {
     const err = e as Error;
-    console.error(JSON.stringify({ evt: 'cc_order_error', message: err.message, name: err.name }));
-
+    console.error(JSON.stringify({ evt: 'cc_multi_order_error', message: err.message }));
     const isTimeout = err.name === 'AbortError' || err.message?.includes('timeout');
     return new Response(
       JSON.stringify({
         error: isTimeout ? 'request_timeout' : 'order_failed',
-        message: isTimeout
-          ? 'The order request timed out. Please try again.'
-          : err.message || 'Order creation failed',
+        message: isTimeout ? 'The order request timed out. Please try again.' : err.message || 'Order creation failed',
       }),
-      {
-        status: isTimeout ? 504 : 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+      { status: isTimeout ? 504 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

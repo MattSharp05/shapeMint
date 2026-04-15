@@ -31,6 +31,24 @@ serve(async (req)=>{
       httpClient: Stripe.createFetchHttpClient()
     });
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Phase 6: reject anonymous users. Checkout requires a real account —
+    // email + address are needed for Stripe receipts and manufacturer ship-to.
+    const authHeader = req.headers.get('Authorization') || '';
+    try {
+      const token = authHeader.replace(/^Bearer\s+/i, '');
+      const payloadPart = token.split('.')[1] || '';
+      if (payloadPart) {
+        const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+        const claims = JSON.parse(atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '=')));
+        if (claims?.is_anonymous === true) {
+          return new Response(
+            JSON.stringify({ error: 'account_required', message: 'Sign in or create an account to check out.' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    } catch { /* malformed JWT falls through to normal validation */ }
+
     const body = await req.json();
     console.log('📝 Request body received:', JSON.stringify(body, null, 2));
     // Validation

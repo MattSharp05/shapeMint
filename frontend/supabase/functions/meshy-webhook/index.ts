@@ -542,10 +542,16 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Step 1c2: Store thumbnail in Supabase (prevents Meshy CDN expiration) ──
-    let storedThumbnailUrl = thumbnailUrl || '';
-    if (thumbnailUrl) {
+    // Phase 5 fix: if the row already has a thumbnail_url (the fal.ai
+    // variation image set by the anon-first draft flow), PREFER it over
+    // Meshy's render. The fal images are higher quality for dashboards.
+    const existingThumbnail = (record.thumbnail_url as string | null) || '';
+    let storedThumbnailUrl = existingThumbnail || thumbnailUrl || '';
+    if (!existingThumbnail && thumbnailUrl) {
       storedThumbnailUrl = await storeThumbnailInSupabase(thumbnailUrl, recordId, userId, supabase);
       console.log(`[${reqId}] Thumbnail stored: ${storedThumbnailUrl === thumbnailUrl ? 'kept original' : 'uploaded to Supabase'}`);
+    } else if (existingThumbnail) {
+      console.log(`[${reqId}] Keeping existing (fal.ai) thumbnail — not overwriting with Meshy render`);
     }
 
     // ── Step 1d: Save Meshy CDN URLs to DB (skip downloading OBJ/MTL to save memory) ──
@@ -625,12 +631,18 @@ Deno.serve(async (req: Request) => {
     const quoteModelUrl = finalGlbUrl || finalStlUrl || storedGlbUrl;
 
     // ── Step 3: Fetch CraftCloud quotes ──
+    // Phase 6: shipping_info may be absent (it's no longer collected before
+    // 3D gen). Fall back to the model's ip_country (stamped at 2D gen time
+    // by the transform-image edge function), then to US.
     const shippingInfo = record.shipping_info;
-    let quoteUpdate: Record<string, any> = {};
-    console.log(`[${reqId}] Step 3: Quotes. shippingInfo=${shippingInfo ? 'present' : 'MISSING'}`);
+    const quoteCountry = (shippingInfo?.country as string | undefined)
+      || (record.ip_country as string | undefined)
+      || 'US';
+    let quoteUpdate: Record<string, any> = { quoted_country: quoteCountry };
+    console.log(`[${reqId}] Step 3: Quotes. country=${quoteCountry} (from ${shippingInfo?.country ? 'shipping_info' : record.ip_country ? 'ip_country' : 'default'})`);
     console.log(`[${reqId}]   quote url: ${quoteModelUrl ? quoteModelUrl.slice(-50) : 'NONE'} (${finalGlbUrl ? 'scaled_glb' : finalStlUrl ? 'scaled_stl' : 'original_glb'})`);
 
-    if (shippingInfo && quoteModelUrl) {
+    if (quoteModelUrl) {
       try {
         console.log(`💰 [${reqId}] Downloading model for quotes...`);
         const modelResp = await fetchWithTimeout(quoteModelUrl, { timeoutMs: 30000 });
@@ -642,7 +654,7 @@ Deno.serve(async (req: Request) => {
         // Upload to CraftCloud once, reuse for all materials
         const ccModelId = await uploadModelToCraftcloud(modelBytes, modelFileName);
         await pollModelReady(ccModelId);
-        const countryCode = shippingInfo.country || 'US';
+        const countryCode = quoteCountry;
 
         // Fetch all 3 material quotes in parallel
         const [colorResult, monoResult, slsResult] = await Promise.allSettled([
@@ -669,8 +681,7 @@ Deno.serve(async (req: Request) => {
         console.error(`⚠️ [${reqId}] CraftCloud quoting failed (non-critical):`, quoteErr.message);
       }
     } else {
-      if (!shippingInfo) console.log(`[${reqId}] ℹ️ No shipping info — skipping quotes`);
-      if (!quoteModelUrl) console.log(`[${reqId}] ℹ️ No model URL available — skipping quotes`);
+      console.log(`[${reqId}] ℹ️ No model URL available — skipping quotes`);
     }
 
     // ── Step 4: Mark completed ──
@@ -687,7 +698,26 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Step 5: Send notifications (fire and forget) ──
-    if (shippingInfo?.email) {
+    // Phase 6: address is no longer collected before 3D gen, so there's no
+    // shipping_info.email to fall back to. Look up the user's email from
+    // public.users. Anonymous users have no email → skip silently (they'll
+    // see the model in their dashboard when they return).
+    let notifyEmail: string | null = shippingInfo?.email || null;
+    let notifyFirstName: string = shippingInfo?.firstName || '';
+    if (!notifyEmail && record.user_id) {
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('email, full_name, shipping_first_name')
+        .eq('id', record.user_id)
+        .maybeSingle();
+      if (userRow?.email) {
+        notifyEmail = userRow.email;
+        notifyFirstName = userRow.shipping_first_name
+          || (userRow.full_name ? String(userRow.full_name).split(' ')[0] : '');
+      }
+    }
+
+    if (notifyEmail) {
       const colorQuoteData = quoteUpdate.color_quotes?.vendors?.[0]
         ? { totalPrice: quoteUpdate.color_quotes.vendors[0].totalPrice, vendorId: quoteUpdate.color_quotes.vendors[0].vendorId }
         : undefined;
@@ -698,11 +728,11 @@ Deno.serve(async (req: Request) => {
         ? { totalPrice: quoteUpdate.sls_quotes.vendors[0].totalPrice, vendorId: quoteUpdate.sls_quotes.vendors[0].vendorId }
         : undefined;
 
-      console.log(`📧 [${reqId}] Dispatching model-ready email to ${shippingInfo.email}`);
+      console.log(`📧 [${reqId}] Dispatching model-ready email to ${notifyEmail}`);
       supabase.functions.invoke('send-model-ready-email', {
         body: {
-          email: shippingInfo.email,
-          firstName: shippingInfo.firstName || '',
+          email: notifyEmail,
+          firstName: notifyFirstName,
           modelId: recordId,
           prompt: record.prompt || 'AI-generated design',
           thumbnailUrl: record.selected_2d_preview || thumbnailUrl || undefined,
@@ -712,7 +742,7 @@ Deno.serve(async (req: Request) => {
         },
       }).catch((err: any) => console.error(`⚠️ [${reqId}] Email failed:`, err.message));
     } else {
-      console.log(`[${reqId}] No email to send (email=${shippingInfo?.email || 'none'})`);
+      console.log(`[${reqId}] No recipient email (likely anonymous user) — skipping email`);
     }
 
     const elapsed = Date.now() - startTime;

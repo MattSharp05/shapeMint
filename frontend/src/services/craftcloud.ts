@@ -4,21 +4,27 @@ interface CraftcloudQuoteParams {
   modelUrl: string;
   materialConfigId: string;
   quantity: number;
-  shippingAddress: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    address1: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
-    phone: string;
+  // Phase 6: full shipping address is no longer required at quote time.
+  // Pass countryCode (preferred) or a partial shippingAddress. The edge
+  // function falls back to the IP header and finally 'US'.
+  countryCode?: string;
+  shippingAddress?: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    address1?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+    phone?: string;
   };
-  // For multicolor materials: OBJ+MTL are zipped server-side
+  // For multicolor materials: OBJ+MTL are zipped server-side (legacy fallback)
   objUrl?: string;
   mtlUrl?: string;
   textureUrls?: string[];
+  // Preferred color-print path: prebuilt ZIP from scale pipeline (OBJ+MTL+textures+GLB)
+  colorBundleUrl?: string;
 }
 
 export interface CraftcloudVendorOption {
@@ -40,6 +46,8 @@ export interface CraftcloudQuoteResponse {
   craftcloudPriceId: string;
   craftcloudModelId: string;
   currency: string;
+  /** Country actually used for the quote (may differ from what caller asked for). */
+  quotedCountry?: string;
   vendorOptions: CraftcloudVendorOption[];
 }
 
@@ -67,10 +75,12 @@ export async function getQuote(params: CraftcloudQuoteParams): Promise<Craftclou
       modelUrl: params.modelUrl,
       materialConfigId: params.materialConfigId,
       quantity: params.quantity,
-      shippingAddress: params.shippingAddress,
+      ...(params.countryCode && { countryCode: params.countryCode }),
+      ...(params.shippingAddress && { shippingAddress: params.shippingAddress }),
       ...(params.objUrl && { objUrl: params.objUrl }),
       ...(params.mtlUrl && { mtlUrl: params.mtlUrl }),
       ...(params.textureUrls?.length && { textureUrls: params.textureUrls }),
+      ...(params.colorBundleUrl && { colorBundleUrl: params.colorBundleUrl }),
     }),
   });
 

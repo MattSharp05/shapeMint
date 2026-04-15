@@ -1,4 +1,5 @@
 import { corsHeaders } from '../_shared/cors.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 declare const Deno: {
   env: {
@@ -20,22 +21,81 @@ The image will be used for the creation of a full-color 3D printed model. Follow
 - Avoid thin protruding parts, delicate overhangs, or floating elements
 - Make surfaces smooth and well-defined with clear edges; Use bold, solid forms over intricate filigree or fine detail`;
 
+// Rate limit caps. Registered users bypass entirely.
+const IP_DAILY_MAX   = 20;          // images / IP / day
+const IP_DAILY_SECS  = 24 * 3600;
+const ANON_LIFE_MAX  = 8;           // images / anon user / "forever"
+const ANON_LIFE_SECS = 10 * 365 * 24 * 3600; // effectively unbounded
+
+function firstClientIp(req: Request): string {
+  const fwd = req.headers.get('x-forwarded-for') || '';
+  const first = fwd.split(',')[0]?.trim();
+  return first || req.headers.get('x-real-ip') || 'unknown';
+}
+
+// Daily-salted SHA-256 hash of the client IP. We never store raw IPs —
+// the hash is only useful as a rate-limit key and rotates each day.
+async function hashIp(ip: string): Promise<string> {
+  const salt = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+  const data = new TextEncoder().encode(`${salt}:${ip}`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function countryFromHeaders(req: Request): string | null {
+  return (
+    req.headers.get('cf-ipcountry') ||
+    req.headers.get('x-vercel-ip-country') ||
+    req.headers.get('x-country-code') ||
+    null
+  );
+}
+
+interface AuthContext {
+  userId: string | null;
+  isAnonymous: boolean;
+  hasEmail: boolean;
+}
+
+function parseAuth(req: Request): AuthContext {
+  try {
+    const header = req.headers.get('Authorization');
+    if (!header) return { userId: null, isAnonymous: false, hasEmail: false };
+    const token = header.replace(/^Bearer\s+/i, '');
+    const payloadPart = token.split('.')[1];
+    if (!payloadPart) return { userId: null, isAnonymous: false, hasEmail: false };
+    // Base64URL → base64
+    const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+    const json = JSON.parse(atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '=')));
+    return {
+      userId: json.sub || null,
+      isAnonymous: json.is_anonymous === true,
+      hasEmail: !!json.email,
+    };
+  } catch {
+    return { userId: null, isAnonymous: false, hasEmail: false };
+  }
+}
+
 Deno.serve(async (req: Request) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   const falApiKey = Deno.env.get('FAL_API_KEY');
-  if (!falApiKey) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!falApiKey || !supabaseUrl || !serviceKey) {
     return new Response(
-      JSON.stringify({ error: 'FAL_API_KEY not configured' }),
+      JSON.stringify({ error: 'server_misconfigured' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
   try {
-    const { image, images, prompt, systemPrompt, numImages, resolution, aspectRatio, outputFormat } = await req.json();
+    const { image, images, prompt, systemPrompt, numImages, resolution, aspectRatio, outputFormat, modelId } = await req.json();
 
     if (!prompt) {
       return new Response(
@@ -44,32 +104,83 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Support single image (string) or multiple images (string[])
+    const auth = parseAuth(req);
+    // Require some session. With anon auth enabled, AuthProvider boots
+    // an anonymous session on every visitor, so this only blocks callers
+    // with no JWT at all (e.g. scrapers).
+    if (!auth.userId) {
+      return new Response(
+        JSON.stringify({ error: 'unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const cost = Number(numImages || 4);
+    const supabase = createClient(supabaseUrl, serviceKey);
+
+    // ── Rate limits ────────────────────────────────────────────────
+    // Per-IP daily cap applies to everyone (including real accounts) as
+    // an abuse floor. Anon users additionally hit a lifetime cap that
+    // forces them into the save-account modal.
+    const ipHash = await hashIp(firstClientIp(req));
+
+    const { data: ipOk, error: ipErr } = await supabase.rpc(
+      'rate_limit_check_and_bump',
+      { p_bucket: 'ip_daily', p_key: ipHash, p_max_count: IP_DAILY_MAX, p_window_seconds: IP_DAILY_SECS, p_cost: cost }
+    );
+    if (ipErr) {
+      console.error('rate_limit RPC (ip) failed:', ipErr);
+    } else if (ipOk === false) {
+      return new Response(
+        JSON.stringify({ error: 'rate_limited', scope: 'ip_daily', message: 'Daily image limit reached. Please try again tomorrow.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (auth.isAnonymous) {
+      const { data: anonOk, error: anonErr } = await supabase.rpc(
+        'rate_limit_check_and_bump',
+        { p_bucket: 'anon_user_lifetime', p_key: auth.userId!, p_max_count: ANON_LIFE_MAX, p_window_seconds: ANON_LIFE_SECS, p_cost: cost }
+      );
+      if (anonErr) {
+        console.error('rate_limit RPC (anon) failed:', anonErr);
+      } else if (anonOk === false) {
+        return new Response(
+          JSON.stringify({ error: 'rate_limited', scope: 'anon_user_lifetime', message: 'Create a free account to keep generating.' }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // ── Stamp IP country on the draft model (best-effort) ──────────
+    if (modelId) {
+      const country = countryFromHeaders(req);
+      const patch: Record<string, any> = { client_ip_hash: ipHash };
+      if (country) patch.ip_country = country;
+      supabase.from('generated_models').update(patch).eq('id', modelId).then(({ error }) => {
+        if (error) console.warn('ip_country stamp failed:', error.message);
+      });
+    }
+
+    // ── fal.ai call (unchanged from original) ──────────────────────
     const imageUrls: string[] = images && Array.isArray(images) ? images : image ? [image] : [];
     const hasImage = imageUrls.length > 0;
-    const modelId = hasImage ? FAL_EDIT_MODEL : FAL_TEXT_MODEL;
-    console.log(`Starting ${hasImage ? `image editing (${imageUrls.length} images)` : 'text-to-image'} via fal.ai (${modelId})`);
+    const falModelId = hasImage ? FAL_EDIT_MODEL : FAL_TEXT_MODEL;
+    console.log(`Starting ${hasImage ? `image editing (${imageUrls.length} images)` : 'text-to-image'} via fal.ai (${falModelId})`);
 
-    // Use custom system prompt if provided, otherwise use default
     const effectiveSystemPrompt = systemPrompt || SYSTEM_PROMPT;
     const combinedPrompt = `${effectiveSystemPrompt}\n\nUser request: ${prompt}`;
 
-    // Build request body — image editing vs text-to-image have different schemas
-    // Allow overrides for testing; defaults match production values
     const falBody: Record<string, any> = {
       prompt: combinedPrompt,
-      num_images: numImages || 4,
+      num_images: cost,
       output_format: outputFormat || 'png',
       resolution: resolution || '1K',
       aspect_ratio: aspectRatio || '1:1',
     };
+    if (hasImage) falBody.image_urls = imageUrls;
 
-    if (hasImage) {
-      // Image editing: pass all source images (up to 14 supported by Nano Banana Pro)
-      falBody.image_urls = imageUrls;
-    }
-
-    const falResponse = await fetch(`https://fal.run/${modelId}`, {
+    const falResponse = await fetch(`https://fal.run/${falModelId}`, {
       method: 'POST',
       headers: {
         'Authorization': `Key ${falApiKey}`,

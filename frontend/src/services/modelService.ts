@@ -56,6 +56,12 @@ interface Generate3DModelParams {
   mode?: 'preview' | 'refine';
   userId: string;
   dimensions?: { value: number; unit: string; target: string };
+  /**
+   * If the caller pre-created a draft model row (Phase 2 anon-first flow),
+   * pass it here so the edge function updates that row with the Meshy
+   * task id instead of inserting a duplicate.
+   */
+  modelId?: string | null;
 }
 
 // Type for the edge function payload
@@ -66,6 +72,7 @@ interface GenerateModelPayload {
   mode: 'preview' | 'refine';
   image?: string | string[];
   dimensions?: { value: number; unit: string; target: string };
+  modelId?: string;
 }
 
 export interface ModelService {
@@ -98,6 +105,12 @@ export const modelService: ModelService = {
       // Add dimensions if provided
       if (params.dimensions) {
         payload.dimensions = params.dimensions;
+      }
+
+      // Pass through the pre-created draft model id so the edge function
+      // updates rather than inserts.
+      if (params.modelId) {
+        payload.modelId = params.modelId;
       }
 
       // Add image for image-to-3d or multi-image-to-3d type
@@ -309,4 +322,107 @@ export const modelService: ModelService = {
       throw error;
     }
   }
+};
+
+// ── Draft model helpers ────────────────────────────────────────────────
+// Phase 2 of the anon-first flow: a model row is created as soon as the
+// user starts generating 2D variations, not only when the 3D job starts.
+// This gives anonymous users a resumable entry in their dashboard and
+// lets us attribute 2D gens to a user_id.
+//
+// All writes rely on RLS: user_id is set from auth.uid() via the calling
+// session, not passed explicitly.
+
+export type ModelStage =
+  | 'uploaded'
+  | 'variations_ready'
+  | 'reference_selected'
+  | 'angles_ready'
+  | 'generating_3d'
+  | 'model_ready'
+  | 'ordered'
+  | 'failed';
+
+export const draftModel = {
+  /**
+   * Create an empty draft row owned by the current auth user. Returns the
+   * new row id or null on failure. Callers should check `user` is present
+   * (real or anon) before calling.
+   */
+  async create(userId: string, sourceImageUrl?: string | null): Promise<string | null> {
+    const payload: Record<string, any> = {
+      user_id: userId,
+      stage: 'uploaded',
+      status: 'processing',
+      type: 'image-to-3d',
+      mode: 'preview',
+    };
+    if (sourceImageUrl) payload.source_image_url = sourceImageUrl;
+
+    const { data, error } = await supabase
+      .from('generated_models')
+      .insert(payload)
+      .select('id')
+      .single();
+    if (error) {
+      console.error('draftModel.create failed:', error);
+      return null;
+    }
+    return data?.id ?? null;
+  },
+
+  async patch(modelId: string, patch: Record<string, any>): Promise<void> {
+    const { error } = await supabase
+      .from('generated_models')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', modelId);
+    if (error) console.error('draftModel.patch failed:', error);
+  },
+
+  async recordVariation(modelId: string, index: number, url: string, totalSlots = 4): Promise<void> {
+    // Read-modify-write is fine here — writes are infrequent and per-user.
+    const { data: row } = await supabase
+      .from('generated_models')
+      .select('variation_urls, thumbnail_url')
+      .eq('id', modelId)
+      .single();
+    const existing: (string | null)[] = Array.isArray(row?.variation_urls)
+      ? (row!.variation_urls as (string | null)[])
+      : new Array(totalSlots).fill(null);
+    existing[index] = url;
+
+    const patch: Record<string, any> = { variation_urls: existing };
+    // First completed variation becomes the dashboard thumbnail.
+    if (!row?.thumbnail_url) patch.thumbnail_url = url;
+
+    const filledCount = existing.filter(Boolean).length;
+    if (filledCount >= totalSlots) patch.stage = 'variations_ready';
+
+    await draftModel.patch(modelId, patch);
+  },
+
+  async recordSelectedVariation(modelId: string, url: string): Promise<void> {
+    await draftModel.patch(modelId, {
+      thumbnail_url: url,
+      stage: 'reference_selected',
+    });
+  },
+
+  async recordAngle(modelId: string, index: number, url: string, totalSlots = 4): Promise<void> {
+    const { data: row } = await supabase
+      .from('generated_models')
+      .select('angle_urls')
+      .eq('id', modelId)
+      .single();
+    const existing: (string | null)[] = Array.isArray(row?.angle_urls)
+      ? (row!.angle_urls as (string | null)[])
+      : new Array(totalSlots).fill(null);
+    existing[index] = url;
+
+    const patch: Record<string, any> = { angle_urls: existing };
+    const filledCount = existing.filter(Boolean).length;
+    if (filledCount >= totalSlots) patch.stage = 'angles_ready';
+
+    await draftModel.patch(modelId, patch);
+  },
 };

@@ -3,6 +3,21 @@ import { corsHeaders } from '../_shared/cors.ts';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 
+/**
+ * HTML-escape user-controlled values before they're interpolated into the
+ * email body. Customers can set arbitrary first/last names, and shipping
+ * strings come from the DB — neither should ever execute as markup.
+ */
+function esc(value: unknown): string {
+  if (value == null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 interface ShippingAddress {
   address1: string;
   city: string;
@@ -128,7 +143,7 @@ serve(async (req) => {
       </div>
 
       <p style="color:rgba(255,255,255,0.7); font-size:15px; line-height:1.6; margin:0 0 28px 0; text-align:center;">
-        Hey ${firstName || 'there'}! Thank you for your order. Your payment has been received and your custom 3D print is being prepared.
+        Hey ${esc(firstName) || 'there'}! Thank you for your order. Your payment has been received and your custom 3D print is being prepared.
       </p>
 
       <!-- Order summary -->
@@ -137,11 +152,11 @@ serve(async (req) => {
         <table style="width:100%; border-collapse:collapse;">
           <tr>
             <td style="color:rgba(255,255,255,0.6); font-size:14px; padding:6px 0; white-space:nowrap; padding-right:16px;">Order Number</td>
-            <td style="color:#ffffff; font-size:14px; padding:6px 0; text-align:right; font-weight:600;">#${orderNumber}</td>
+            <td style="color:#ffffff; font-size:14px; padding:6px 0; text-align:right; font-weight:600;">#${esc(orderNumber)}</td>
           </tr>
           <tr>
             <td style="color:rgba(255,255,255,0.6); font-size:14px; padding:6px 0; white-space:nowrap; padding-right:16px;">Material</td>
-            <td style="color:#ffffff; font-size:14px; padding:6px 0; text-align:right;">${materialType}</td>
+            <td style="color:#ffffff; font-size:14px; padding:6px 0; text-align:right;">${esc(materialType)}</td>
           </tr>
           ${breakdownRows}
           <tr>
@@ -155,7 +170,7 @@ serve(async (req) => {
       <div style="background-color:rgba(255,255,255,0.03); border-radius:12px; padding:16px 20px; margin-bottom:20px; border:1px solid rgba(255,255,255,0.06); display:flex; align-items:center;">
         <div>
           <p style="color:rgba(255,255,255,0.45); font-size:11px; text-transform:uppercase; letter-spacing:1.5px; margin:0 0 6px 0;">Payment Method</p>
-          <p style="color:#ffffff; font-size:14px; margin:0;">${paymentDisplay}</p>
+          <p style="color:#ffffff; font-size:14px; margin:0;">${esc(paymentDisplay)}</p>
         </div>
       </div>
 
@@ -163,9 +178,9 @@ serve(async (req) => {
       <div style="background-color:rgba(255,255,255,0.03); border-radius:12px; padding:16px 20px; margin-bottom:28px; border:1px solid rgba(255,255,255,0.06);">
         <p style="color:rgba(255,255,255,0.45); font-size:11px; text-transform:uppercase; letter-spacing:1.5px; margin:0 0 8px 0;">Shipping To</p>
         <p style="color:#ffffff; font-size:14px; line-height:1.7; margin:0;">
-          ${firstName} ${lastName}<br>
-          ${shippingAddress?.address1 || ''}<br>
-          ${shippingAddress?.city || ''}${shippingAddress?.state ? `, ${shippingAddress.state}` : ''} ${shippingAddress?.zipCode || ''}
+          ${esc(firstName)} ${esc(lastName)}<br>
+          ${esc(shippingAddress?.address1 || '')}<br>
+          ${esc(shippingAddress?.city || '')}${shippingAddress?.state ? `, ${esc(shippingAddress.state)}` : ''} ${esc(shippingAddress?.zipCode || '')}
         </p>
       </div>
 

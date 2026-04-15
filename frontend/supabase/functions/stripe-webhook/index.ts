@@ -332,6 +332,20 @@ serve(async (req) => {
           console.error('⚠️ Order confirmation email failed (non-critical):', emailErr.message);
         }
 
+        // If this was a multi-item cart order, clear those cart_items rows.
+        const cartItemIdsStr = session.metadata?.cart_item_ids;
+        if (cartItemIdsStr && session.metadata?.is_cart_order === 'true') {
+          const ids = cartItemIdsStr.split('|').map((s: string) => s.trim()).filter(Boolean);
+          if (ids.length > 0) {
+            const { error: delErr } = await supabase.from('cart_items').delete().in('id', ids);
+            if (delErr) {
+              console.error('⚠️ Failed to clear cart items after checkout:', delErr.message);
+            } else {
+              console.log(`🧹 Cleared ${ids.length} cart item(s) after successful checkout`);
+            }
+          }
+        }
+
         break;
       }
 

@@ -20,7 +20,7 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt = '', image: imageData, user_id: userId, type, mode = 'preview', dimensions } = await req.json()
+    const { prompt = '', image: imageData, user_id: userId, type, mode = 'preview', dimensions, modelId: existingModelId } = await req.json()
 
     const meshyApiKey = Deno.env.get('MESHY_API_KEY')
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
@@ -128,6 +128,7 @@ serve(async (req) => {
       prompt: prompt || 'Image-to-3D generation',
       type: type,
       status: 'processing',
+      stage: 'generating_3d',
       mode: mode,
       meshy_task_id: taskId,
       notes: `Meshy task: ${taskId}`,
@@ -137,18 +138,39 @@ serve(async (req) => {
       taskRecord.target_dimensions = dimensions
     }
 
-    const { data: insertedRecord, error: dbError } = await supabase
-      .from('generated_models')
-      .insert(taskRecord)
-      .select('id')
-      .single()
+    if (existingModelId) {
+      // Phase 2: the client created a draft row earlier in the flow (when
+      // 2D variations started generating). Update that row with the meshy
+      // task info instead of inserting a duplicate.
+      const { data: updatedRecord, error: updateErr } = await supabase
+        .from('generated_models')
+        .update(taskRecord)
+        .eq('id', existingModelId)
+        .select('id')
+        .single()
 
-    if (dbError) {
-      console.warn('⚠️ Database save failed (non-critical):', dbError.message)
-      console.warn('⚠️ DB error details:', JSON.stringify(dbError))
-    } else {
-      recordId = insertedRecord?.id
-      console.log(`✅ Model saved to database: recordId=${recordId}, meshyTaskId=${taskId}`)
+      if (updateErr) {
+        console.warn('⚠️ Draft update failed, falling back to insert:', updateErr.message)
+      } else {
+        recordId = updatedRecord?.id
+        console.log(`✅ Draft model updated: recordId=${recordId}, meshyTaskId=${taskId}`)
+      }
+    }
+
+    if (!recordId) {
+      const { data: insertedRecord, error: dbError } = await supabase
+        .from('generated_models')
+        .insert(taskRecord)
+        .select('id')
+        .single()
+
+      if (dbError) {
+        console.warn('⚠️ Database save failed (non-critical):', dbError.message)
+        console.warn('⚠️ DB error details:', JSON.stringify(dbError))
+      } else {
+        recordId = insertedRecord?.id
+        console.log(`✅ Model saved to database: recordId=${recordId}, meshyTaskId=${taskId}`)
+      }
     }
 
     // Use DB record ID if available, otherwise fall back to raw Meshy task ID

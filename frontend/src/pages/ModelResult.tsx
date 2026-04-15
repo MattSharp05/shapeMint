@@ -10,9 +10,11 @@ import { createOrder as createCraftcloudOrder } from '../services/craftcloudOrde
 import { modelService } from '../services/modelService';
 import { Loader2, Package, Truck, MapPin, Link2, Check, ChevronRight, X, Palette, ChevronDown } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useCart } from '../hooks/useCart';
 import { CRAFTCLOUD_MATERIALS, getCraftcloudMaterialConfigId } from '../data/craftcloudMaterials';
 import { US_STATES } from '../types/order';
 import { BeamsBackground } from '../components/UI/BeamsBackground';
+import { SaveAccountModal } from '../components/Auth/SaveAccountModal';
 
 const COLOR_CONFIG_ID = 'a69b05d8-39b9-5f3e-bd47-9df42b4b84c3';
 const MONO_CONFIG_ID = '6250ed03-5e96-5de8-bf06-44a13b952058';  // SLA Resin
@@ -38,6 +40,8 @@ interface ModelData {
   // Pipeline fields (scale + hollow via Blender/Modal)
   scaled_obj_url?: string;
   scaled_stl_url?: string;
+  scaled_glb_url?: string;
+  scaled_color_bundle_url?: string;
   obj_url?: string;
   mtl_url?: string;
   texture_urls?: string[];
@@ -115,6 +119,42 @@ export function ModelResult() {
     address1: '', address2: '', city: '', state: '', postalCode: '',
   });
   const [shippingError, setShippingError] = useState<string | null>(null);
+  // Phase 6: user's saved shipping country (loaded from public.users).
+  // Used to detect mismatch with the quoted country and re-quote at checkout.
+  const [profileCountry, setProfileCountry] = useState<string | null>(null);
+  // Phase 6: surfaced when an anonymous user tries to place an order.
+  const [showAccountModal, setShowAccountModal] = useState(false);
+
+  // Cart integration
+  const { addItem: addToCart, open: openCart } = useCart();
+  const [addingToCart, setAddingToCart] = useState<Record<string, boolean>>({});
+  const [addedToCart, setAddedToCart] = useState<Record<string, boolean>>({});
+
+  const handleAddToCart = async (type: 'color' | 'mono' | 'sls') => {
+    if (!id) return;
+    const quote = type === 'color' ? colorQuote : type === 'sls' ? slsQuote : monoQuote;
+    if (!quote.vendors.length) return;
+    setAddingToCart(prev => ({ ...prev, [type]: true }));
+    try {
+      await addToCart({
+        modelId: id,
+        printType: type,
+        quote: {
+          vendors: quote.vendors,
+          currency: quote.currency,
+          craftcloudPriceId: quote.craftcloudPriceId,
+        },
+        quotedCountry: model?.quoted_country || model?.ip_country || 'US',
+      });
+      setAddedToCart(prev => ({ ...prev, [type]: true }));
+      openCart();
+      setTimeout(() => setAddedToCart(prev => ({ ...prev, [type]: false })), 2500);
+    } catch (e) {
+      console.error('Add to cart failed:', e);
+    } finally {
+      setAddingToCart(prev => ({ ...prev, [type]: false }));
+    }
+  };
 
   // Load model from DB
   useEffect(() => {
@@ -200,6 +240,35 @@ export function ModelResult() {
     fetchModel();
   }, [id, user]);
 
+  // Phase 6: prefill the shipping form from the user's saved profile
+  // address. Only overrides fields that aren't already populated (the
+  // model's shipping_info load above takes precedence for legacy rows).
+  useEffect(() => {
+    if (!user || user.isAnonymous) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('shipping_first_name, shipping_last_name, shipping_phone, shipping_address1, shipping_address2, shipping_city, shipping_state, shipping_postal_code, shipping_country')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (cancelled || error || !data) return;
+      if (data.shipping_country) setProfileCountry(data.shipping_country);
+      setShippingForm(prev => ({
+        firstName:  prev.firstName  || data.shipping_first_name  || '',
+        lastName:   prev.lastName   || data.shipping_last_name   || '',
+        email:      prev.email      || user.email                || '',
+        phone:      prev.phone      || data.shipping_phone       || '',
+        address1:   prev.address1   || data.shipping_address1    || '',
+        address2:   prev.address2   || data.shipping_address2    || '',
+        city:       prev.city       || data.shipping_city        || '',
+        state:      prev.state      || data.shipping_state       || '',
+        postalCode: prev.postalCode || data.shipping_postal_code || '',
+      }));
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
   // Supabase Realtime: subscribe to model updates while generating
   useEffect(() => {
     if (!id || !model || model.status === 'completed' || model.status === 'failed') return;
@@ -273,7 +342,7 @@ export function ModelResult() {
         if (cancelled) break;
 
         const { data } = await supabase.from('generated_models')
-          .select('processing_status, scaled_obj_url, scaled_stl_url, obj_url, mtl_url, texture_urls, processing_report, color_quotes, mono_quotes, sls_quotes')
+          .select('processing_status, scaled_obj_url, scaled_stl_url, scaled_glb_url, scaled_color_bundle_url, obj_url, mtl_url, texture_urls, processing_report, color_quotes, mono_quotes, sls_quotes')
           .eq('id', id).single();
 
         console.log(`⏳ Processing poll: ${data?.processing_status}, scaled_stl=${!!data?.scaled_stl_url}`);
@@ -375,8 +444,10 @@ export function ModelResult() {
     if (!model) return;
     const fallbackUrl = model.glb_url || model.model_url;
     if (!fallbackUrl) return;
-    const addr = getShippingAddress();
-    if (!addr) { setShowShippingForm(true); return; }
+    // Phase 6: quotes no longer require a full address. Use the country
+    // stamped on the model (quoted_country from the webhook, or ip_country
+    // from the 2D gen step); the edge function falls back to IP / 'US'.
+    const quoteCountry: string | undefined = model.quoted_country || model.ip_country || undefined;
 
     // Use scaled/hollowed files for quotes when available
     const monoStlUrl = model.scaled_stl_url || model.stl_url || fallbackUrl;
@@ -397,16 +468,25 @@ export function ModelResult() {
     setSelectedMonoVendor(0);
     setSelectedSlsVendor(0);
 
+    const colorBundleUrl = model.scaled_color_bundle_url;
+    if (colorBundleUrl) {
+      console.log('🎨 fetchQuotes — using scaled color bundle:', colorBundleUrl.slice(-80));
+    }
+
     const [colorResult, monoResult, slsResult] = await Promise.allSettled([
       getCraftcloudQuote({
         modelUrl: colorModelUrl,
         materialConfigId: COLOR_CONFIG_ID,
         quantity: 1,
-        shippingAddress: addr,
-        ...(colorObjUrl && { objUrl: colorObjUrl, mtlUrl: model.mtl_url, textureUrls: model.texture_urls }),
+        countryCode: quoteCountry,
+        // Prefer the prebuilt color bundle (OBJ+MTL+textures+GLB zip). When absent,
+        // fall back to the legacy per-file bundling path for backward compatibility.
+        ...(colorBundleUrl
+          ? { colorBundleUrl }
+          : (colorObjUrl && { objUrl: colorObjUrl, mtlUrl: model.mtl_url, textureUrls: model.texture_urls })),
       }),
-      getCraftcloudQuote({ modelUrl: monoStlUrl, materialConfigId: MONO_CONFIG_ID, quantity: 1, shippingAddress: addr }),
-      getCraftcloudQuote({ modelUrl: monoStlUrl, materialConfigId: SLS_CONFIG_ID, quantity: 1, shippingAddress: addr }),
+      getCraftcloudQuote({ modelUrl: monoStlUrl, materialConfigId: MONO_CONFIG_ID, quantity: 1, countryCode: quoteCountry }),
+      getCraftcloudQuote({ modelUrl: monoStlUrl, materialConfigId: SLS_CONFIG_ID, quantity: 1, countryCode: quoteCountry }),
     ]);
 
     const quoteUpdate: Record<string, any> = {};
@@ -446,8 +526,7 @@ export function ModelResult() {
     const fallbackUrl = model.glb_url || model.model_url;
     if (!fallbackUrl) return;
 
-    const addr = getShippingAddress();
-    if (!addr) { setShowShippingForm(true); return; }
+    const customQuoteCountry: string | undefined = model.quoted_country || model.ip_country || undefined;
 
     const configId = getCraftcloudMaterialConfigId(customMaterialId, customColorId, customFinishId);
     if (!configId) { setCustomQuote(prev => ({ ...prev, error: 'Invalid material combination', loading: false })); return; }
@@ -465,12 +544,17 @@ export function ModelResult() {
     setSelectedCustomVendor(0);
 
     try {
+      const colorBundleUrl = model.scaled_color_bundle_url;
       const result = await getCraftcloudQuote({
         modelUrl,
         materialConfigId: configId,
         quantity: 1,
-        shippingAddress: addr,
-        ...(isMulticolor && colorObjUrl && { objUrl: colorObjUrl, mtlUrl: model.mtl_url, textureUrls: model.texture_urls }),
+        countryCode: customQuoteCountry,
+        ...(isMulticolor
+          ? (colorBundleUrl
+              ? { colorBundleUrl }
+              : (colorObjUrl && { objUrl: colorObjUrl, mtlUrl: model.mtl_url, textureUrls: model.texture_urls }))
+          : {}),
       });
       if (result.vendorOptions?.length > 0) {
         setCustomQuote({ vendors: result.vendorOptions, craftcloudPriceId: result.craftcloudPriceId, currency: result.currency || 'USD', loading: false });
@@ -495,12 +579,11 @@ export function ModelResult() {
     if (colorQuote.loading || monoQuote.loading || slsQuote.loading) return;
     if (colorQuote.error || monoQuote.error || slsQuote.error) return;
 
-    const addr = getShippingAddress();
-    if (addr) {
-      console.log('💰 No quotes from webhook — fetching as fallback. processing_status:', model.processing_status);
-      fetchQuotes();
-    }
-  }, [model?.status, model?.processing_status, colorQuote.vendors.length, monoQuote.vendors.length, slsQuote.vendors.length, colorQuote.loading, monoQuote.loading, slsQuote.loading, colorQuote.error, monoQuote.error, slsQuote.error, getShippingAddress, fetchQuotes]);
+    // Phase 6: quotes no longer wait for an address — fire as soon as the
+    // model is ready and the webhook didn't already produce quotes.
+    console.log('💰 No quotes from webhook — fetching as fallback. processing_status:', model.processing_status);
+    fetchQuotes();
+  }, [model?.status, model?.processing_status, colorQuote.vendors.length, monoQuote.vendors.length, slsQuote.vendors.length, colorQuote.loading, monoQuote.loading, slsQuote.loading, colorQuote.error, monoQuote.error, slsQuote.error, fetchQuotes]);
 
   const handleShippingSubmit = async () => {
     setShippingError(null);
@@ -510,13 +593,61 @@ export function ModelResult() {
       const { error: updateError } = await supabase.from('generated_models').update({ shipping_info: shippingForm }).eq('id', model.id);
       if (!updateError) setModel(prev => prev ? { ...prev, shipping_info: shippingForm } : prev);
     }
+    // Phase 6: persist the address to the user's profile so next checkout
+    // is prefilled. Non-fatal on failure.
+    if (user && !user.isAnonymous) {
+      supabase.from('users').update({
+        shipping_first_name:  shippingForm.firstName,
+        shipping_last_name:   shippingForm.lastName,
+        shipping_phone:       shippingForm.phone,
+        shipping_address1:    shippingForm.address1,
+        shipping_address2:    shippingForm.address2,
+        shipping_city:        shippingForm.city,
+        shipping_state:       shippingForm.state,
+        shipping_postal_code: shippingForm.postalCode,
+        shipping_country:     'US',
+      }).eq('id', user.id).then(({ error }) => {
+        if (error) console.warn('Failed to save shipping to profile:', error.message);
+        else setProfileCountry('US');
+      });
+    }
     setShowShippingForm(false);
+    // If the user's country differs from the country we quoted with, force
+    // a re-quote so the prices they confirm reflect reality.
+    const quotedCountry = model?.quoted_country || model?.ip_country || 'US';
+    if (quotedCountry.toUpperCase() !== 'US') {
+      console.log('💱 Country mismatch at shipping submit — re-quoting for US');
+    }
     fetchQuotes();
   };
 
   const handleOrder = async (type: 'color' | 'mono' | 'sls' | 'custom') => {
+    // Phase 6: anonymous users can't check out — open the save modal.
+    if (user?.isAnonymous) {
+      setShowAccountModal(true);
+      return;
+    }
+
     const addr = getShippingAddress();
     if (!addr) { setShowShippingForm(true); return; }
+
+    // Phase 6: detect country mismatch between the quote we showed and
+    // the user's real shipping address. If different, re-quote silently
+    // and let the user reconfirm before we take their money.
+    const addrCountry = (addr.country || 'US').toUpperCase();
+    const quotedCountry = (model?.quoted_country || model?.ip_country || 'US').toUpperCase();
+    if (addrCountry !== quotedCountry) {
+      console.log(`💱 Country mismatch: quoted=${quotedCountry}, shipping=${addrCountry}. Re-quoting…`);
+      setOrderError(`Updating prices for shipping to ${addrCountry} (quote was for ${quotedCountry}). Please confirm again.`);
+      // Stamp the model with the new quoted_country so fetchQuotes uses it.
+      if (model) {
+        await supabase.from('generated_models').update({ quoted_country: addrCountry }).eq('id', model.id);
+        setModel(prev => prev ? { ...prev, quoted_country: addrCountry } : prev);
+      }
+      fetchQuotes();
+      return;
+    }
+
     const quote = type === 'color' ? colorQuote : type === 'sls' ? slsQuote : type === 'custom' ? customQuote : monoQuote;
     const selectedIdx = type === 'color' ? selectedColorVendor : type === 'sls' ? selectedSlsVendor : type === 'custom' ? selectedCustomVendor : selectedMonoVendor;
     const vendor = quote.vendors[selectedIdx];
@@ -638,6 +769,40 @@ export function ModelResult() {
     );
   }
 
+  // Model generation succeeded but the scale/processing pipeline failed
+  // (e.g. the generated mesh was too large to upload to storage). Show a
+  // clear, user-facing error with the specific reason from processing_report
+  // so the user isn't left watching a spinner forever.
+  if (model.processing_status === 'failed') {
+    const reportErr = model.processing_report?.error as string | undefined;
+    const errCode = model.processing_report?.error_code as string | undefined;
+    const isTooLarge = errCode === 'upload_too_large';
+    const headline = isTooLarge ? 'Model Too Detailed to Print' : 'Processing Failed';
+    const detail = reportErr
+      || "We couldn't prepare your model for printing. Please try generating a new model.";
+    return (
+      <div className="pt-16 min-h-screen bg-brand-dark flex items-center justify-center">
+        <Card className="p-8 max-w-md w-full text-center">
+          <h2 className="text-xl font-bold text-white mb-2">{headline}</h2>
+          <p className="text-white/60 mb-2">{detail}</p>
+          {errCode && (
+            <p className="text-white/30 text-xs mb-6">Error code: {errCode}</p>
+          )}
+          <div className="flex flex-col gap-2">
+            <Button onClick={() => navigate('/generate')} className="w-full">Generate a New Model</Button>
+            <Button
+              onClick={() => window.location.href = 'mailto:support@shapemint.app?subject=Model%20processing%20failed&body=Model%20ID%3A%20' + encodeURIComponent(model.id)}
+              variant="outline"
+              className="w-full"
+            >
+              Contact Support
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   // ── Helpers ──
   const hasShippingInfo = !!(model.shipping_info || (shippingForm.firstName && shippingForm.address1));
   const shippingSrc = model.shipping_info || shippingForm;
@@ -696,14 +861,29 @@ export function ModelResult() {
       )}
 
       {vendor && !quote.loading && (
-        <button
-          onClick={() => handleOrder(type)}
-          disabled={orderLoading}
-          className="mt-4 w-full py-3 bg-gradient-to-r from-brand-accent to-brand-accent-dark text-brand-dark text-sm font-semibold rounded-lg hover:shadow-[0_0_20px_rgba(237,174,73,0.3)] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          {orderLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          Order {label} Print
-        </button>
+        <div className="mt-4 space-y-2">
+          <button
+            onClick={() => handleOrder(type)}
+            disabled={orderLoading}
+            className="w-full py-3 bg-gradient-to-r from-brand-accent to-brand-accent-dark text-brand-dark text-sm font-semibold rounded-lg hover:shadow-[0_0_20px_rgba(237,174,73,0.3)] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {orderLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Order {label} Print
+          </button>
+          {(type === 'color' || type === 'mono' || type === 'sls') && (
+            <button
+              onClick={() => handleAddToCart(type)}
+              disabled={addingToCart[type]}
+              className="w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {addingToCart[type]
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Adding…</>
+                : addedToCart[type]
+                  ? <><Check className="h-4 w-4 text-brand-accent" /> Added to cart</>
+                  : 'Add to Cart'}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1105,6 +1285,15 @@ export function ModelResult() {
             </div>
           </div>
         </div>
+      )}
+
+      {showAccountModal && (
+        <SaveAccountModal
+          heading="Sign in to complete your order"
+          subheading="Create a free account (or sign in) to place your order and track shipping."
+          required
+          onSuccess={() => setShowAccountModal(false)}
+        />
       )}
     </BeamsBackground>
   );

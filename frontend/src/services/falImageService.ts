@@ -19,6 +19,17 @@ export interface TransformOptions {
   resolution?: string;
   aspectRatio?: string;
   outputFormat?: string;
+  /** Draft model row id (phase 2). Lets the edge function stamp ip_country. */
+  modelId?: string | null;
+}
+
+export class RateLimitError extends Error {
+  scope: 'ip_daily' | 'anon_user_lifetime' | 'unknown';
+  constructor(message: string, scope: RateLimitError['scope']) {
+    super(message);
+    this.name = 'RateLimitError';
+    this.scope = scope;
+  }
 }
 
 class FalImageService {
@@ -53,12 +64,29 @@ class FalImageService {
     if (options?.resolution) body.resolution = options.resolution;
     if (options?.aspectRatio) body.aspectRatio = options.aspectRatio;
     if (options?.outputFormat) body.outputFormat = options.outputFormat;
+    if (options?.modelId) body.modelId = options.modelId;
 
     const { data, error } = await supabase.functions.invoke('transform-image', {
       body,
     });
 
     if (error) {
+      // Rate-limit responses from the edge function come back here. The
+      // supabase-js client surfaces non-2xx responses as FunctionsHttpError
+      // with .context.response available on modern versions.
+      const ctxResp: Response | undefined = (error as any)?.context?.response;
+      if (ctxResp && ctxResp.status === 429) {
+        try {
+          const payload = await ctxResp.clone().json();
+          throw new RateLimitError(
+            payload?.message || 'Rate limit reached',
+            payload?.scope || 'unknown'
+          );
+        } catch (parseErr) {
+          if (parseErr instanceof RateLimitError) throw parseErr;
+        }
+        throw new RateLimitError('Rate limit reached', 'unknown');
+      }
       console.error('Edge function error:', error);
       throw new Error(error.message || 'Image transformation failed');
     }

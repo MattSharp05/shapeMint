@@ -11,21 +11,33 @@ interface QuoteInput {
   modelUrl: string;
   materialConfigId: string;
   quantity: number;
-  shippingAddress: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    address1: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
-    phone: string;
+  /**
+   * Optional as of Phase 6. Only `country` is actually used at quote time
+   * (all other fields are dead weight and were creating friction in the
+   * signup funnel). Passed-through when available; otherwise we fall back
+   * to `countryCode` below, then the IP header, then 'US'.
+   */
+  shippingAddress?: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    address1?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+    phone?: string;
   };
-  // For multicolor: OBJ+MTL+texture URLs to bundle into a ZIP
+  /** Preferred: explicit country code to quote for. */
+  countryCode?: string;
+  // For multicolor: OBJ+MTL+texture URLs to bundle into a ZIP (legacy, server-side bundler)
   objUrl?: string;
   mtlUrl?: string;
   textureUrls?: string[];
+  // Preferred for color: prebuilt ZIP produced by the scale pipeline
+  // (contains OBJ+MTL+textures/+GLB with correct relative paths).
+  // When provided, this is sent to CraftCloud as-is and the legacy bundler is skipped.
+  colorBundleUrl?: string;
 }
 
 async function fetchWithTimeout(
@@ -49,14 +61,28 @@ async function fetchWithTimeout(
 
 function validateInput(body: any): QuoteInput {
   if (!body || typeof body !== 'object') throw new Error('invalid_payload');
-  const { modelUrl, materialConfigId, quantity, shippingAddress } = body;
+  const { modelUrl, materialConfigId, quantity } = body;
   if (!modelUrl || typeof modelUrl !== 'string') throw new Error('missing_modelUrl');
   if (!materialConfigId || typeof materialConfigId !== 'string') throw new Error('missing_materialConfigId');
   if (!quantity || quantity <= 0 || quantity > 100) throw new Error('invalid_quantity');
-  const sa = shippingAddress;
-  const required = ['firstName', 'lastName', 'email', 'address1', 'city', 'state', 'zipCode', 'country', 'phone'];
-  for (const f of required) if (!sa?.[f]) throw new Error(`missing_${f}`);
   return body as QuoteInput;
+}
+
+function resolveCountry(body: QuoteInput, req: Request): string {
+  // Preference order: explicit countryCode → shippingAddress.country →
+  // platform IP header → 'US' default.
+  if (body.countryCode && typeof body.countryCode === 'string') {
+    return body.countryCode.toUpperCase();
+  }
+  if (body.shippingAddress?.country) {
+    return body.shippingAddress.country.toUpperCase();
+  }
+  const hdr =
+    req.headers.get('cf-ipcountry') ||
+    req.headers.get('x-vercel-ip-country') ||
+    req.headers.get('x-country-code');
+  if (hdr) return hdr.toUpperCase();
+  return 'US';
 }
 
 // Minimal ZIP builder for bundling OBJ+MTL files (no external dependencies)
@@ -375,13 +401,25 @@ Deno.serve(async (req: Request) => {
     if (payload.sub) userId = payload.sub;
   } catch { /* ignore */ }
 
-  const { modelUrl, materialConfigId, quantity, shippingAddress, objUrl, mtlUrl, textureUrls } = body;
+  const { modelUrl, materialConfigId, quantity, objUrl, mtlUrl, textureUrls, colorBundleUrl } = body;
+  const resolvedCountry = resolveCountry(body, req);
 
   try {
     let fileBytes: Uint8Array;
     let fileName: string;
 
-    if (objUrl) {
+    if (colorBundleUrl) {
+      // Preferred color path: download the prebuilt ZIP (scaled OBJ+MTL+textures+GLB)
+      // and send it to CraftCloud unchanged. The scale pipeline produced it with
+      // correct relative texture paths and mm-scaled geometry.
+      console.log(JSON.stringify({ evt: 'cc_downloading_color_bundle', colorBundleUrl }));
+      const bundleResp = await fetchWithTimeout(colorBundleUrl, { timeoutMs: 60000 });
+      if (!bundleResp.ok) throw new Error(`Failed to download color bundle (${bundleResp.status})`);
+      fileBytes = new Uint8Array(await bundleResp.arrayBuffer());
+      const defaultName = colorBundleUrl.split('/').pop()?.split('?')[0] || 'color_bundle.zip';
+      fileName = defaultName.endsWith('.zip') ? defaultName : `${defaultName}.zip`;
+      console.log(JSON.stringify({ evt: 'cc_color_bundle_ready', fileName, sizeBytes: fileBytes.length }));
+    } else if (objUrl) {
       // Multicolor: download OBJ + MTL (+ textures referenced in MTL), bundle into ZIP
       console.log(JSON.stringify({ evt: 'cc_downloading_multicolor', objUrl, mtlUrl }));
 
@@ -465,8 +503,7 @@ Deno.serve(async (req: Request) => {
     await pollModelReady(modelId);
 
     // 4. Request prices
-    const countryCode = shippingAddress.country === 'US' ? 'US' : shippingAddress.country;
-    const priceId = await requestPrices(modelId, materialConfigId, quantity, countryCode);
+    const priceId = await requestPrices(modelId, materialConfigId, quantity, resolvedCountry);
 
     // 5. Poll for price results
     const { quotes, shippings } = await pollPrices(priceId);
@@ -597,6 +634,7 @@ Deno.serve(async (req: Request) => {
       craftcloudPriceId: priceId,
       craftcloudModelId: modelId,
       currency: 'USD',
+      quotedCountry: resolvedCountry,
       vendorOptions,
     };
 

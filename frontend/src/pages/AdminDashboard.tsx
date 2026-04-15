@@ -303,11 +303,11 @@ function ModelsTab({ onFilterUser }: { onFilterUser: (userId: string) => void })
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex items-center justify-end gap-1">
-                      {model.glb_url && (
+                      {(model.glb_url || (model.variation_urls?.some(Boolean) ?? false)) && (
                         <button
                           onClick={() => setViewingModel(model)}
                           className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/5"
-                          title="View 3D model"
+                          title={model.glb_url ? 'View 3D model & references' : 'View reference images'}
                         >
                           <Eye className="h-4 w-4" />
                         </button>
@@ -394,10 +394,65 @@ function ModelsTab({ onFilterUser }: { onFilterUser: (userId: string) => void })
                 </button>
               </div>
             </div>
-            <ModelViewer
-              modelUrl={viewingModel.glb_url}
-              className="w-full h-[500px]"
-            />
+            {viewingModel.glb_url ? (
+              <ModelViewer
+                modelUrl={viewingModel.glb_url}
+                className="w-full h-[500px]"
+              />
+            ) : (
+              <div className="w-full h-[200px] flex items-center justify-center bg-brand-dark-lighter">
+                <p className="text-white/40 text-sm">No 3D model yet (still in the 2D stage)</p>
+              </div>
+            )}
+
+            {/* Reference variations — the 4 fal.ai options the user was
+                shown, with the chosen one outlined. Draft rows may have
+                fewer than 4 filled. */}
+            {viewingModel.variation_urls && viewingModel.variation_urls.some(Boolean) && (
+              <div className="p-4 border-t border-white/10">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold text-white/80">Reference Variations</h4>
+                  {viewingModel.stage && (
+                    <span className="text-xs text-white/40">stage: {viewingModel.stage}</span>
+                  )}
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {Array.from({ length: 4 }).map((_, i) => {
+                    const url = viewingModel.variation_urls?.[i] || null;
+                    const isSelected = url && url === viewingModel.selected_2d_preview;
+                    return (
+                      <div
+                        key={i}
+                        className={`relative aspect-square rounded-lg overflow-hidden border bg-brand-dark-lighter ${
+                          isSelected ? 'border-brand-accent ring-2 ring-brand-accent/40' : 'border-white/10'
+                        }`}
+                      >
+                        {url ? (
+                          <>
+                            <img src={url} alt={`Variation ${i + 1}`} className="w-full h-full object-cover" />
+                            {isSelected && (
+                              <div className="absolute top-1 right-1 bg-brand-accent text-brand-dark text-[10px] font-semibold px-1.5 py-0.5 rounded">
+                                PICKED
+                              </div>
+                            )}
+                            <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                              #{i + 1}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-white/20 text-xs">
+                            (empty)
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {!viewingModel.selected_2d_preview && (
+                  <p className="text-xs text-white/40 mt-2">User has not yet picked a variation.</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

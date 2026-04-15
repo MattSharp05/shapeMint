@@ -9,6 +9,7 @@ interface AuthUser {
   email: string;
   name: string;
   createdAt: string;
+  isAnonymous: boolean;
 }
 
 interface AuthContextType {
@@ -16,7 +17,30 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<AuthUser | undefined>;
   register: (email: string, password: string, name: string) => Promise<AuthUser | undefined>;
+  /**
+   * Convert the current anonymous user to a permanent account by attaching
+   * an email and password. Preserves the same user_id, so all rows tied to
+   * the anon session (generated_models, etc.) carry over automatically.
+   *
+   * Requires the "Confirm email" setting to be OFF in Supabase so the
+   * conversion is synchronous — no email-verification interruption.
+   */
+  convertAnonToUser: (
+    email: string,
+    password: string,
+    name?: string
+  ) => Promise<AuthUser | undefined>;
   logout: () => Promise<void>;
+}
+
+function toAuthUser(u: SupabaseUser): AuthUser {
+  return {
+    id: u.id,
+    email: u.email || '',
+    name: u.user_metadata?.full_name || u.email?.split('@')[0] || '',
+    createdAt: u.created_at || new Date().toISOString(),
+    isAnonymous: (u as unknown as { is_anonymous?: boolean }).is_anonymous === true,
+  };
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,19 +58,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) throw error;
       if (data.user) {
-        const u = data.user;
-        setUser({
-          id: u.id,
-          email: u.email || '',
-          name: u.user_metadata?.full_name || u.email?.split('@')[0] || '',
-          createdAt: u.created_at || new Date().toISOString(),
-        });
-        return {
-          id: u.id,
-          email: u.email || '',
-          name: u.user_metadata?.full_name || u.email?.split('@')[0] || '',
-          createdAt: u.created_at || new Date().toISOString(),
-        };
+        const authUser = toAuthUser(data.user);
+        setUser(authUser);
+        return authUser;
       }
     } catch (error) {
       logger.error('Login error:', error);
@@ -69,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (data.user) {
         const u = data.user;
-        
+
         // Step 2: Create user record in database
         try {
           await userService.createUser(u.id, u.email || '', name);
@@ -78,14 +92,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           logger.error('❌ Error creating user:', userError);
           // Continue with auth user creation even if user record creation fails
         }
-        
-        const authUser = {
-          id: u.id,
-          email: u.email || '',
-          name: u.user_metadata?.full_name || u.email?.split('@')[0] || '',
-          createdAt: u.created_at || new Date().toISOString(),
-        };
-        
+
+        const authUser = toAuthUser(u);
         setUser(authUser);
         return authUser;
       }
@@ -95,11 +103,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Logout function
+  // Convert an anonymous user to a permanent account. Preserves user_id.
+  const convertAnonToUser = async (
+    email: string,
+    password: string,
+    name?: string
+  ) => {
+    try {
+      const { data, error } = await supabase.auth.updateUser({
+        email,
+        password,
+        data: name ? { full_name: name } : undefined,
+      });
+      if (error) throw error;
+      if (data.user) {
+        // Best-effort: also create the legacy user row if your app relies
+        // on userService. The profiles row is created automatically by the
+        // handle_user_update trigger when is_anonymous flips to false.
+        try {
+          if (name) await userService.createUser(data.user.id, email, name);
+        } catch (userError) {
+          logger.error('convertAnonToUser: userService.createUser failed', userError);
+        }
+
+        const authUser = toAuthUser(data.user);
+        setUser(authUser);
+        return authUser;
+      }
+    } catch (error) {
+      logger.error('convertAnonToUser error:', error);
+      throw error;
+    }
+  };
+
+  // Logout function. After signing out we immediately start a fresh
+  // anonymous session so the user never sees an unauthenticated state.
   const logout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     setUser(null);
+    try {
+      const { data, error: anonErr } = await supabase.auth.signInAnonymously();
+      if (anonErr) throw anonErr;
+      if (data.user) setUser(toAuthUser(data.user));
+    } catch (e) {
+      logger.error('logout: failed to start anon session', e);
+    }
   };
 
   // Listen for auth state changes
@@ -128,15 +177,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
         } else if (session?.user) {
           logger.debug('✅ Session found, user logged in');
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '',
-            createdAt: session.user.created_at || new Date().toISOString(),
-          });
+          setUser(toAuthUser(session.user));
         } else {
-          logger.debug('ℹ️ No active session found');
-          setUser(null);
+          // No session yet → start an anonymous one so every visitor has
+          // an auth identity. This enables 2D gen attribution and rate
+          // limiting before account creation.
+          logger.debug('ℹ️ No session — starting anonymous session');
+          try {
+            const { data, error: anonErr } = await supabase.auth.signInAnonymously();
+            if (anonErr) {
+              logger.error('Anonymous sign-in failed:', anonErr);
+              setUser(null);
+            } else if (data.user) {
+              setUser(toAuthUser(data.user));
+            }
+          } catch (anonErr) {
+            logger.error('Anonymous sign-in threw:', anonErr);
+            setUser(null);
+          }
         }
       } catch (error: any) {
         // Handle network errors gracefully
@@ -154,16 +212,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     getSession();
     
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        logger.debug('🔄 Auth state changed:', event);
+      async (_event, session) => {
+        logger.debug('🔄 Auth state changed:', _event);
         if (session?.user) {
-          logger.debug('✅ User authenticated:', session.user.email);
-          setUser({
-            id: session.user.id,
-            email: session.user.email || '',
-            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '',
-            createdAt: session.user.created_at || new Date().toISOString(),
-          });
+          logger.debug('✅ User authenticated:', session.user.email || '(anonymous)');
+          setUser(toAuthUser(session.user));
         } else {
           logger.debug('❌ User logged out or session expired');
           setUser(null);
@@ -178,7 +231,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, convertAnonToUser, logout }}>
       {loading ? (
         <div className="min-h-screen flex items-center justify-center bg-brand-dark">
           <div className="text-center">

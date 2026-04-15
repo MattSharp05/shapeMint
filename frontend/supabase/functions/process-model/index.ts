@@ -22,8 +22,13 @@ Deno.serve(async (req: Request) => {
   const t0 = Date.now();
   console.log('🔧 [ProcessModel] Invoked at', new Date().toISOString());
 
+  // Capture modelId early so the catch handler can mark the model 'failed'
+  // on unexpected errors instead of leaving it stuck at 'processing'.
+  let failCtx: { modelId?: string } = {};
+
   try {
     const body = await req.json();
+    failCtx.modelId = body?.modelId;
     const {
       objUrl,
       glbUrl,
@@ -60,7 +65,7 @@ Deno.serve(async (req: Request) => {
 
     // Idempotency: if already processed, return existing URLs
     const { data: existing } = await supabase.from('generated_models')
-      .select('processing_status, scaled_obj_url, scaled_stl_url, scaled_glb_url, processing_report')
+      .select('processing_status, scaled_obj_url, scaled_stl_url, scaled_glb_url, scaled_color_bundle_url, processing_report')
       .eq('id', modelId).single();
 
     if (existing?.processing_status === 'completed' && existing.scaled_stl_url) {
@@ -71,6 +76,7 @@ Deno.serve(async (req: Request) => {
         scaledObjUrl: existing.scaled_obj_url,
         scaledStlUrl: existing.scaled_stl_url,
         scaledGlbUrl: existing.scaled_glb_url,
+        scaledColorBundleUrl: existing.scaled_color_bundle_url,
         report: existing.processing_report,
       }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -82,16 +88,18 @@ Deno.serve(async (req: Request) => {
     }).eq('id', modelId).neq('processing_status', 'completed');
     console.log('📝 [ProcessModel] Status set to processing');
 
-    // Create signed upload URLs for OBJ, STL, and GLB (with upsert to handle duplicate runs)
+    // Create signed upload URLs for OBJ, STL, GLB, and color bundle (with upsert to handle duplicate runs)
     const basePath = userId ? `models/${userId}` : 'models';
     const objPath = `${basePath}/${modelId}_scaled.obj`;
     const stlPath = `${basePath}/${modelId}_scaled.stl`;
     const glbPath = `${basePath}/${modelId}_scaled.glb`;
+    const bundlePath = `${basePath}/${modelId}_color_bundle.zip`;
 
-    const [objSigned, stlSigned, glbSigned] = await Promise.all([
+    const [objSigned, stlSigned, glbSigned, bundleSigned] = await Promise.all([
       supabase.storage.from('3d-models').createSignedUploadUrl(objPath, { upsert: true }),
       supabase.storage.from('3d-models').createSignedUploadUrl(stlPath, { upsert: true }),
       supabase.storage.from('3d-models').createSignedUploadUrl(glbPath, { upsert: true }),
+      supabase.storage.from('3d-models').createSignedUploadUrl(bundlePath, { upsert: true }),
     ]);
 
     if (stlSigned.error || !stlSigned.data?.signedUrl) {
@@ -101,10 +109,12 @@ Deno.serve(async (req: Request) => {
     const objPublic = supabase.storage.from('3d-models').getPublicUrl(objPath).data.publicUrl;
     const stlPublic = supabase.storage.from('3d-models').getPublicUrl(stlPath).data.publicUrl;
     const glbPublic = supabase.storage.from('3d-models').getPublicUrl(glbPath).data.publicUrl;
+    const bundlePublic = supabase.storage.from('3d-models').getPublicUrl(bundlePath).data.publicUrl;
 
     console.log('📝 [ProcessModel] Signed URLs created');
     console.log('📦 [ProcessModel] STL will be at:', stlPublic.slice(0, 80));
     console.log('📦 [ProcessModel] GLB will be at:', glbPublic.slice(0, 80));
+    console.log('📦 [ProcessModel] Color bundle will be at:', bundlePublic.slice(0, 80));
 
     // Call Modal synchronously — wait for it to finish
     // Prefer GLB input (has embedded colors/textures), fall back to OBJ
@@ -118,9 +128,11 @@ Deno.serve(async (req: Request) => {
       upload_url_obj: objSigned.data?.signedUrl || '',
       upload_url_stl: stlSigned.data.signedUrl,
       upload_url_glb: glbSigned.data?.signedUrl || '',
+      upload_url_bundle: bundleSigned.data?.signedUrl || '',
       obj_public_url: objPublic,
       stl_public_url: stlPublic,
       glb_public_url: glbPublic,
+      bundle_public_url: bundlePublic,
       model_id: modelId,
     };
     if (glbUrl) {
@@ -148,25 +160,50 @@ Deno.serve(async (req: Request) => {
       uploaded_obj: modalData.uploaded_obj,
       uploaded_stl: modalData.uploaded_stl,
       uploaded_glb: modalData.uploaded_glb,
+      uploaded_bundle: modalData.uploaded_bundle,
+      bundle_mtl_ok: modalData.bundle_mtl_ok,
+      bundle_textures_count: modalData.bundle_textures_count,
+      bundle_file_count: modalData.bundle_file_count,
       material_saved: modalData.report?.material_saved_percent,
       obj_size: modalData.obj_size_bytes,
       stl_size: modalData.stl_size_bytes,
       glb_size: modalData.glb_size_bytes,
+      bundle_size: modalData.bundle_size_bytes,
       error: modalData.error,
     }));
 
+    // Loud warning if bundle was expected but came back invalid — color prints will suffer
+    if (modalData.uploaded_bundle && !modalData.bundle_mtl_ok) {
+      console.warn('⚠️ [ProcessModel] Color bundle uploaded but MTL validation failed — downstream color prints may render as monochrome');
+    }
+    if (modalData.success && !modalData.uploaded_bundle) {
+      console.warn('⚠️ [ProcessModel] Color bundle NOT produced — color print orders will fall back to GLB');
+    }
+
     if (!modalData.success) {
-      console.error('❌ [ProcessModel] Modal failure:', modalData.error);
+      const errorMessage = modalData.error || 'Model processing failed. Please try again.';
+      const errorCode = modalData.error_code || 'processing_failed';
+      console.error('❌ [ProcessModel] Modal failure:', { code: errorCode, message: errorMessage, uploadErrors: modalData.upload_errors });
+
+      // Persist a user-facing error in processing_report so the frontend can show it.
+      const reportWithError = {
+        ...(modalData.report || {}),
+        error: errorMessage,
+        error_code: errorCode,
+        upload_errors: modalData.upload_errors || [],
+      };
+
       await supabase.from('generated_models').update({
         processing_status: 'failed',
-        processing_report: modalData.report || { error: modalData.error },
+        processing_report: reportWithError,
         updated_at: new Date().toISOString(),
       }).eq('id', modelId);
 
       return new Response(JSON.stringify({
         success: false,
-        error: modalData.error || 'Processing failed',
-        report: modalData.report,
+        error: errorMessage,
+        error_code: errorCode,
+        report: reportWithError,
       }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -185,12 +222,16 @@ Deno.serve(async (req: Request) => {
     if (modalData.uploaded_glb) {
       dbUpdate.scaled_glb_url = glbPublic;
     }
+    if (modalData.uploaded_bundle) {
+      dbUpdate.scaled_color_bundle_url = bundlePublic;
+    }
 
     console.log('📝 [ProcessModel] Writing DB update:', JSON.stringify({
       processing_status: 'completed',
       scaled_obj_url: dbUpdate.scaled_obj_url ? 'yes' : 'no',
       scaled_stl_url: dbUpdate.scaled_stl_url ? 'yes' : 'no',
       scaled_glb_url: dbUpdate.scaled_glb_url ? 'yes' : 'no',
+      scaled_color_bundle_url: dbUpdate.scaled_color_bundle_url ? 'yes' : 'no',
     }));
 
     const { error: dbError } = await supabase.from('generated_models')
@@ -211,12 +252,38 @@ Deno.serve(async (req: Request) => {
       scaledObjUrl: modalData.uploaded_obj ? objPublic : null,
       scaledStlUrl: modalData.uploaded_stl ? stlPublic : null,
       scaledGlbUrl: modalData.uploaded_glb ? glbPublic : null,
+      scaledColorBundleUrl: modalData.uploaded_bundle ? bundlePublic : null,
       report: modalData.report,
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error: any) {
     console.error(`❌ [ProcessModel] Error after ${((Date.now() - t0) / 1000).toFixed(1)}s:`, error.message);
-    return new Response(JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+    // Mark model as failed so the user sees a real error instead of hanging
+    // on "still processing" forever. Best-effort — swallow DB errors here.
+    try {
+      if (failCtx.modelId) {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        if (supabaseUrl && supabaseKey) {
+          const sb = createClient(supabaseUrl, supabaseKey);
+          await sb.from('generated_models').update({
+            processing_status: 'failed',
+            processing_report: {
+              error: error.message || 'Unexpected error during processing.',
+              error_code: 'edge_function_exception',
+            },
+            updated_at: new Date().toISOString(),
+          }).eq('id', failCtx.modelId);
+          console.log(`❌ [ProcessModel] Marked model ${failCtx.modelId} as failed`);
+        }
+      }
+    } catch (_) { /* best-effort */ }
+
+    return new Response(JSON.stringify({
+      success: false,
+      error: error.message || 'Unexpected error during processing.',
+      error_code: 'edge_function_exception',
+    }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, Star, Download, Heart, Grid, List, Eye, Award, TrendingUp, Edit, Save, X } from 'lucide-react';
+import { ArrowLeft, Calendar, Download, Heart, Grid, List, Eye, Edit, Save, X } from 'lucide-react';
 import { Card } from '../components/UI/Card';
 import { Button } from '../components/UI/Button';
 import { useAuth } from '../hooks/useAuth';

@@ -17,6 +17,12 @@ export interface AdminModel {
   stl_url: string;
   obj_url: string;
   thumbnail_url?: string;
+  // Phase 2 anon-first flow: the 4 fal.ai variation images shown to the
+  // user as reference options, and which one they picked (stored as its
+  // URL on selected_2d_preview).
+  variation_urls?: (string | null)[] | null;
+  selected_2d_preview?: string | null;
+  stage?: string;
   repair_report?: {
     volume_cm3?: number;
     bounding_box_mm?: { x: number; y: number; z: number };

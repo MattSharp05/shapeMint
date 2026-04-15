@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, PenLine, Eye, Package, Check, ChevronRight } from 'lucide-react';
+import { ArrowRight, ChevronRight } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { PRINT_TYPES } from '../data/printTypes';
 import {
@@ -12,6 +12,43 @@ import {
   MotionButton,
 } from '../components/Motion';
 import { BeamsBackground } from '../components/UI/BeamsBackground';
+import { ContainerScroll, CardSticky } from '../components/UI/CardsStack';
+
+const HOW_IT_WORKS_STEPS = [
+  {
+    title: 'Describe or Upload',
+    description:
+      'Type what you want or upload a reference image. Our AI generates a detailed 3D model in minutes — no modeling experience required.',
+  },
+  {
+    title: 'Preview & Customize',
+    description:
+      'View your model in 3D from every angle. Choose full color or monochromatic printing, pick your size, and get an instant price.',
+  },
+  {
+    title: 'Printed & Delivered',
+    description:
+      'Our professional 3D printing partners produce your model and ship it straight to your door. Track every step along the way.',
+  },
+];
+
+const WHY_SHAPEMINT_POINTS = [
+  {
+    title: 'No Design Skills Needed',
+    description:
+      'Just describe your idea in plain English. Our AI handles the complex 3D modeling for you, so you can focus on what to make rather than how to make it.',
+  },
+  {
+    title: 'Production-Ready Quality',
+    description:
+      'Every model is automatically repaired, scaled, and optimized for 3D printing. No manual cleanup, no failed prints, no surprises.',
+  },
+  {
+    title: 'Delivered to Your Door',
+    description:
+      'From digital model to physical product. We handle printing and shipping through our network of pro 3D printing partners so you don\'t have to.',
+  },
+];
 
 interface FeaturedDesign {
   id: string;
@@ -64,7 +101,7 @@ export function Home() {
 
             <FadeIn delay={0.4} y={16}>
               <p className="text-lg md:text-xl text-[#9ca3af] mb-12 max-w-xl mx-auto leading-relaxed">
-                Turn any idea into a real, physical object — no design skills needed.
+                Turn any idea into a real, physical object. No design skills needed.
                 AI generates your 3D model, we print and ship it to your door.
               </p>
             </FadeIn>
@@ -165,53 +202,49 @@ export function Home() {
 
       {/* ── How it works ──────────────────────────────────────────────── */}
       <section id="how-it-works" className="py-24 relative">
-        <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <RevealOnScroll>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-accent text-center mb-4">
-              How it works
-            </p>
-            <h2 className="text-3xl md:text-4xl font-bold text-white text-center mb-16">
-              From idea to your doorstep
-            </h2>
-          </RevealOnScroll>
-
-          <StaggerList className="spotlight-cards grid grid-cols-1 md:grid-cols-3 gap-8">
-            <StaggerItem>
-              <div className="card-glow rounded-2xl bg-brand-dark-card p-8 text-center h-full">
-                <div className="w-12 h-12 rounded-xl bg-brand-accent/10 flex items-center justify-center mx-auto mb-5">
-                  <PenLine className="h-5 w-5 text-brand-accent" />
-                </div>
-                <h3 className="font-semibold text-white mb-2">Describe or Upload</h3>
-                <p className="text-sm text-[#9ca3af] leading-relaxed">
-                  Type what you want or upload a reference image. Our AI generates a detailed 3D model in minutes.
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid md:grid-cols-2 md:gap-12 lg:gap-16">
+            {/* Sticky intro column */}
+            <div className="md:sticky md:top-24 md:self-start md:h-fit mb-12 md:mb-0">
+              <RevealOnScroll>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-accent mb-4">
+                  How it works
                 </p>
-              </div>
-            </StaggerItem>
-
-            <StaggerItem>
-              <div className="card-glow rounded-2xl bg-brand-dark-card p-8 text-center h-full">
-                <div className="w-12 h-12 rounded-xl bg-brand-accent/10 flex items-center justify-center mx-auto mb-5">
-                  <Eye className="h-5 w-5 text-brand-accent" />
-                </div>
-                <h3 className="font-semibold text-white mb-2">Preview & Customize</h3>
-                <p className="text-sm text-[#9ca3af] leading-relaxed">
-                  View your model in 3D. Choose full color or monochromatic printing and get an instant price.
+                <h2 className="text-3xl md:text-5xl font-bold text-white leading-[1.1] tracking-tight mb-6">
+                  From idea to your{' '}
+                  <span className="gradient-text">doorstep</span>
+                </h2>
+                <p className="text-base md:text-lg text-[#9ca3af] leading-relaxed max-w-md">
+                  Three simple steps take you from a rough idea to a physical object on your desk. No modeling software, no print shop, no hassle.
                 </p>
-              </div>
-            </StaggerItem>
+              </RevealOnScroll>
+            </div>
 
-            <StaggerItem>
-              <div className="card-glow rounded-2xl bg-brand-dark-card p-8 text-center h-full">
-                <div className="w-12 h-12 rounded-xl bg-brand-accent/10 flex items-center justify-center mx-auto mb-5">
-                  <Package className="h-5 w-5 text-brand-accent" />
-                </div>
-                <h3 className="font-semibold text-white mb-2">Printed & Delivered</h3>
-                <p className="text-sm text-[#9ca3af] leading-relaxed">
-                  Professional 3D printing partners produce and ship your custom creation to your door.
-                </p>
-              </div>
-            </StaggerItem>
-          </StaggerList>
+            {/* Sticky-stack cards */}
+            <ContainerScroll className="space-y-6 md:space-y-8 md:pb-32">
+              {HOW_IT_WORKS_STEPS.map((step, index) => (
+                <CardSticky
+                  key={step.title}
+                  index={index}
+                  baseOffset={96}
+                  incrementY={16}
+                  className="rounded-2xl bg-brand-dark-card border border-white/10 p-8 md:p-10 shadow-2xl shadow-black/40"
+                >
+                  <div className="flex items-start justify-between gap-6 mb-4">
+                    <h3 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+                      {step.title}
+                    </h3>
+                    <span className="text-2xl md:text-3xl font-bold text-brand-accent tabular-nums shrink-0">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                  </div>
+                  <p className="text-[#9ca3af] leading-relaxed">
+                    {step.description}
+                  </p>
+                </CardSticky>
+              ))}
+            </ContainerScroll>
+          </div>
         </div>
       </section>
 
@@ -234,7 +267,7 @@ export function Home() {
               {featuredDesigns.map((design) => (
                 <StaggerItem key={design.id}>
                   <div
-                    className="group cursor-pointer card-glow rounded-2xl overflow-hidden bg-brand-dark-card"
+                    className="group cursor-pointer rounded-2xl overflow-hidden bg-brand-dark-card border border-white/10 shadow-2xl shadow-black/40 hover:border-brand-accent/30 transition-colors duration-300"
                     onClick={() => {
                       if (design.glb_url) {
                         navigate('/generate', {
@@ -271,61 +304,45 @@ export function Home() {
 
       {/* ── Why ShapeMint ─────────────────────────────────────────────── */}
       <section className="py-24 relative">
-        <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <RevealOnScroll>
-            <div className="text-center mb-14">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-accent mb-4">
-                Why ShapeMint
-              </p>
-              <h2 className="text-3xl md:text-4xl font-bold text-white">
-                Everything you need, nothing you don't
-              </h2>
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid md:grid-cols-2 md:gap-12 lg:gap-16">
+            {/* Intro column — order-2 on desktop (right side), order-1 in DOM for mobile reading */}
+            <div className="md:order-2 md:sticky md:top-24 md:self-start md:h-fit mb-12 md:mb-0">
+              <RevealOnScroll>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-accent mb-4">
+                  Why ShapeMint
+                </p>
+                <h2 className="text-3xl md:text-5xl font-bold text-white leading-[1.1] tracking-tight mb-6">
+                  Everything you need,{' '}
+                  <span className="gradient-text">nothing you don't</span>
+                </h2>
+                <p className="text-base md:text-lg text-[#9ca3af] leading-relaxed max-w-md">
+                  We handle the technical heavy lifting so you can focus on the fun part — making something real.
+                </p>
+              </RevealOnScroll>
             </div>
-          </RevealOnScroll>
 
-          <StaggerList className="spotlight-cards grid grid-cols-1 md:grid-cols-3 gap-6">
-            <StaggerItem>
-              <div className="card-glow rounded-2xl bg-brand-dark-card p-8 h-full">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-brand-accent/10 flex items-center justify-center shrink-0">
-                    <Check className="h-4 w-4 text-brand-accent" />
-                  </div>
-                  <h3 className="font-semibold text-white">No Design Skills Needed</h3>
-                </div>
-                <p className="text-sm text-[#9ca3af] leading-relaxed">
-                  Just describe your idea in plain English. Our AI handles the complex 3D modeling for you.
-                </p>
-              </div>
-            </StaggerItem>
-
-            <StaggerItem>
-              <div className="card-glow rounded-2xl bg-brand-dark-card p-8 h-full">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-brand-accent/10 flex items-center justify-center shrink-0">
-                    <Check className="h-4 w-4 text-brand-accent" />
-                  </div>
-                  <h3 className="font-semibold text-white">Production-Ready Quality</h3>
-                </div>
-                <p className="text-sm text-[#9ca3af] leading-relaxed">
-                  Every model is automatically repaired and optimized for 3D printing. No manual cleanup needed.
-                </p>
-              </div>
-            </StaggerItem>
-
-            <StaggerItem>
-              <div className="card-glow rounded-2xl bg-brand-dark-card p-8 h-full">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-brand-accent/10 flex items-center justify-center shrink-0">
-                    <Check className="h-4 w-4 text-brand-accent" />
-                  </div>
-                  <h3 className="font-semibold text-white">Delivered to Your Door</h3>
-                </div>
-                <p className="text-sm text-[#9ca3af] leading-relaxed">
-                  From digital model to physical product. We handle printing and shipping so you don't have to.
-                </p>
-              </div>
-            </StaggerItem>
-          </StaggerList>
+            {/* Sticky-stack cards — order-1 on desktop (left) */}
+            <ContainerScroll className="md:order-1 space-y-6 md:space-y-8 md:pb-32">
+              {WHY_SHAPEMINT_POINTS.map((point, index) => (
+                <CardSticky
+                  key={point.title}
+                  index={index}
+                  baseOffset={96}
+                  incrementY={20}
+                  className="rounded-2xl bg-brand-dark-card border border-white/10 p-8 md:p-10 shadow-2xl shadow-black/40"
+                >
+                  <div className="h-1 w-10 bg-brand-accent rounded-full mb-6" />
+                  <h3 className="text-2xl md:text-3xl font-bold text-white tracking-tight mb-4">
+                    {point.title}
+                  </h3>
+                  <p className="text-[#9ca3af] leading-relaxed">
+                    {point.description}
+                  </p>
+                </CardSticky>
+              ))}
+            </ContainerScroll>
+          </div>
         </div>
       </section>
 

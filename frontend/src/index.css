@@ -4,7 +4,13 @@
 
 @layer base {
   body {
-    @apply font-sans text-white antialiased bg-brand-dark;
+    @apply font-sans text-white antialiased bg-brand-dark select-none;
+  }
+
+  /* UI chrome is unselectable by default, but text content and inputs stay
+     selectable so users can still copy model prompts, paste addresses, etc. */
+  p, span, input, textarea, code, pre, [contenteditable="true"] {
+    @apply select-text;
   }
 
   h1, h2, h3, h4, h5, h6 {

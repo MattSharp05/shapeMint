@@ -22,6 +22,17 @@ export interface MeshyResponse {
   };
 }
 
+// Phase 2 lifecycle stages. See generated_models_stage_check constraint.
+export type ModelStage =
+  | 'uploaded'
+  | 'variations_ready'
+  | 'reference_selected'
+  | 'angles_ready'
+  | 'generating_3d'
+  | 'model_ready'
+  | 'ordered'
+  | 'failed';
+
 export interface GeneratedModel {
   id: string;
   user_id: string;
@@ -39,6 +50,13 @@ export interface GeneratedModel {
   thumbnail_status?: 'pending' | 'processing' | 'completed' | 'failed';
   thumbnail_error?: string;
   status: 'processing' | 'completed' | 'failed';
+  // Phase 2: funnel lifecycle tracking
+  stage?: ModelStage;
+  variation_urls?: (string | null)[] | null;
+  angle_urls?: (string | null)[] | null;
+  source_image_url?: string | null;
+  ip_country?: string | null;
+  quoted_country?: string | null;
   created_at: string;
   updated_at: string;
   mono_quotes?: { vendors: { totalPrice: number; itemPrice: number; shippingPrice: number }[]; currency?: string } | null;

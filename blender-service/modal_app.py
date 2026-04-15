@@ -569,6 +569,12 @@ async def process_model(request: Request):
         output_glb = os.path.join(tmpdir, "output.glb")
         report_path = os.path.join(tmpdir, "report.json")
 
+        # Color bundle: single zip with OBJ+MTL+textures/+GLB, for color print fulfillment.
+        # Use the model_id (or "model") as the in-zip basename so the files are traceable.
+        model_id_for_basename = body.get("model_id") or "model"
+        bundle_basename = f"shapemint_{model_id_for_basename}"
+        output_bundle = os.path.join(tmpdir, f"{bundle_basename}.zip")
+
         # Download input model
         print(f"[process-model] Downloading {input_format.upper()}: {input_url[:80]}...")
         try:
@@ -601,6 +607,8 @@ async def process_model(request: Request):
                     "--drain-holes", str(drain_holes),
                     "--hole-diameter", str(hole_diameter),
                     "--output-glb", output_glb,
+                    "--bundle-zip", output_bundle,
+                    "--bundle-basename", bundle_basename,
                 ],
                 capture_output=True, text=True, timeout=480, env=env,
             )
@@ -646,6 +654,7 @@ async def process_model(request: Request):
         obj_out_data = b""
         stl_out_data = b""
         glb_out_data = b""
+        bundle_out_data = b""
 
         if os.path.exists(output_obj):
             with open(output_obj, "rb") as f:
@@ -655,65 +664,140 @@ async def process_model(request: Request):
         if os.path.exists(output_glb):
             with open(output_glb, "rb") as f:
                 glb_out_data = f.read()
+        if os.path.exists(output_bundle):
+            with open(output_bundle, "rb") as f:
+                bundle_out_data = f.read()
+
+        # Bundle self-check (mirrors the Blender-side log)
+        bundle_info = report.get("color_bundle") or {}
+        bundle_mtl_ok = (bundle_info.get("mtl_validation") or {}).get("ok", False)
+        bundle_textures_n = bundle_info.get("textures_extracted", 0)
+        bundle_file_count = bundle_info.get("file_count", 0)
 
         print(f"[process-model] Output: OBJ={len(obj_out_data):,}B, STL={len(stl_out_data):,}B, "
-              f"GLB={len(glb_out_data):,}B, material_saved={report.get('material_saved_percent', '?')}%")
+              f"GLB={len(glb_out_data):,}B, BUNDLE={len(bundle_out_data):,}B "
+              f"(mtl_ok={bundle_mtl_ok}, textures={bundle_textures_n}, files={bundle_file_count}), "
+              f"material_saved={report.get('material_saved_percent', '?')}%")
 
         # Upload to Supabase
         uploaded_obj = False
         uploaded_stl = False
         uploaded_glb = False
+        uploaded_bundle = False
+
+        # Capture upload failures so we can classify and return a useful error.
+        # Format: list of dicts {asset, status, size_bytes, body_snippet}
+        upload_errors = []
 
         upload_url_obj = body.get("upload_url_obj")
         upload_url_stl = body.get("upload_url_stl")
         upload_url_glb = body.get("upload_url_glb")
+        upload_url_bundle = body.get("upload_url_bundle")
+
+        async def _try_upload(client, asset, url, data, content_type):
+            """Upload helper that logs + records rich error context on failure."""
+            if not url or not data:
+                return False
+            size = len(data)
+            print(f"[process-model] Uploading {asset} ({size:,}B)...")
+            try:
+                r = await client.put(
+                    url, content=data,
+                    headers={"Content-Type": content_type, "x-upsert": "true"},
+                )
+                r.raise_for_status()
+                print(f"[process-model] {asset} uploaded OK")
+                return True
+            except httpx.HTTPStatusError as e:
+                body_snippet = ""
+                try:
+                    body_snippet = e.response.text[:500]
+                except Exception:
+                    pass
+                status = e.response.status_code
+                print(f"[process-model] {asset} upload FAILED: status={status} size={size:,}B body={body_snippet!r}")
+                upload_errors.append({
+                    "asset": asset, "status": status, "size_bytes": size,
+                    "body": body_snippet,
+                })
+                return False
+            except Exception as e:
+                print(f"[process-model] {asset} upload FAILED (non-HTTP): {type(e).__name__}: {e}")
+                upload_errors.append({
+                    "asset": asset, "status": None, "size_bytes": size,
+                    "body": f"{type(e).__name__}: {e}",
+                })
+                return False
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            if upload_url_obj and obj_out_data:
-                print(f"[process-model] Uploading OBJ ({len(obj_out_data):,}B)...")
-                try:
-                    r = await client.put(upload_url_obj, content=obj_out_data,
-                                         headers={"Content-Type": "application/octet-stream", "x-upsert": "true"})
-                    r.raise_for_status()
-                    uploaded_obj = True
-                    print("[process-model] OBJ uploaded")
-                except Exception as e:
-                    print(f"[process-model] OBJ upload failed: {e}")
+            uploaded_obj = await _try_upload(client, "OBJ", upload_url_obj, obj_out_data, "application/octet-stream")
+            uploaded_stl = await _try_upload(client, "STL", upload_url_stl, stl_out_data, "application/octet-stream")
+            uploaded_glb = await _try_upload(client, "GLB", upload_url_glb, glb_out_data, "application/octet-stream")
+            uploaded_bundle = await _try_upload(client, "BUNDLE", upload_url_bundle, bundle_out_data, "application/zip")
 
-            if upload_url_stl:
-                print(f"[process-model] Uploading STL ({len(stl_out_data):,}B)...")
-                try:
-                    r = await client.put(upload_url_stl, content=stl_out_data,
-                                         headers={"Content-Type": "application/octet-stream", "x-upsert": "true"})
-                    r.raise_for_status()
-                    uploaded_stl = True
-                    print("[process-model] STL uploaded")
-                except Exception as e:
-                    print(f"[process-model] STL upload failed: {e}")
+        # Classify upload failures into a human-readable reason.
+        # Supabase Storage returns 413 or 400 when file exceeds bucket file_size_limit
+        # (most common cause on our pipeline for hi-poly Meshy outputs).
+        def _classify():
+            if not upload_errors:
+                return None, None
+            # If any asset hit 400/413 and produced file(s) much larger than a
+            # reasonable upload (hypothesis: bucket size limit) — call it out.
+            size_capped = [e for e in upload_errors if e["status"] in (400, 413) and e["size_bytes"] > 50 * 1024 * 1024]
+            if size_capped:
+                biggest = max(e["size_bytes"] for e in upload_errors)
+                mb = biggest / (1024 * 1024)
+                return "upload_too_large", (
+                    f"Generated files are too large to store ({mb:.0f} MB). "
+                    f"This model has too much geometric detail for our pipeline. "
+                    f"Please regenerate with a lower-detail setting or contact support."
+                )
+            # Anything else — generic upload failure with the first status
+            first = upload_errors[0]
+            return "upload_failed", (
+                f"Failed to upload processed model (status {first['status']}, asset {first['asset']}). "
+                f"Please try again or contact support if this persists."
+            )
 
-            if upload_url_glb and glb_out_data:
-                print(f"[process-model] Uploading GLB ({len(glb_out_data):,}B)...")
-                try:
-                    r = await client.put(upload_url_glb, content=glb_out_data,
-                                         headers={"Content-Type": "application/octet-stream", "x-upsert": "true"})
-                    r.raise_for_status()
-                    uploaded_glb = True
-                    print("[process-model] GLB uploaded")
-                except Exception as e:
-                    print(f"[process-model] GLB upload failed: {e}")
+        upload_error_code, upload_error_msg = _classify()
 
-        print(f"[process-model] Done. uploaded_obj={uploaded_obj}, uploaded_stl={uploaded_stl}, uploaded_glb={uploaded_glb}")
+        # Fatal if the STL upload failed — downstream pipeline (quoting, orders)
+        # cannot proceed without it. OBJ/GLB/bundle are nice-to-have for color
+        # prints but mono quoting requires STL.
+        processing_failed = not uploaded_stl
 
-        return JSONResponse({
-            "success": True,
+        print(f"[process-model] Done. uploaded_obj={uploaded_obj}, uploaded_stl={uploaded_stl}, "
+              f"uploaded_glb={uploaded_glb}, uploaded_bundle={uploaded_bundle}, "
+              f"failed={processing_failed}, error_code={upload_error_code}")
+
+        response_body = {
+            "success": not processing_failed,
             "uploaded_obj": uploaded_obj,
             "uploaded_stl": uploaded_stl,
             "uploaded_glb": uploaded_glb,
+            "uploaded_bundle": uploaded_bundle,
+            "bundle_mtl_ok": bundle_mtl_ok,
+            "bundle_textures_count": bundle_textures_n,
+            "bundle_file_count": bundle_file_count,
             "report": report,
             "obj_size_bytes": len(obj_out_data),
             "stl_size_bytes": len(stl_out_data),
             "glb_size_bytes": len(glb_out_data),
-        })
+            "bundle_size_bytes": len(bundle_out_data),
+        }
+        if processing_failed:
+            response_body["error"] = upload_error_msg or "Upload failed — processed files could not be stored."
+            response_body["error_code"] = upload_error_code or "upload_failed"
+            response_body["upload_errors"] = upload_errors
+            # Attach summary into report so the edge function persists it in processing_report
+            report.setdefault("upload_failure", {
+                "code": response_body["error_code"],
+                "message": response_body["error"],
+                "details": upload_errors,
+            })
+            response_body["report"] = report
+
+        return JSONResponse(response_body, status_code=200 if not processing_failed else 500)
 
 
 @app.function(image=blender_image)

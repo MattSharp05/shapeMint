@@ -421,9 +421,9 @@ export function GenerationForm({
           {/* Model Dimensions — only show for custom */}
           {isCustom && (
             <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Ruler className="h-4 w-4 text-white/50" />
-                <h3 className="text-sm font-medium text-white/70">Model Size</h3>
+              <div className="flex items-center space-x-2 pb-2 border-b border-white/5">
+                <Ruler className="h-5 w-5 text-brand-accent" />
+                <h3 className="text-lg font-semibold text-white">Model Size</h3>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
@@ -493,9 +493,9 @@ export function GenerationForm({
           {/* Generation Settings — only show for custom */}
           {isCustom && (
             <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Settings className="h-4 w-4 text-white/50" />
-                <h3 className="text-sm font-medium text-white/70">Generation Settings</h3>
+              <div className="flex items-center space-x-2 pb-2 border-b border-white/5">
+                <Settings className="h-5 w-5 text-brand-accent" />
+                <h3 className="text-lg font-semibold text-white">Generation Settings</h3>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

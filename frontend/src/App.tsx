@@ -23,7 +23,10 @@ import { LandingPrintMyPet } from './pages/LandingPrintMyPet';
 import { LandingCakeTopper } from './pages/LandingCakeTopper';
 import { LandingStatueBust } from './pages/LandingStatueBust';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { CartCheckout } from './pages/CartCheckout';
 import { AuthProvider } from './hooks/useAuth';
+import { CartProvider } from './hooks/useCart';
+import { CartDrawer } from './components/Cart/CartDrawer';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -35,9 +38,11 @@ function App() {
   return (
     <AuthProvider>
       <Router>
+        <CartProvider>
         <ScrollToTop />
         <div className="min-h-screen bg-white">
           <Header />
+          <CartDrawer />
           <main>
             <Routes>
               <Route path="/" element={<Home />} />
@@ -57,6 +62,7 @@ function App() {
               <Route path="/thumbnail-test" element={<ThumbnailTest />} />
               <Route path="/testing-env" element={<TestingEnv />} />
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/cart-checkout" element={<CartCheckout />} />
               <Route path="/landing/fantasy-miniatures" element={<LandingFantasyMiniatures />} />
               <Route path="/landing/print-my-pet" element={<LandingPrintMyPet />} />
               <Route path="/landing/cake-topper" element={<LandingCakeTopper />} />
@@ -65,6 +71,7 @@ function App() {
           </main>
           <Footer />
         </div>
+        </CartProvider>
       </Router>
     </AuthProvider>
   );

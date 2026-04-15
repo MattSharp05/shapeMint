@@ -22,7 +22,9 @@ import bmesh
 import sys
 import json
 import os
+import re
 import time
+import zipfile
 from mathutils import Vector
 
 
@@ -86,6 +88,8 @@ def parse_args():
             "--drain-holes": ("drain_holes", int),
             "--hole-diameter": ("hole_diameter", float),
             "--output-glb": ("output_glb", str),
+            "--bundle-zip": ("bundle_zip", str),
+            "--bundle-basename": ("bundle_basename", str),
         }
         if key in mapping:
             field, typ = mapping[key]
@@ -342,10 +346,124 @@ def drill_holes(target, num_holes, hole_diameter_m, center, dims):
     log(f"  All holes drilled. Final: {len(target.data.polygons):,} faces")
 
 
+# ── Texture Extraction ───────────────────────────────────────────────────
+
+def _sanitize_filename(name):
+    """Strip path separators and problematic chars from a texture filename."""
+    name = os.path.basename(name or "")
+    name = re.sub(r'[^A-Za-z0-9._-]', '_', name)
+    return name or "texture"
+
+
+def _extension_for(img):
+    fmt = (img.file_format or "").upper()
+    if fmt == "JPEG":
+        return ".jpg"
+    if fmt == "PNG":
+        return ".png"
+    if fmt == "TARGA":
+        return ".tga"
+    if fmt == "BMP":
+        return ".bmp"
+    # Fall back to whatever is on img.name, else default PNG
+    cur = os.path.splitext(img.name or "")[1].lower()
+    return cur if cur in (".jpg", ".jpeg", ".png", ".tga", ".bmp") else ".png"
+
+
+def extract_textures(textures_dir):
+    """
+    Save all packed/loaded images to `textures_dir` and rewrite each image's
+    filepath to a relative `//textures/<name>` path so the OBJ exporter emits
+    clean relative texture references in the MTL.
+
+    Returns list of dicts: [{name, size}, ...].
+    """
+    log_separator("Extracting Textures")
+    os.makedirs(textures_dir, exist_ok=True)
+
+    extracted = []
+    used_names = set()
+
+    for idx, img in enumerate(bpy.data.images):
+        # Skip Blender's built-in render result / viewer images
+        if img.name in ("Render Result", "Viewer Node"):
+            continue
+        # Skip images with no data (broken references, etc.)
+        if not getattr(img, "has_data", False):
+            log(f"  Skip image '{img.name}': no data", "WARN")
+            continue
+
+        # Choose a stable filename. GLB textures often come in named "Image_0" etc.
+        base = _sanitize_filename(os.path.splitext(img.name)[0] or f"Image_{idx}")
+        ext = _extension_for(img)
+        candidate = f"{base}{ext}"
+        n = 1
+        while candidate in used_names:
+            candidate = f"{base}_{n}{ext}"
+            n += 1
+        used_names.add(candidate)
+
+        out_path = os.path.join(textures_dir, candidate)
+
+        try:
+            # Point the image at the target location and save to disk
+            img.filepath_raw = out_path
+            img.save()
+        except Exception as e:
+            log(f"  Failed to save '{img.name}' → {candidate}: {e}", "ERROR")
+            continue
+
+        # Rewrite the in-scene filepath to a relative one so OBJ export writes
+        # `map_Kd textures/<candidate>` (not an absolute /tmp path).
+        img.filepath = f"//textures/{candidate}"
+
+        size = os.path.getsize(out_path) if os.path.exists(out_path) else 0
+        extracted.append({"name": candidate, "size": size, "format": img.file_format})
+        log(f"  Extracted: {candidate} ({size:,} bytes, format={img.file_format})")
+
+    if not extracted:
+        log("  No textures extracted — color bundle will ship without texture files", "WARN")
+    else:
+        log(f"  Total textures extracted: {len(extracted)}")
+
+    return extracted
+
+
+def validate_mtl(mtl_path, extracted):
+    """Read the emitted MTL, assert it has map_Kd and that referenced textures exist."""
+    if not os.path.exists(mtl_path):
+        log(f"  MTL MISSING at {mtl_path}", "ERROR")
+        return {"ok": False, "reason": "mtl_missing"}
+
+    with open(mtl_path, "r", encoding="utf-8", errors="replace") as f:
+        mtl_text = f.read()
+
+    log(f"  MTL size: {os.path.getsize(mtl_path):,} bytes")
+    log(f"  MTL contents:\n{mtl_text}")
+
+    map_refs = re.findall(r'^\s*map_\w+\s+(?:-\S+\s+\S+\s+)*(.+)$', mtl_text, re.MULTILINE)
+    map_refs = [m.strip() for m in map_refs if m.strip()]
+
+    if not map_refs:
+        log("  MTL has NO map_* lines — color will not print", "ERROR")
+        return {"ok": False, "reason": "no_map_refs"}
+
+    log(f"  MTL references {len(map_refs)} texture(s): {map_refs}")
+
+    # Every referenced texture should exist in our extracted set
+    extracted_names = {e["name"] for e in extracted}
+    missing = [r for r in map_refs if os.path.basename(r) not in extracted_names]
+    if missing:
+        log(f"  MTL references missing textures: {missing}", "ERROR")
+        return {"ok": False, "reason": "missing_refs", "missing": missing}
+
+    return {"ok": True, "refs": map_refs}
+
+
 # ── Export ───────────────────────────────────────────────────────────────
 
-def export_obj(obj, path):
-    log(f"Exporting OBJ: {path}")
+def export_obj(obj, path, with_materials=False, path_mode='AUTO'):
+    log(f"Exporting OBJ: {path} (materials={with_materials}, path_mode={path_mode})")
     bpy.ops.object.select_all(action='DESELECT')
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
@@ -355,7 +473,8 @@ def export_obj(obj, path):
         export_selected_objects=True,
         export_uv=True,
         export_normals=True,
-        export_materials=False,  # We keep the original MTL separately
+        export_materials=with_materials,
+        path_mode=path_mode,
     )
     size = os.path.getsize(path)
     log(f"  OBJ exported: {size:,} bytes ({size/1024/1024:.2f} MB)")
@@ -384,6 +503,92 @@ def export_stl(obj, path):
     size = os.path.getsize(path)
     log(f"  STL exported: {size:,} bytes ({size/1024/1024:.2f} MB)")
     return size
+
+
+def build_color_bundle(target, bundle_zip_path, bundle_basename, scaled_glb_path):
+    """
+    Build the color-print bundle ZIP: OBJ + MTL + textures/ + scaled GLB.
+    Structure inside the zip:
+        <basename>.obj
+        <basename>.mtl
+        <basename>.glb
+        textures/<texture_files>
+    Returns dict with bundle metadata + validation result.
+    """
+    log_separator("Building Color Bundle")
+    log(f"  Bundle path: {bundle_zip_path}")
+    log(f"  Basename:    {bundle_basename}")
+
+    bundle_dir = os.path.dirname(bundle_zip_path) or "."
+    staging = os.path.join(bundle_dir, f".{bundle_basename}_staging")
+    textures_dir = os.path.join(staging, "textures")
+    os.makedirs(staging, exist_ok=True)
+
+    # Extract packed textures first so OBJ export can reference them by relative path
+    extracted = extract_textures(textures_dir)
+
+    # Export OBJ with materials + relative texture paths so the MTL says
+    # `map_Kd textures/Image_0.jpg` (not absolute /tmp/... paths).
+    obj_path = os.path.join(staging, f"{bundle_basename}.obj")
+    mtl_path = os.path.join(staging, f"{bundle_basename}.mtl")
+    export_obj(target, obj_path, with_materials=True, path_mode='RELATIVE')
+
+    # Validate MTL
+    mtl_check = validate_mtl(mtl_path, extracted)
+
+    # Copy the scaled GLB into staging so it rides along in the zip
+    glb_in_bundle = os.path.join(staging, f"{bundle_basename}.glb")
+    if scaled_glb_path and os.path.exists(scaled_glb_path):
+        import shutil
+        shutil.copy2(scaled_glb_path, glb_in_bundle)
+        log(f"  GLB copied into bundle: {os.path.getsize(glb_in_bundle):,} bytes")
+    else:
+        log(f"  GLB missing (expected at {scaled_glb_path}) — bundle will not include GLB", "WARN")
+        glb_in_bundle = None
+
+    # Write the zip
+    log(f"  Writing zip: {bundle_zip_path}")
+    written = []
+    with zipfile.ZipFile(bundle_zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
+        for name in os.listdir(staging):
+            p = os.path.join(staging, name)
+            if name == "textures":
+                continue  # handled separately below
+            if os.path.isfile(p):
+                z.write(p, arcname=name)
+                written.append(name)
+        # Add textures/ subfolder
+        if os.path.isdir(textures_dir):
+            for tex_name in sorted(os.listdir(textures_dir)):
+                tp = os.path.join(textures_dir, tex_name)
+                if os.path.isfile(tp):
+                    arc = f"textures/{tex_name}"
+                    z.write(tp, arcname=arc)
+                    written.append(arc)
+
+    zip_size = os.path.getsize(bundle_zip_path)
+    log(f"  Zip written: {zip_size:,} bytes ({zip_size/1024/1024:.2f} MB)")
+    log(f"  Zip contents ({len(written)} files):")
+    for n in written:
+        log(f"    - {n}")
+
+    # Cleanup staging
+    import shutil
+    try:
+        shutil.rmtree(staging)
+    except Exception as e:
+        log(f"  Failed to clean staging dir: {e}", "WARN")
+
+    return {
+        "zip_path": bundle_zip_path,
+        "zip_size_bytes": zip_size,
+        "file_count": len(written),
+        "files": written,
+        "textures_extracted": len(extracted),
+        "texture_details": extracted,
+        "mtl_validation": mtl_check,
+        "glb_included": glb_in_bundle is not None,
+    }
 
 
 def export_glb(obj, path):
@@ -507,12 +712,36 @@ def main():
         # Export all formats
         log_separator("Step 8: Export")
         t0 = time.time()
-        obj_size = export_obj(target, args["output_obj"])
+        # Geometry-only OBJ (backward compat: scaled_obj_url consumers don't get
+        # a broken MTL reference). The bundle below carries the materials version.
+        obj_size = export_obj(target, args["output_obj"], with_materials=False)
         stl_size = export_stl(target, args["output_stl"])
         glb_size = 0
         if args.get("output_glb"):
             glb_size = export_glb(target, args["output_glb"])
         report["steps"]["export"] = {"time": round(time.time()-t0, 2), "status": "ok"}
+
+        # Color bundle (OBJ+MTL+textures+GLB zipped) — for color print fulfillment
+        if args.get("bundle_zip"):
+            log_separator("Step 9: Color Bundle")
+            t0 = time.time()
+            basename = args.get("bundle_basename") or "model"
+            bundle_info = build_color_bundle(
+                target=target,
+                bundle_zip_path=args["bundle_zip"],
+                bundle_basename=basename,
+                scaled_glb_path=args.get("output_glb", ""),
+            )
+            report["color_bundle"] = bundle_info
+            bundle_ok = bundle_info.get("mtl_validation", {}).get("ok", False)
+            report["steps"]["bundle"] = {
+                "time": round(time.time()-t0, 2),
+                "status": "ok" if bundle_ok else "invalid",
+            }
+            if not bundle_ok:
+                log("  Bundle validation FAILED — color print quality at risk", "ERROR")
+        else:
+            report["steps"]["bundle"] = {"time": 0, "status": "skipped"}
 
         # Final metrics
         _, final_dims, final_vol = get_dimensions(target)

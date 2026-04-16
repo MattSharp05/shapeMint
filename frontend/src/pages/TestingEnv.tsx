@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Upload, Type, X, Loader2, RotateCcw, Send, Image as ImageIcon, Settings2, Ruler, Printer, Download, Trash2, Check, Plus, Box } from 'lucide-react';
+import { Upload, Type, X, Loader2, RotateCcw, Send, Image as ImageIcon, Settings2, Ruler, Printer, Download, Trash2, Check, Plus, Box, Lock } from 'lucide-react';
 import { ModelViewer } from '../components/3D/ModelViewer';
 import { falImageService, TransformOptions } from '../services/falImageService';
 import { printReferenceService, PrintReference } from '../services/printReferenceService';
@@ -71,9 +71,67 @@ interface LogEntry {
 
 type AppMode = 'pipeline' | 'print-preview' | 'hollow-test';
 
+// Password gate — same pattern as AdminDashboard.
+// Keeps unauthorized visitors from burning fal.ai credits on /testing-env.
+const TESTING_ENV_PASSWORD = 'ShapeMintDev123';
+
+function TestingEnvGate({ onAuthenticated }: { onAuthenticated: () => void }) {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === TESTING_ENV_PASSWORD) {
+      sessionStorage.setItem('testing_env_auth', 'true');
+      onAuthenticated();
+    } else {
+      setError(true);
+      setPassword('');
+    }
+  };
+
+  return (
+    <div className="pt-16 min-h-screen bg-white text-gray-900 flex items-center justify-center">
+      <div className="bg-white border border-gray-200 rounded-2xl p-8 w-full max-w-sm shadow-sm">
+        <div className="text-center mb-6">
+          <Lock className="h-10 w-10 text-blue-600 mx-auto mb-3" />
+          <h1 className="text-2xl font-bold text-gray-900">Testing Environment</h1>
+          <p className="text-gray-500 text-sm mt-1">Enter password to continue</p>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setError(false);
+            }}
+            placeholder="Password"
+            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 mb-4"
+            autoFocus
+          />
+          {error && (
+            <p className="text-red-500 text-sm mb-3">Incorrect password</p>
+          )}
+          <button
+            type="submit"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl transition-colors"
+          >
+            Enter
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export function TestingEnv() {
   const { user } = useAuth();
   const logEndRef = useRef<HTMLDivElement>(null);
+
+  const [authenticated, setAuthenticated] = useState(
+    () => sessionStorage.getItem('testing_env_auth') === 'true'
+  );
 
   // Top-level mode
   const [appMode, setAppMode] = useState<AppMode>('pipeline');
@@ -310,6 +368,7 @@ export function TestingEnv() {
         resolution: falConfig.resolution,
         aspectRatio: falConfig.aspectRatio,
         outputFormat: falConfig.outputFormat,
+        source: 'testing-env',
       };
 
       addLog(`[Print Preview] Sending to fal.ai: 1 model image + ${refUrls.length} references`, 'info');
@@ -366,6 +425,7 @@ export function TestingEnv() {
       resolution: falConfig.resolution,
       aspectRatio: falConfig.aspectRatio,
       outputFormat: falConfig.outputFormat,
+      source: 'testing-env',
     };
 
     addLog(`Sending to fal.ai — mode: ${mode}, prompt: "${inputPrompt.slice(0, 80)}..."`, 'info');
@@ -412,6 +472,7 @@ export function TestingEnv() {
             resolution: falConfig.resolution,
             aspectRatio: '1:1',
             outputFormat: 'png',
+            source: 'testing-env',
           }
         ).then(result => {
           if (result.images.length > 0) {
@@ -1492,6 +1553,10 @@ export function TestingEnv() {
       </div>
     );
   };
+
+  if (!authenticated) {
+    return <TestingEnvGate onAuthenticated={() => setAuthenticated(true)} />;
+  }
 
   return (
     <div className="pt-16 min-h-screen bg-white text-gray-900">

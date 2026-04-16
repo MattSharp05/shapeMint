@@ -21,8 +21,10 @@ The image will be used for the creation of a full-color 3D printed model. Follow
 - Avoid thin protruding parts, delicate overhangs, or floating elements
 - Make surfaces smooth and well-defined with clear edges; Use bold, solid forms over intricate filigree or fine detail`;
 
-// Rate limit caps. Registered users bypass entirely.
-const IP_DAILY_MAX   = 20;          // images / IP / day
+// Rate limit caps. Applied as an abuse floor per IP; anon users get an
+// additional lifetime cap below. A "batch" is 4 images (either 4 variations
+// or 4 angle views), so 80 images/day = 20 batches/day for logged-in users.
+const IP_DAILY_MAX   = 80;          // images / IP / day (20 batches of 4)
 const IP_DAILY_SECS  = 24 * 3600;
 const ANON_LIFE_MAX  = 8;           // images / anon user / "forever"
 const ANON_LIFE_SECS = 10 * 365 * 24 * 3600; // effectively unbounded
@@ -95,7 +97,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { image, images, prompt, systemPrompt, numImages, resolution, aspectRatio, outputFormat, modelId } = await req.json();
+    const { image, images, prompt, systemPrompt, numImages, resolution, aspectRatio, outputFormat, modelId, source } = await req.json();
 
     if (!prompt) {
       return new Response(
@@ -166,7 +168,9 @@ Deno.serve(async (req: Request) => {
     const imageUrls: string[] = images && Array.isArray(images) ? images : image ? [image] : [];
     const hasImage = imageUrls.length > 0;
     const falModelId = hasImage ? FAL_EDIT_MODEL : FAL_TEXT_MODEL;
-    console.log(`Starting ${hasImage ? `image editing (${imageUrls.length} images)` : 'text-to-image'} via fal.ai (${falModelId})`);
+    const sourceTag = source || 'unknown';
+    const modelIdTag = modelId ? `modelId=${modelId}` : 'NO_MODEL_ID';
+    console.log(`[${sourceTag}] Starting ${hasImage ? `image editing (${imageUrls.length} images)` : 'text-to-image'} via fal.ai (${falModelId}) ${modelIdTag}`);
 
     const effectiveSystemPrompt = systemPrompt || SYSTEM_PROMPT;
     const combinedPrompt = `${effectiveSystemPrompt}\n\nUser request: ${prompt}`;
@@ -200,7 +204,7 @@ Deno.serve(async (req: Request) => {
 
     const result = await falResponse.json();
     const outputImages = result.images?.map((img: any) => img.url) || [];
-    console.log(`fal.ai returned ${outputImages.length} images`);
+    console.log(`[${sourceTag}] fal.ai returned ${outputImages.length} images`);
 
     return new Response(
       JSON.stringify({ success: true, images: outputImages }),

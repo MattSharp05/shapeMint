@@ -21,6 +21,9 @@ export interface TransformOptions {
   outputFormat?: string;
   /** Draft model row id (phase 2). Lets the edge function stamp ip_country. */
   modelId?: string | null;
+  /** Which page/flow fired this call. Only used for edge-function logging
+   * (e.g. 'generate', 'testing-env') so log lines say who called. */
+  source?: string;
 }
 
 export class RateLimitError extends Error {
@@ -65,16 +68,22 @@ class FalImageService {
     if (options?.aspectRatio) body.aspectRatio = options.aspectRatio;
     if (options?.outputFormat) body.outputFormat = options.outputFormat;
     if (options?.modelId) body.modelId = options.modelId;
+    if (options?.source) body.source = options.source;
 
     const { data, error } = await supabase.functions.invoke('transform-image', {
       body,
     });
 
     if (error) {
-      // Rate-limit responses from the edge function come back here. The
-      // supabase-js client surfaces non-2xx responses as FunctionsHttpError
-      // with .context.response available on modern versions.
-      const ctxResp: Response | undefined = (error as any)?.context?.response;
+      // Rate-limit responses from the edge function come back here. In
+      // @supabase/functions-js >=2.4, FunctionsHttpError.context IS the
+      // raw Response directly; older shapes nested it under .context.response.
+      // Accept both so this keeps working across client upgrades.
+      const ctx: any = (error as any)?.context;
+      const ctxResp: Response | undefined =
+        ctx && typeof ctx.status === 'number' && typeof ctx.clone === 'function'
+          ? ctx
+          : ctx?.response;
       if (ctxResp && ctxResp.status === 429) {
         try {
           const payload = await ctxResp.clone().json();

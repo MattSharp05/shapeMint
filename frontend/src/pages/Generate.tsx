@@ -137,6 +137,7 @@ export function Generate({ printType }: GenerateProps = {}) {
           numImages: 1,
           systemPrompt: variationSystemPrompt,
           modelId,
+          source: 'generate',
         })
           .then(result => {
             if (result.images.length > 0) {
@@ -197,6 +198,7 @@ export function Generate({ printType }: GenerateProps = {}) {
             aspectRatio: '1:1',
             outputFormat: 'png',
             modelId,
+            source: 'generate',
           }
         )
           .then(result => {
@@ -387,7 +389,7 @@ export function Generate({ printType }: GenerateProps = {}) {
 
       // Fire 4 parallel calls, each producing 1 image
       const promises = Array.from({ length: 4 }, (_, i) =>
-        falImageService.transformImage(transformPrompt, image, { numImages: 1, systemPrompt: variationSystemPrompt, modelId: draftId })
+        falImageService.transformImage(transformPrompt, image, { numImages: 1, systemPrompt: variationSystemPrompt, modelId: draftId, source: 'generate' })
           .then(result => {
             if (result.images.length > 0) {
               console.log(`Variation ${i + 1} ready`);
@@ -478,6 +480,7 @@ export function Generate({ printType }: GenerateProps = {}) {
             aspectRatio: '1:1',
             outputFormat: 'png',
             modelId: draftId,
+            source: 'generate',
           }
         ).then(result => {
           if (result.images.length > 0) {

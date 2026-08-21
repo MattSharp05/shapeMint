@@ -68,15 +68,19 @@ function Model({ url, debug = false, onLoadStart, onLoadComplete, onLoadError, o
   const errorReported = useRef(false);
   const validationAttempted = useRef(false);
 
-  // Resolve the model URL — try direct first, proxy as fallback for CORS issues
+  // Resolve the model URL — Meshy CDN domains send no CORS headers, so they
+  // must ALWAYS go through the /api/meshy/glb proxy. The relative path works
+  // in both environments: Vite forwards /api to the local proxy in dev, and
+  // Vercel serves it as a serverless function in prod (VITE_PROXY_URL just
+  // prefixes an absolute base when set). Supabase storage URLs are CORS-open
+  // and load directly.
   const proxiedUrl = useMemo(() => {
-    // Try loading directly first — Meshy CDN (CloudFront) typically allows CORS
-    // Only fall back to proxy if VITE_PROXY_URL is explicitly set
-    if (proxyBaseUrl && (
+    if (
       url.includes('assets.meshy.ai') ||
       url.includes('meshy.ai') ||
-      url.includes('cloudfront.net')
-    )) {
+      url.includes('cloudfront.net') ||
+      url.includes('taichi-graphics.com')  // Meshy's new asset CDN
+    ) {
       const proxyUrl = `${proxyBaseUrl}/api/meshy/glb?url=${encodeURIComponent(url)}`;
       if (debug) console.log('🔗 Using proxy for Meshy URL:', proxyUrl);
       return proxyUrl;

@@ -55,9 +55,10 @@ function fromMeters(meters: number, unit: DimensionUnit): number {
  */
 async function fetchGLBAsBlob(url: string): Promise<string> {
   // Check if this is a Meshy URL that needs special handling
-  const isMeshyUrl = url.includes('assets.meshy.ai') || 
-                     url.includes('meshy.ai') || 
-                     url.includes('cloudfront.net');
+  const isMeshyUrl = url.includes('assets.meshy.ai') ||
+                     url.includes('meshy.ai') ||
+                     url.includes('cloudfront.net') ||
+                     url.includes('taichi-graphics.com');
   
   if (isMeshyUrl) {
     // Try proxy endpoint first (works in production and if proxy server is running)

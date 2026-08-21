@@ -29,7 +29,7 @@ export class DownloadService {
       // Check if this is a Meshy URL that needs to go through our proxy
       let downloadUrl = url;
       
-      if (url.includes('assets.meshy.ai') || url.includes('meshy.ai')) {
+      if (url.includes('assets.meshy.ai') || url.includes('meshy.ai') || url.includes('taichi-graphics.com')) {
         // Use our proxy for Meshy URLs to avoid CORS issues in both dev and production
         // In production, this will be handled by Vercel's API routes
         downloadUrl = `/api/meshy/glb?url=${encodeURIComponent(url)}`;

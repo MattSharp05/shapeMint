@@ -12,7 +12,8 @@ function isMeshyCdnUrl(url: string): boolean {
   return (
     url.includes('assets.meshy.ai') ||
     url.includes('meshy.ai') ||
-    url.includes('cloudfront.net')
+    url.includes('cloudfront.net') ||
+    url.includes('taichi-graphics.com')
   );
 }
 

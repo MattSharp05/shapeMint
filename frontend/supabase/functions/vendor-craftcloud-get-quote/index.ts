@@ -378,7 +378,8 @@ async function pollPrices(priceId: string): Promise<PriceResults> {
     const data = await resp.json();
     const quotes = data?.quotes || [];
     const shippings = data?.shippings || [];
-    const complete = data?.complete === true || data?.isComplete === true;
+    // The live API's completion flag is `allComplete`; older names kept as fallback.
+    const complete = data?.allComplete === true || data?.complete === true || data?.isComplete === true;
 
     console.log(JSON.stringify({
       evt: 'cc_price_poll',
@@ -403,7 +404,10 @@ async function pollPrices(priceId: string): Promise<PriceResults> {
     if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, delayMs));
   }
 
-  if (lastResults && lastResults.quotes.length > 0) {
+  if (lastResults && (lastResults.quotes.length > 0 || lastResults.complete)) {
+    // Complete-with-zero-quotes is a legitimate answer (no vendor offers this
+    // material for this model) — return it so the caller shows "no offers"
+    // instead of a spurious timeout error.
     return lastResults;
   }
 

@@ -497,6 +497,16 @@ def validate_mtl(mtl_path, extracted):
 
 # ── Export ───────────────────────────────────────────────────────────────
 
+# Blender works in meters, but STL/OBJ carry no unit and every print vendor
+# reads them as millimeters (Craftcloud's API only accepts mm|cm|in). Exporting
+# at 1:1 made a 7cm model arrive as 0.07mm, so color vendors rejected it
+# outright and mono vendors returned a single minimum-price quote instead of
+# ~25 competing ones. Print files are therefore exported at 1000x = millimeters.
+# The GLB is deliberately NOT scaled: ModelViewer converts its bounding box to
+# centimeters by multiplying by 100, i.e. it expects meters.
+PRINT_EXPORT_SCALE = 1000.0
+
+
 def export_obj(obj, path, with_materials=False, path_mode='AUTO'):
     log(f"Exporting OBJ: {path} (materials={with_materials}, path_mode={path_mode})")
     bpy.ops.object.select_all(action='DESELECT')
@@ -510,6 +520,7 @@ def export_obj(obj, path, with_materials=False, path_mode='AUTO'):
         export_normals=True,
         export_materials=with_materials,
         path_mode=path_mode,
+        global_scale=PRINT_EXPORT_SCALE,
     )
     size = os.path.getsize(path)
     log(f"  OBJ exported: {size:,} bytes ({size/1024/1024:.2f} MB)")
@@ -528,12 +539,14 @@ def export_stl(obj, path):
             filepath=path,
             export_selected_objects=True,
             ascii_format=False,
+            global_scale=PRINT_EXPORT_SCALE,
         )
     else:
         bpy.ops.export_mesh.stl(
             filepath=path,
             use_selection=True,
             ascii=False,
+            global_scale=PRINT_EXPORT_SCALE,
         )
     size = os.path.getsize(path)
     log(f"  STL exported: {size:,} bytes ({size/1024/1024:.2f} MB)")

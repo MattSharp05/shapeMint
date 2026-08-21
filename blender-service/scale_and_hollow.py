@@ -70,6 +70,10 @@ def parse_args():
         "wall_thickness": 2.0,  # 0 = no hollowing
         "drain_holes": 2,
         "hole_diameter": 3.0,
+        # Face budget before hollowing (0 = no decimation). Hollowing roughly
+        # doubles the face count, so 300K here ≈ 600K final ≈ 30MB STL —
+        # safely under Supabase Storage's ~50MB per-file upload limit.
+        "max_faces": 300000,
     }
 
     i = 4
@@ -87,6 +91,7 @@ def parse_args():
             "--wall-thickness": ("wall_thickness", float),
             "--drain-holes": ("drain_holes", int),
             "--hole-diameter": ("hole_diameter", float),
+            "--max-faces": ("max_faces", int),
             "--output-glb": ("output_glb", str),
             "--bundle-zip": ("bundle_zip", str),
             "--bundle-basename": ("bundle_basename", str),
@@ -254,6 +259,36 @@ def prepare_mesh(target):
 
     bpy.ops.object.mode_set(mode='OBJECT')
     log(f"  Prepared: {len(target.data.vertices):,} verts, {len(target.data.polygons):,} faces")
+
+
+def decimate_to_budget(target, max_faces):
+    """Reduce face count to max_faces via collapse decimation (preserves UVs).
+
+    Runs BEFORE hollowing: solidify roughly doubles the face count, and
+    multi-million-face Meshy outputs otherwise produce STL/OBJ files that
+    exceed Supabase Storage's per-file upload limit (~50MB). Collapse
+    decimation keeps UV coordinates so textured color bundles stay valid.
+    """
+    faces = len(target.data.polygons)
+    if max_faces <= 0 or faces <= max_faces:
+        log(f"  Decimation: SKIPPED ({faces:,} faces <= budget {max_faces:,})")
+        return {"status": "skipped", "faces_before": faces, "faces_after": faces}
+
+    ratio = max_faces / faces
+    log(f"  Decimating: {faces:,} faces -> target {max_faces:,} (ratio {ratio:.4f})")
+
+    bpy.ops.object.select_all(action='DESELECT')
+    target.select_set(True)
+    bpy.context.view_layer.objects.active = target
+
+    mod = target.modifiers.new(name="Decimate_Budget", type='DECIMATE')
+    mod.decimate_type = 'COLLAPSE'
+    mod.ratio = ratio
+    bpy.ops.object.modifier_apply(modifier="Decimate_Budget")
+
+    faces_after = len(target.data.polygons)
+    log(f"  After decimation: {len(target.data.vertices):,} verts, {faces_after:,} faces")
+    return {"status": "ok", "faces_before": faces, "faces_after": faces_after, "ratio": round(ratio, 4)}
 
 
 def hollow_with_solidify(target, wall_thickness_m):
@@ -683,6 +718,14 @@ def main():
         else:
             log("  Scaling: SKIPPED (scale_value=0)")
             report["steps"]["scale"] = {"time": 0, "status": "skipped"}
+
+        # Decimate to face budget (before hollowing, which ~doubles faces).
+        # Prevents oversized STL/OBJ uploads from hi-poly Meshy outputs.
+        log_separator("Step 3.5: Decimate")
+        t0 = time.time()
+        decimate_info = decimate_to_budget(target, args["max_faces"])
+        report["decimate"] = decimate_info
+        report["steps"]["decimate"] = {"time": round(time.time()-t0, 2), "status": decimate_info["status"]}
 
         # Hollow
         if do_hollow:

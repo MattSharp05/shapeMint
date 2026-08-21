@@ -8,8 +8,12 @@ declare const Deno: {
   serve(handler: (req: Request) => Promise<Response>): void;
 };
 
-const FAL_EDIT_MODEL = 'fal-ai/nano-banana-pro/edit';   // Image editing (requires input image)
-const FAL_TEXT_MODEL = 'fal-ai/nano-banana-pro';         // Text-to-image (no input image needed)
+// 2026-04-16: moved off nano-banana-pro ($0.15/img) to reduce cost.
+// Briefly tried nano-banana ($0.039) but quality regressed; landed on
+// nano-banana-2 ($0.08/img at 1K) — ~47% cheaper than pro and supports
+// multi-reference (up to 14 images) and resolution param like pro did.
+const FAL_EDIT_MODEL = 'fal-ai/nano-banana-2/edit';   // Image editing (requires input image)
+const FAL_TEXT_MODEL = 'fal-ai/nano-banana-2';         // Text-to-image (no input image needed)
 
 const SYSTEM_PROMPT = `You are an expert image-generation engine. You must ALWAYS produce an image. Produce NO TEXT. Just an Image.
 

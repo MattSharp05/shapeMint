@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { getQuote as getCraftcloudQuote, type CraftcloudVendorOption } from './craftcloud';
+import { getSculpteoQuote } from './sculpteo';
 import { CRAFTCLOUD_CONFIG_IDS, type PrintType } from '../constants/craftcloudConfigs';
 
 export interface QuoteSnapshot {
@@ -176,26 +177,49 @@ export const cartService = {
     const materialConfigId = CRAFTCLOUD_CONFIG_IDS[item.print_type];
 
     try {
-      const resp = await getCraftcloudQuote({
-        modelUrl: urls.modelUrl,
-        materialConfigId,
-        quantity: item.quantity,
-        countryCode: country,
-        ...(urls.colorBundleUrl ? { colorBundleUrl: urls.colorBundleUrl } : {}),
-      });
+      // Refresh both CraftCloud and Sculpteo in parallel, then merge + sort
+      // so the persisted snapshot mirrors what the ModelResult page shows.
+      const [ccResult, scResult] = await Promise.allSettled([
+        getCraftcloudQuote({
+          modelUrl: urls.modelUrl,
+          materialConfigId,
+          quantity: item.quantity,
+          countryCode: country,
+          ...(urls.colorBundleUrl ? { colorBundleUrl: urls.colorBundleUrl } : {}),
+        }),
+        getSculpteoQuote({
+          modelUrl: urls.modelUrl,
+          printType: item.print_type,
+          quantity: item.quantity,
+          countryCode: country,
+          ...(urls.colorBundleUrl ? { colorBundleUrl: urls.colorBundleUrl } : {}),
+        }),
+      ]);
 
+      const ccVendors = ccResult.status === 'fulfilled' ? ccResult.value.vendorOptions : [];
+      const scVendors = scResult.status === 'fulfilled' ? scResult.value.vendorOptions : [];
+      const merged = [...ccVendors, ...scVendors].sort((a, b) => a.totalPrice - b.totalPrice);
+
+      if (merged.length === 0) {
+        // Both sources failed — leave the stored snapshot alone rather than
+        // overwriting with empty data.
+        if (ccResult.status === 'rejected') throw ccResult.reason;
+        return item;
+      }
+
+      const resp = ccResult.status === 'fulfilled' ? ccResult.value : null;
       const snapshot: QuoteSnapshot = {
-        vendors: resp.vendorOptions,
-        currency: resp.currency,
-        craftcloudPriceId: resp.craftcloudPriceId,
+        vendors: merged,
+        currency: resp?.currency || 'USD',
+        craftcloudPriceId: resp?.craftcloudPriceId,
       };
 
       const { data, error } = await supabase
         .from(TABLE)
         .update({
           quote_snapshot: snapshot,
-          craftcloud_price_id: resp.craftcloudPriceId,
-          quoted_country: resp.quotedCountry || country,
+          craftcloud_price_id: resp?.craftcloudPriceId || null,
+          quoted_country: resp?.quotedCountry || country,
           quoted_at: new Date().toISOString(),
         })
         .eq('id', item.id)

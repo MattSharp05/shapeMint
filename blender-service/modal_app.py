@@ -558,9 +558,12 @@ async def process_model(request: Request):
     wall_thickness = body.get("wall_thickness", 2.0)
     drain_holes = body.get("drain_holes", 2)
     hole_diameter = body.get("hole_diameter", 3.0)
+    # Face budget before hollowing (0 disables decimation). Keeps hi-poly
+    # Meshy outputs under Supabase Storage's per-file upload limit.
+    max_faces = body.get("max_faces", 300000)
 
     print(f"[process-model] Starting: input={input_format}, scale={scale_value}{scale_unit} ({scale_target}), "
-          f"wall={wall_thickness}mm, holes={drain_holes}x{hole_diameter}mm")
+          f"wall={wall_thickness}mm, holes={drain_holes}x{hole_diameter}mm, max_faces={max_faces}")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         input_path = os.path.join(tmpdir, f"input.{input_format}")
@@ -606,6 +609,7 @@ async def process_model(request: Request):
                     "--wall-thickness", str(wall_thickness),
                     "--drain-holes", str(drain_holes),
                     "--hole-diameter", str(hole_diameter),
+                    "--max-faces", str(max_faces),
                     "--output-glb", output_glb,
                     "--bundle-zip", output_bundle,
                     "--bundle-basename", bundle_basename,

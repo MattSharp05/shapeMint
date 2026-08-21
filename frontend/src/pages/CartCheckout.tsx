@@ -7,14 +7,22 @@ import { AddressPicker } from '../components/Account/AddressPicker';
 import { SaveAccountModal } from '../components/Auth/SaveAccountModal';
 import { useAuth } from '../hooks/useAuth';
 import { useCart } from '../hooks/useCart';
-import { cartService } from '../services/cartService';
+import { cartService, type CartItemWithModel } from '../services/cartService';
 import { addressService, type AddressInput, type UserAddress } from '../services/addressService';
 import { createCartOrder } from '../services/cartOrder';
+import { createSculpteoCartOrder } from '../services/sculpteoOrder';
 import { MAX, validateEmail, validatePhoneOptional, validatePostalCode, validateRequired } from '../utils/validation';
 
 function cheapest(vendors: any[] | undefined): any | null {
   if (!vendors || vendors.length === 0) return null;
   return [...vendors].sort((a, b) => a.totalPrice - b.totalPrice)[0];
+}
+
+// An item's "source" is the source of its cheapest vendor — that's the vendor
+// we'll actually bill for this line item.
+function itemSource(item: CartItemWithModel): 'craftcloud' | 'sculpteo' {
+  const v = cheapest(item.quote_snapshot?.vendors);
+  return v?.source === 'sculpteo' ? 'sculpteo' : 'craftcloud';
 }
 
 function printTypeLabel(t: string): string {
@@ -60,17 +68,21 @@ export function CartCheckout() {
     return () => { cancelled = true; };
   }, [items.length]);
 
-  const { subtotal, currency, anyUnavailable } = useMemo(() => {
+  const { subtotal, currency, anyUnavailable, bySource } = useMemo(() => {
     let s = 0;
     let any = false;
     const cur = items[0]?.quote_snapshot?.currency || 'USD';
+    const groups: { craftcloud: CartItemWithModel[]; sculpteo: CartItemWithModel[] } = { craftcloud: [], sculpteo: [] };
     for (const i of items) {
       const v = cheapest(i.quote_snapshot?.vendors);
       if (!v) { any = true; continue; }
       s += v.totalPrice * i.quantity;
+      groups[itemSource(i)].push(i);
     }
-    return { subtotal: s, currency: cur, anyUnavailable: any };
+    return { subtotal: s, currency: cur, anyUnavailable: any, bySource: groups };
   }, [items]);
+
+  const hasMixedSources = bySource.craftcloud.length > 0 && bySource.sculpteo.length > 0;
 
   const validatePicked = (addr: AddressInput): string | null => {
     const checks: (string | null)[] = [
@@ -86,7 +98,7 @@ export function CartCheckout() {
     return checks.find(Boolean) || null;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (source?: 'craftcloud' | 'sculpteo') => {
     setError(null);
     if (!user || user.isAnonymous) { setShowAccountGate(true); return; }
     if (items.length === 0) { setError('Your cart is empty.'); return; }
@@ -96,6 +108,11 @@ export function CartCheckout() {
     if (emailErr) { setError(emailErr); return; }
     const invalid = validatePicked(picked);
     if (invalid) { setError(invalid); return; }
+
+    // Pick which items this submission covers. Unspecified source = all items
+    // (only safe when the cart has a single source — enforced by the UI).
+    const targetItems = source ? bySource[source] : items;
+    if (targetItems.length === 0) { setError('No items to check out for this provider.'); return; }
 
     setSubmitting(true);
     try {
@@ -109,22 +126,36 @@ export function CartCheckout() {
       }
 
       const origin = window.location.origin;
-      const resp = await createCartOrder({
-        items,
-        shippingAddress: {
-          firstName: picked.first_name,
-          lastName: picked.last_name,
-          email,
-          address1: picked.address1,
-          city: picked.city,
-          state: picked.state,
-          zipCode: picked.postal_code,
-          country: picked.country || 'US',
-          phone: picked.phone || '',
-        },
-        successUrl: `${origin}/order-success`,
-        cancelUrl: `${origin}/cart-checkout`,
-      });
+      const shippingAddress = {
+        firstName: picked.first_name,
+        lastName: picked.last_name,
+        email,
+        address1: picked.address1,
+        city: picked.city,
+        state: picked.state,
+        zipCode: picked.postal_code,
+        country: picked.country || 'US',
+        phone: picked.phone || '',
+      };
+
+      // Resolve the effective source: respect the explicit argument, otherwise
+      // infer from the (single) source present in the cart.
+      const effectiveSource: 'craftcloud' | 'sculpteo' = source
+        || (bySource.sculpteo.length > 0 && bySource.craftcloud.length === 0 ? 'sculpteo' : 'craftcloud');
+
+      const resp = effectiveSource === 'sculpteo'
+        ? await createSculpteoCartOrder({
+            items: targetItems,
+            shippingAddress,
+            successUrl: `${origin}/order-success?vendor=sculpteo`,
+            cancelUrl: `${origin}/cart-checkout`,
+          })
+        : await createCartOrder({
+            items: targetItems,
+            shippingAddress,
+            successUrl: `${origin}/order-success`,
+            cancelUrl: `${origin}/cart-checkout`,
+          });
       window.location.href = resp.stripeCheckoutUrl;
     } catch (e: any) {
       setError(e?.message || 'Something went wrong.');
@@ -211,8 +242,11 @@ export function CartCheckout() {
                     />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-white truncate">{i.model?.name || 'Untitled'}</div>
-                      <div className="text-[11px] text-white/50">
-                        {printTypeLabel(i.print_type)} · Qty {i.quantity}
+                      <div className="flex items-center gap-1.5 text-[11px] text-white/50">
+                        <span>{printTypeLabel(i.print_type)} · Qty {i.quantity}</span>
+                        {v?.source === 'sculpteo' && (
+                          <span className="text-[10px] bg-amber-900/30 text-amber-300 px-1.5 py-0.5 rounded-full border border-amber-400/20">Sculpteo</span>
+                        )}
                       </div>
                     </div>
                     <div className="text-sm font-semibold text-white whitespace-nowrap">
@@ -234,15 +268,43 @@ export function CartCheckout() {
               </div>
             </div>
 
+            {hasMixedSources && (
+              <div className="mt-3 text-[11px] text-white/60 bg-amber-900/10 border border-amber-400/20 rounded-lg p-2.5">
+                Your cart mixes CraftCloud and Sculpteo items. Each provider needs its own checkout — pay one now, and the other items stay in your cart.
+              </div>
+            )}
             {error && <div className="mt-3 text-sm text-red-400">{error}</div>}
 
-            <Button
-              onClick={handleSubmit}
-              disabled={submitting || refreshing}
-              className="w-full mt-4"
-            >
-              {submitting ? <><Loader2 className="h-4 w-4 animate-spin inline mr-2" /> Processing…</> : 'Pay with Stripe'}
-            </Button>
+            {hasMixedSources ? (
+              <div className="grid grid-cols-1 gap-2 mt-4">
+                <Button
+                  onClick={() => handleSubmit('craftcloud')}
+                  disabled={submitting || refreshing}
+                  className="w-full"
+                >
+                  {submitting
+                    ? <><Loader2 className="h-4 w-4 animate-spin inline mr-2" /> Processing…</>
+                    : `Checkout CraftCloud (${bySource.craftcloud.length})`}
+                </Button>
+                <Button
+                  onClick={() => handleSubmit('sculpteo')}
+                  disabled={submitting || refreshing}
+                  className="w-full"
+                >
+                  {submitting
+                    ? <><Loader2 className="h-4 w-4 animate-spin inline mr-2" /> Processing…</>
+                    : `Checkout Sculpteo (${bySource.sculpteo.length})`}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                onClick={() => handleSubmit()}
+                disabled={submitting || refreshing}
+                className="w-full mt-4"
+              >
+                {submitting ? <><Loader2 className="h-4 w-4 animate-spin inline mr-2" /> Processing…</> : 'Pay with Stripe'}
+              </Button>
+            )}
           </aside>
         </div>
       </div>

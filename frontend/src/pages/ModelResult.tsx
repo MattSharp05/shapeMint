@@ -7,6 +7,8 @@ import { FadeIn, FadeInUp } from '../components/Motion';
 import { supabase } from '../supabaseClient';
 import { getQuote as getCraftcloudQuote, CraftcloudVendorOption } from '../services/craftcloud';
 import { createOrder as createCraftcloudOrder } from '../services/craftcloudOrder';
+import { getSculpteoQuote } from '../services/sculpteo';
+import { createSculpteoOrder } from '../services/sculpteoOrder';
 import { modelService } from '../services/modelService';
 import { Loader2, Package, Truck, MapPin, Link2, Check, ChevronRight, X, Palette, ChevronDown } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -473,7 +475,15 @@ export function ModelResult() {
       console.log('🎨 fetchQuotes — using scaled color bundle:', colorBundleUrl.slice(-80));
     }
 
-    const [colorResult, monoResult, slsResult] = await Promise.allSettled([
+    // Fetch CraftCloud (aggregator of many printers) and Sculpteo (direct,
+    // separate company) quotes in parallel per print type. Sculpteo's client
+    // returns an empty vendorOptions list when disabled or unreachable, so the
+    // CraftCloud result is never blocked on it. Results are merged into one
+    // sorted list per print type and tagged via `source` in the UI.
+    const [
+      colorResult, monoResult, slsResult,
+      sculpteoColorResult, sculpteoMonoResult, sculpteoSlsResult,
+    ] = await Promise.allSettled([
       getCraftcloudQuote({
         modelUrl: colorModelUrl,
         materialConfigId: COLOR_CONFIG_ID,
@@ -487,28 +497,69 @@ export function ModelResult() {
       }),
       getCraftcloudQuote({ modelUrl: monoStlUrl, materialConfigId: MONO_CONFIG_ID, quantity: 1, countryCode: quoteCountry }),
       getCraftcloudQuote({ modelUrl: monoStlUrl, materialConfigId: SLS_CONFIG_ID, quantity: 1, countryCode: quoteCountry }),
+      getSculpteoQuote({ modelUrl: colorModelUrl, printType: 'color', quantity: 1, countryCode: quoteCountry, ...(colorBundleUrl ? { colorBundleUrl } : {}) }),
+      getSculpteoQuote({ modelUrl: monoStlUrl, printType: 'mono', quantity: 1, countryCode: quoteCountry }),
+      getSculpteoQuote({ modelUrl: monoStlUrl, printType: 'sls', quantity: 1, countryCode: quoteCountry }),
     ]);
+
+    // Pull Sculpteo options for each print type (never throws — missing data = []).
+    const sculpteoColor = sculpteoColorResult.status === 'fulfilled' ? sculpteoColorResult.value.vendorOptions : [];
+    const sculpteoMono = sculpteoMonoResult.status === 'fulfilled' ? sculpteoMonoResult.value.vendorOptions : [];
+    const sculpteoSls = sculpteoSlsResult.status === 'fulfilled' ? sculpteoSlsResult.value.vendorOptions : [];
+
+    // Merge CraftCloud + Sculpteo options into one list, re-sorted by totalPrice
+    // so the cheapest option (regardless of source) lands at index 0.
+    const mergeAndSort = (cc: CraftcloudVendorOption[], sc: CraftcloudVendorOption[]): CraftcloudVendorOption[] => {
+      return [...cc, ...sc].sort((a, b) => a.totalPrice - b.totalPrice);
+    };
 
     const quoteUpdate: Record<string, any> = {};
 
-    if (colorResult.status === 'fulfilled' && colorResult.value.vendorOptions?.length > 0) {
-      const q = { vendors: colorResult.value.vendorOptions, craftcloudPriceId: colorResult.value.craftcloudPriceId, currency: colorResult.value.currency || 'USD', loading: false };
+    const colorVendors = mergeAndSort(
+      colorResult.status === 'fulfilled' ? (colorResult.value.vendorOptions || []) : [],
+      sculpteoColor,
+    );
+    if (colorVendors.length > 0) {
+      const q = {
+        vendors: colorVendors,
+        craftcloudPriceId: colorResult.status === 'fulfilled' ? colorResult.value.craftcloudPriceId : '',
+        currency: colorResult.status === 'fulfilled' ? (colorResult.value.currency || 'USD') : 'USD',
+        loading: false,
+      };
       setColorQuote(q);
       quoteUpdate.color_quotes = q;
     } else {
       setColorQuote(prev => ({ ...prev, loading: false, error: colorResult.status === 'rejected' ? colorResult.reason?.message : 'No color vendors available' }));
     }
 
-    if (monoResult.status === 'fulfilled' && monoResult.value.vendorOptions?.length > 0) {
-      const q = { vendors: monoResult.value.vendorOptions, craftcloudPriceId: monoResult.value.craftcloudPriceId, currency: monoResult.value.currency || 'USD', loading: false };
+    const monoVendors = mergeAndSort(
+      monoResult.status === 'fulfilled' ? (monoResult.value.vendorOptions || []) : [],
+      sculpteoMono,
+    );
+    if (monoVendors.length > 0) {
+      const q = {
+        vendors: monoVendors,
+        craftcloudPriceId: monoResult.status === 'fulfilled' ? monoResult.value.craftcloudPriceId : '',
+        currency: monoResult.status === 'fulfilled' ? (monoResult.value.currency || 'USD') : 'USD',
+        loading: false,
+      };
       setMonoQuote(q);
       quoteUpdate.mono_quotes = q;
     } else {
       setMonoQuote(prev => ({ ...prev, loading: false, error: monoResult.status === 'rejected' ? monoResult.reason?.message : 'No mono vendors available' }));
     }
 
-    if (slsResult.status === 'fulfilled' && slsResult.value.vendorOptions?.length > 0) {
-      const q = { vendors: slsResult.value.vendorOptions, craftcloudPriceId: slsResult.value.craftcloudPriceId, currency: slsResult.value.currency || 'USD', loading: false };
+    const slsVendors = mergeAndSort(
+      slsResult.status === 'fulfilled' ? (slsResult.value.vendorOptions || []) : [],
+      sculpteoSls,
+    );
+    if (slsVendors.length > 0) {
+      const q = {
+        vendors: slsVendors,
+        craftcloudPriceId: slsResult.status === 'fulfilled' ? slsResult.value.craftcloudPriceId : '',
+        currency: slsResult.status === 'fulfilled' ? (slsResult.value.currency || 'USD') : 'USD',
+        loading: false,
+      };
       setSlsQuote(q);
       quoteUpdate.sls_quotes = q;
     } else {
@@ -657,6 +708,29 @@ export function ModelResult() {
     setOrderError(null);
     try {
       const modelUrl = model.glb_url || model.model_url;
+      // Route to Sculpteo's own fulfillment when the selected vendor came from
+      // Sculpteo. All other sources (incl. undefined = legacy CraftCloud rows)
+      // keep using the CraftCloud flow.
+      if (vendor.source === 'sculpteo') {
+        if (!vendor.sculpteoDesignUuid || !vendor.sculpteoProductCode) {
+          throw new Error('Sculpteo quote is missing design/product metadata. Please refresh and try again.');
+        }
+        const resp = await createSculpteoOrder({
+          modelId: model.id,
+          sculpteoDesignUuid: vendor.sculpteoDesignUuid,
+          sculpteoProductCode: vendor.sculpteoProductCode,
+          sculpteoShippingCode: vendor.sculpteoShippingCode,
+          quantity: 1,
+          shippingAddress: addr,
+          priorQuote: { itemTotal: vendor.itemPrice, shippingTotal: vendor.shippingPrice, total: vendor.totalPrice },
+          currency: quote.currency || 'USD',
+          successUrl: `${window.location.origin}/order-success?vendor=sculpteo`,
+          cancelUrl: `${window.location.origin}/model/${model.id}?payment=cancelled`,
+        });
+        window.location.href = resp.stripeCheckoutUrl;
+        return;
+      }
+
       const resp = await createCraftcloudOrder({
         craftcloudQuoteId: vendor.craftcloudQuoteId,
         craftcloudShippingId: vendor.craftcloudShippingId,
@@ -843,7 +917,12 @@ export function ModelResult() {
         >
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-2xl font-bold text-white">${vendor.totalPrice.toFixed(2)}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold text-white">${vendor.totalPrice.toFixed(2)}</span>
+                {vendor.source === 'sculpteo' && (
+                  <span className="text-[10px] bg-amber-900/30 text-amber-300 px-2 py-0.5 rounded-full font-medium border border-amber-400/20">Sculpteo</span>
+                )}
+              </div>
               <div className="text-xs text-white/30 mt-0.5">
                 Shipping included
               </div>
@@ -1249,6 +1328,9 @@ export function ModelResult() {
                         <span className="font-semibold text-white text-sm">{vendor.vendorId}</span>
                         {idx === 0 && (
                           <span className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded-full font-medium">Best Price</span>
+                        )}
+                        {vendor.source === 'sculpteo' && (
+                          <span className="text-[10px] bg-amber-900/30 text-amber-300 px-2 py-0.5 rounded-full font-medium border border-amber-400/20">Sculpteo</span>
                         )}
                       </div>
                       <div className="text-xs text-white/30 mt-1">

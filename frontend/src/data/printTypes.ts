@@ -174,3 +174,81 @@ SPECIFIC TO THIS TASK: This is a cake topper figurine. It must have a wide stabl
 export function getPrintType(slug: string): PrintType | undefined {
   return PRINT_TYPES.find(pt => pt.slug === slug);
 }
+
+// ── Cake-topper "couple" mode presets ──────────────────────────────────
+// Used by CoupleTopperControls + GenerationForm when slug === 'cake-topper'.
+// Each preset's `prompt` is a clause that gets stitched into the user prompt
+// via buildCoupleToppersPromptSuffix() below.
+
+export interface CoupleToppersPreset {
+  label: string;
+  prompt: string;
+}
+
+export const CAKE_TOPPER_POSE_PRESETS: CoupleToppersPreset[] = [
+  { label: 'Holding hands', prompt: 'holding hands side-by-side' },
+  { label: 'Kiss',          prompt: 'sharing a gentle kiss' },
+  { label: 'Dip',           prompt: 'in a romantic dip pose' },
+  { label: 'Dancing',       prompt: 'dancing together' },
+  { label: 'Back-to-back',  prompt: 'standing back-to-back confidently' },
+];
+
+export const CAKE_TOPPER_OUTFIT_PRESETS: CoupleToppersPreset[] = [
+  { label: 'Tux + gown',  prompt: 'one wearing a classic black tuxedo, the other in a white wedding gown' },
+  { label: 'Suit + suit', prompt: 'both wearing formal suits' },
+  { label: 'Gown + gown', prompt: 'both wearing wedding gowns' },
+  { label: 'Casual',      prompt: 'in casual matching outfits' },
+  { label: 'Themed',      prompt: 'in fun coordinated themed outfits' },
+];
+
+export const CAKE_TOPPER_STYLE_PRESETS: CoupleToppersPreset[] = [
+  { label: 'Realistic',  prompt: 'realistic proportions and likeness' },
+  { label: 'Stylized',   prompt: 'stylized Pixar-like proportions' },
+  { label: 'Chibi',      prompt: 'chibi style with oversized heads and cute features' },
+  { label: 'Caricature', prompt: 'gentle caricature exaggeration of features' },
+];
+
+export const CAKE_TOPPER_HEIGHT_PRESETS: CoupleToppersPreset[] = [
+  { label: 'P1 taller',   prompt: 'partner 1 noticeably taller than partner 2' },
+  { label: 'Same height', prompt: 'both partners the same height' },
+  { label: 'P2 taller',   prompt: 'partner 2 noticeably taller than partner 1' },
+];
+
+export type CoupleToppersPresetSelection = {
+  pose?: string;
+  outfit?: string;
+  style?: string;
+  heights?: string;
+};
+
+/**
+ * Builds the user-prompt suffix for a cake-topper generation.
+ *
+ * `mode === 'pair'` produces a composition clause that tells nano-banana
+ * the two reference images are partner 1 and partner 2 and must be merged
+ * into one figurine. `mode === 'single'` produces a lighter clause that
+ * only applies the chosen presets to the existing couple photo.
+ *
+ * Each preset is optional — anything left undefined is just skipped, which
+ * lets nano-banana choose freely for that aspect.
+ */
+export function buildCoupleToppersPromptSuffix(
+  mode: 'single' | 'pair',
+  presets: CoupleToppersPresetSelection,
+): string {
+  const parts: string[] = [];
+  if (mode === 'pair') {
+    parts.push(
+      "Compose Partner 1 (first reference image) and Partner 2 (second reference image) together into a single wedding cake-topper figurine. Preserve each person's facial likeness, hair, and skin tone from their reference photo. They must appear as one cohesive figurine on a shared base — not two separate figures.",
+    );
+  } else {
+    parts.push(
+      'Create a wedding cake-topper figurine of the couple in the reference photo. Preserve both faces and likenesses.',
+    );
+  }
+  if (presets.pose)    parts.push(`Pose: ${presets.pose}.`);
+  if (presets.outfit)  parts.push(`Outfits: ${presets.outfit}.`);
+  if (presets.style)   parts.push(`Style: ${presets.style}.`);
+  if (presets.heights) parts.push(`Heights: ${presets.heights}.`);
+  return parts.join(' ');
+}

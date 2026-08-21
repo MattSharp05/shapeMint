@@ -13,7 +13,8 @@ import { falImageService, RateLimitError } from '../services/falImageService';
 import { useAuth } from '../hooks/useAuth';
 import { InfoCollection, CollectedInfo } from '../components/Generation/InfoCollection';
 import { SaveAccountModal } from '../components/Auth/SaveAccountModal';
-import { PrintType } from '../data/printTypes';
+import { PrintType, CoupleToppersPresetSelection } from '../data/printTypes';
+import { CoupleMode } from '../components/Generation/CoupleTopperControls';
 import { BeamsBackground } from '../components/UI/BeamsBackground';
 
 // Default system prompt for angle views (used when no print type config is provided)
@@ -61,8 +62,17 @@ export function Generate({ printType }: GenerateProps = {}) {
   const [isTransforming, setIsTransforming] = useState(false);
   const [transformedImages, setTransformedImages] = useState<string[] | null>(null);
   const [transformError, setTransformError] = useState<string | null>(null);
-  // Store the original inputs so we can regenerate
-  const lastTransformInputs = useRef<{ image: string; prompt: string } | null>(null);
+  // Store the original inputs so we can regenerate. additionalImages is only
+  // populated for the cake-topper paired-photo flow (partner 2 ride-along).
+  const lastTransformInputs = useRef<{ image: string; prompt: string; additionalImages?: string[] } | null>(null);
+
+  // Cake-topper couple-mode state. Lives at this level so the form remount
+  // (when the variation picker takes over) doesn't blow away the user's
+  // selections, and so handleImageTransformRequest can read them on submit.
+  const [coupleMode, setCoupleMode] = useState<CoupleMode>(null);
+  const [partner2File, setPartner2File] = useState<File | null>(null);
+  const [partner2Preview, setPartner2Preview] = useState<string | null>(null);
+  const [couplePresets, setCouplePresets] = useState<CoupleToppersPresetSelection>({});
 
   // Model dimensions for scaling
   const [pendingDimensions, setPendingDimensions] = useState<ModelDimensions | null>(null);
@@ -105,6 +115,13 @@ export function Generate({ printType }: GenerateProps = {}) {
   // flash of the empty generation form before the saved state loads.
   const isResuming = !!new URLSearchParams(location.search).get('resume');
   const [resumeHydrated, setResumeHydrated] = useState(!isResuming);
+
+  // TEST (single-reference pipeline): generate 1 variation instead of 4 and
+  // skip the angle-views stage — the selected image goes straight to Meshy
+  // as single image-to-3d. Flip these back to 4 / false to restore the
+  // full pipeline.
+  const NUM_VARIATIONS = 1;
+  const SKIP_ANGLE_VIEWS = true;
 
   // Extract prefilled data or existing model from navigation state
   useEffect(() => {
@@ -282,7 +299,7 @@ export function Generate({ printType }: GenerateProps = {}) {
 
       // Find which variation slots are still empty (for mid-batch recovery).
       const missingSlots: number[] = [];
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < NUM_VARIATIONS; i++) {
         if (!variations[i]) missingSlots.push(i);
       }
 
@@ -329,7 +346,7 @@ export function Generate({ printType }: GenerateProps = {}) {
             if (!padded[i]) missingAngleSlots.push(i);
           }
 
-          if (data.stage === 'angles_ready' || missingAngleSlots.length === 0) {
+          if (SKIP_ANGLE_VIEWS || data.stage === 'angles_ready' || missingAngleSlots.length === 0) {
             setStatus('info_collection');
           } else {
             setStatus('generating_angles');
@@ -356,13 +373,20 @@ export function Generate({ printType }: GenerateProps = {}) {
   }, [location.search, user?.id, navigate]);
 
   // Handle image/text transform request from GenerationForm
-  // Fires 4 parallel calls with numImages=1 for progressive loading
-  const handleImageTransformRequest = async (image: string | null, transformPrompt: string, dimensions: ModelDimensions) => {
+  // Fires 4 parallel calls with numImages=1 for progressive loading.
+  // `additionalImages` carries extra reference photos (cake-topper paired
+  // mode passes partner 2 here so nano-banana sees both faces).
+  const handleImageTransformRequest = async (
+    image: string | null,
+    transformPrompt: string,
+    dimensions: ModelDimensions,
+    additionalImages?: string[],
+  ) => {
     setIsTransforming(true);
     setTransformError(null);
     setTransformedImages([]);  // Start with empty array (not null) to show progressive UI
     setPendingDimensions(dimensions);
-    lastTransformInputs.current = { image: image || '', prompt: transformPrompt };
+    lastTransformInputs.current = { image: image || '', prompt: transformPrompt, additionalImages };
 
     // Create (or reuse) the draft model row so every variation we generate
     // is attributable and resumable from the dashboard. Requires a session
@@ -385,11 +409,16 @@ export function Generate({ printType }: GenerateProps = {}) {
     }
 
     try {
-      console.log(`Starting ${image ? 'image transformation' : 'text-to-image generation'} via fal.ai (4 parallel calls)...`);
+      console.log(`Starting ${image ? 'image transformation' : 'text-to-image generation'} via fal.ai (${NUM_VARIATIONS} parallel call${NUM_VARIATIONS === 1 ? '' : 's'})...`);
 
-      // Fire 4 parallel calls, each producing 1 image
-      const promises = Array.from({ length: 4 }, (_, i) =>
-        falImageService.transformImage(transformPrompt, image, { numImages: 1, systemPrompt: variationSystemPrompt, modelId: draftId, source: 'generate' })
+      // Fire parallel calls, each producing 1 image
+      const promises = Array.from({ length: NUM_VARIATIONS }, (_, i) =>
+        falImageService.transformImage(
+          transformPrompt,
+          image,
+          { numImages: 1, systemPrompt: variationSystemPrompt, modelId: draftId, source: 'generate' },
+          additionalImages,
+        )
           .then(result => {
             if (result.images.length > 0) {
               console.log(`Variation ${i + 1} ready`);
@@ -424,7 +453,7 @@ export function Generate({ printType }: GenerateProps = {}) {
             onSuccess: () => {
               // Retry the same variation batch with the now-real session.
               setSaveModal(null);
-              handleImageTransformRequest(image, transformPrompt, dimensions);
+              handleImageTransformRequest(image, transformPrompt, dimensions, additionalImages);
             },
           });
         } else {
@@ -445,25 +474,36 @@ export function Generate({ printType }: GenerateProps = {}) {
       handleImageTransformRequest(
         lastTransformInputs.current.image || null,
         lastTransformInputs.current.prompt,
-        pendingDimensions || { value: 10, unit: 'cm', target: 'longest' }
+        pendingDimensions || { value: 10, unit: 'cm', target: 'longest' },
+        lastTransformInputs.current.additionalImages,
       );
     }
   };
 
   // Handle user selecting a transformed image variation — generate angle views progressively
   const handleVariationSelect = async (selectedImageUrl: string) => {
-    console.log('User selected variation, generating angle views...');
     setSelectedVariationUrl(selectedImageUrl);
     selectedVariationUrlRef.current = selectedImageUrl;
     setTransformedImages(null);
-    setAngleImages([null, null, null, null]);  // 4 slots, null = loading
-    setAngleError(null);
-    setStatus('generating_angles');
 
     // Persist the selected variation as the thumbnail + stage transition.
     if (draftModelIdRef.current) {
       draftModel.recordSelectedVariation(draftModelIdRef.current, selectedImageUrl).catch(() => {});
     }
+
+    // TEST: single-reference pipeline — no angle views. handleInfoSubmit's
+    // fallback path sends selectedVariationUrl to Meshy as image-to-3d.
+    if (SKIP_ANGLE_VIEWS) {
+      console.log('Skipping angle views (single-reference test), proceeding to info collection...');
+      setAngleImages(null);
+      setStatus('info_collection');
+      return;
+    }
+
+    console.log('User selected variation, generating angle views...');
+    setAngleImages([null, null, null, null]);  // 4 slots, null = loading
+    setAngleError(null);
+    setStatus('generating_angles');
 
     try {
       // Generate 4 angle views in parallel, streaming each as it arrives
@@ -732,6 +772,7 @@ export function Generate({ printType }: GenerateProps = {}) {
                   onSelect={handleVariationSelect}
                   onRegenerate={handleRegenerateVariations}
                   loading={isTransforming}
+                  slotCount={NUM_VARIATIONS}
                 />
                 {transformError && (
                   <div className="mt-4 p-3 rounded-lg bg-red-900/30 border border-red-500/30">
@@ -780,6 +821,15 @@ export function Generate({ printType }: GenerateProps = {}) {
                 defaultDimensions={printType?.defaultDimensions as ModelDimensions | undefined}
                 isCustom={!printType || printType.slug === 'custom'}
                 stylePresets={printType?.stylePresets}
+                printTypeSlug={printType?.slug}
+                coupleMode={coupleMode}
+                setCoupleMode={setCoupleMode}
+                partner2File={partner2File}
+                setPartner2File={setPartner2File}
+                partner2Preview={partner2Preview}
+                setPartner2Preview={setPartner2Preview}
+                couplePresets={couplePresets}
+                setCouplePresets={setCouplePresets}
               />
             )}
           </FadeInUp>

@@ -316,10 +316,10 @@ function Scene({ modelUrl, debug = false, onLoadStart, onLoadComplete, onLoadErr
     <>
       <PerspectiveCamera makeDefault position={[0, 0, 5]} />
       <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} />
-      <ambientLight intensity={2.5} />
-      <directionalLight position={[10, 10, 5]} intensity={2.0} castShadow={false} />
-      <directionalLight position={[-10, 5, -5]} intensity={1.2} castShadow={false} />
-      <directionalLight position={[0, -10, 5]} intensity={0.8} castShadow={false} />
+      <ambientLight intensity={0.9} />
+      <directionalLight position={[10, 10, 5]} intensity={1.6} castShadow={false} />
+      <directionalLight position={[-10, 5, -5]} intensity={0.7} castShadow={false} />
+      <directionalLight position={[0, -10, 5]} intensity={0.4} castShadow={false} />
 
       {modelUrl ? (
         <Model

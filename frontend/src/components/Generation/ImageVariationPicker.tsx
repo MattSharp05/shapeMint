@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, RefreshCw, Loader2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Button } from '../UI/Button';
 
@@ -7,6 +7,8 @@ interface ImageVariationPickerProps {
   onSelect: (image: string) => void;
   onRegenerate: () => void;
   loading: boolean;
+  /** How many variation slots to render (default 4). */
+  slotCount?: number;
 }
 
 export function ImageVariationPicker({
@@ -14,14 +16,23 @@ export function ImageVariationPicker({
   onSelect,
   onRegenerate,
   loading,
+  slotCount = 4,
 }: ImageVariationPickerProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [carouselIndex, setCarouselIndex] = useState<number | null>(null);
 
+  const slots = Array.from({ length: slotCount }, (_, i) => i);
+
+  // Single-slot mode: auto-select the only image as soon as it loads so the
+  // user can continue immediately without clicking the image first.
+  useEffect(() => {
+    if (slotCount === 1 && images[0]) setSelectedIndex(0);
+  }, [slotCount, images]);
+
   // Count how many images have actually loaded
   const loadedImages = images.filter(Boolean);
   const loadedCount = loadedImages.length;
-  const allLoaded = !loading && loadedCount >= 4;
+  const allLoaded = !loading && loadedCount >= slotCount;
   const hasAnyImages = loadedCount > 0;
 
   const handleConfirm = () => {
@@ -43,10 +54,10 @@ export function ImageVariationPicker({
   const goToPrev = () => {
     if (carouselIndex === null) return;
     // Skip to previous loaded image
-    let prev = carouselIndex === 0 ? 3 : carouselIndex - 1;
-    for (let attempts = 0; attempts < 4; attempts++) {
+    let prev = carouselIndex === 0 ? slotCount - 1 : carouselIndex - 1;
+    for (let attempts = 0; attempts < slotCount; attempts++) {
       if (images[prev]) break;
-      prev = prev === 0 ? 3 : prev - 1;
+      prev = prev === 0 ? slotCount - 1 : prev - 1;
     }
     setCarouselIndex(prev);
   };
@@ -54,10 +65,10 @@ export function ImageVariationPicker({
   const goToNext = () => {
     if (carouselIndex === null) return;
     // Skip to next loaded image
-    let next = carouselIndex === 3 ? 0 : carouselIndex + 1;
-    for (let attempts = 0; attempts < 4; attempts++) {
+    let next = carouselIndex === slotCount - 1 ? 0 : carouselIndex + 1;
+    for (let attempts = 0; attempts < slotCount; attempts++) {
       if (images[next]) break;
-      next = next === 3 ? 0 : next + 1;
+      next = next === slotCount - 1 ? 0 : next + 1;
     }
     setCarouselIndex(next);
   };
@@ -72,19 +83,23 @@ export function ImageVariationPicker({
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-white">
-        {loading && !hasAnyImages ? 'Generating Variations...' : 'Choose Your Variation'}
+        {loading && !hasAnyImages
+          ? (slotCount === 1 ? 'Generating Your Design...' : 'Generating Variations...')
+          : (slotCount === 1 ? 'Your Design' : 'Choose Your Variation')}
       </h3>
       {hasAnyImages && (
         <p className="text-sm text-white/60">
           {loading
-            ? `${loadedCount}/4 variations ready. Select the image that best matches your vision.`
-            : 'Select the image that best matches your vision. Click to view full size.'}
+            ? `${loadedCount}/${slotCount} variations ready. Select the image that best matches your vision.`
+            : slotCount === 1
+              ? 'Confirm this design to continue, or regenerate for a new one. Click to view full size.'
+              : 'Select the image that best matches your vision. Click to view full size.'}
         </p>
       )}
 
-      {/* Grid view — always show 4 slots */}
-      <div className="grid grid-cols-2 gap-4">
-        {[0, 1, 2, 3].map((index) => {
+      {/* Grid view — always show all slots */}
+      <div className={slotCount === 1 ? 'grid grid-cols-1 max-w-sm mx-auto' : 'grid grid-cols-2 gap-4'}>
+        {slots.map((index) => {
           const url = images[index];
           if (url) {
             return (
@@ -140,7 +155,7 @@ export function ImageVariationPicker({
             className="flex-1"
             size="lg"
           >
-            Confirm Selection
+            {slotCount === 1 ? 'Continue' : 'Confirm Selection'}
           </Button>
           <Button
             variant="outline"
@@ -179,21 +194,23 @@ export function ImageVariationPicker({
                 className="w-full h-full object-cover"
               />
 
-              {/* Left arrow */}
-              <button
-                onClick={goToPrev}
-                className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors"
-              >
-                <ChevronLeft className="h-6 w-6" />
-              </button>
-
-              {/* Right arrow */}
-              <button
-                onClick={goToNext}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors"
-              >
-                <ChevronRight className="h-6 w-6" />
-              </button>
+              {/* Arrows — only when there's more than one image to flip through */}
+              {loadedCount > 1 && (
+                <>
+                  <button
+                    onClick={goToPrev}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors"
+                  >
+                    <ChevronLeft className="h-6 w-6" />
+                  </button>
+                  <button
+                    onClick={goToNext}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors"
+                  >
+                    <ChevronRight className="h-6 w-6" />
+                  </button>
+                </>
+              )}
 
               {/* Selected indicator */}
               {selectedIndex === carouselIndex && (
@@ -203,30 +220,34 @@ export function ImageVariationPicker({
               )}
             </div>
 
-            {/* Dots indicator */}
-            <div className="flex items-center gap-2 mt-4">
-              {[0, 1, 2, 3].map((idx) => (
-                <button
-                  key={idx}
-                  onClick={() => images[idx] && setCarouselIndex(idx)}
-                  className={`w-2.5 h-2.5 rounded-full transition-all ${
-                    idx === carouselIndex
-                      ? 'bg-white scale-125'
-                      : idx === selectedIndex
-                        ? 'bg-brand-primary'
-                        : images[idx]
-                          ? 'bg-white/30 hover:bg-white/50'
-                          : 'bg-white/10'
-                  }`}
-                />
-              ))}
-            </div>
+            {/* Dots indicator — pointless with a single slot */}
+            {slotCount > 1 && (
+              <div className="flex items-center gap-2 mt-4">
+                {slots.map((idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => images[idx] && setCarouselIndex(idx)}
+                    className={`w-2.5 h-2.5 rounded-full transition-all ${
+                      idx === carouselIndex
+                        ? 'bg-white scale-125'
+                        : idx === selectedIndex
+                          ? 'bg-brand-primary'
+                          : images[idx]
+                            ? 'bg-white/30 hover:bg-white/50'
+                            : 'bg-white/10'
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
 
             {/* Caption + select button */}
             <div className="mt-4 flex items-center gap-4">
-              <span className="text-white/60 text-sm">
-                Option {carouselIndex + 1} of {loadedCount}
-              </span>
+              {slotCount > 1 && (
+                <span className="text-white/60 text-sm">
+                  Option {carouselIndex + 1} of {loadedCount}
+                </span>
+              )}
               <button
                 onClick={selectFromCarousel}
                 className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${

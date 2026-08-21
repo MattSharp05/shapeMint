@@ -70,9 +70,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // Helper function to check Supabase connection
 export async function checkSupabaseConnection(): Promise<{ connected: boolean; error?: string }> {
   try {
-    // Try a simple health check
-    const response = await fetch(`${supabaseUrl}/rest/v1/`, {
-      method: 'HEAD',
+    // Try a simple health check. Note: the bare /rest/v1/ root now requires
+    // the service_role key (401 with anon), so probe auth health instead —
+    // it accepts the anon key.
+    const response = await fetch(`${supabaseUrl}/auth/v1/health`, {
       headers: {
         'apikey': supabaseAnonKey
       }

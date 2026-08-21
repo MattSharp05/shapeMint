@@ -151,6 +151,7 @@ function ModelsTab({ onFilterUser }: { onFilterUser: (userId: string) => void })
   const [viewingQuotes, setViewingQuotes] = useState<AdminModel | null>(null);
   const [quoteTab, setQuoteTab] = useState<'mono' | 'sls' | 'color'>('mono');
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [downloadingImage, setDownloadingImage] = useState<string | null>(null);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
@@ -178,6 +179,20 @@ function ModelsTab({ onFilterUser }: { onFilterUser: (userId: string) => void })
     e.preventDefault();
     setSearch(searchInput);
     setPage(0);
+  };
+
+  const handleDownloadVariation = async (model: AdminModel, url: string, index: number) => {
+    const key = `${model.id}-var-${index}`;
+    setDownloadingImage(key);
+    try {
+      const ext = (url.match(/\.(png|jpg|jpeg|webp)(?:[?#]|$)/i)?.[1] || 'png').toLowerCase();
+      const base = (model.prompt || model.name || 'model').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 60);
+      await downloadService.downloadImage(url, `${base}_variation_${index + 1}.${ext}`);
+    } catch (err) {
+      console.error('Variation download failed:', err);
+    } finally {
+      setDownloadingImage(null);
+    }
   };
 
   const handleDownload = async (model: AdminModel, format: 'glb' | 'stl' | 'obj') => {
@@ -438,6 +453,14 @@ function ModelsTab({ onFilterUser }: { onFilterUser: (userId: string) => void })
                             <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
                               #{i + 1}
                             </div>
+                            <button
+                              onClick={() => handleDownloadVariation(viewingModel, url, i)}
+                              disabled={downloadingImage === `${viewingModel.id}-var-${i}`}
+                              className="absolute top-1 left-1 p-1 rounded bg-black/60 text-white hover:bg-black/80 disabled:opacity-50"
+                              title={`Download variation ${i + 1}`}
+                            >
+                              <Download className="h-3 w-3" />
+                            </button>
                           </>
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-white/20 text-xs">

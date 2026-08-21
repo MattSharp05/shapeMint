@@ -40,6 +40,14 @@ export interface CraftcloudVendorOption {
   shippingDeliveryTime: string;
   minimumFee?: number;   // Minimum order surcharge (if item price is below vendor minimum)
   cartId?: string;       // Pre-created cart ID for faster checkout
+
+  // Vendor source — defaults to 'craftcloud' when unset, so legacy rows keep working.
+  // 'sculpteo' routes orders through the direct Sculpteo integration instead of CraftCloud.
+  source?: 'craftcloud' | 'sculpteo';
+  // Sculpteo-specific handles. Populated only when source === 'sculpteo'.
+  sculpteoDesignUuid?: string;
+  sculpteoProductCode?: string;
+  sculpteoShippingCode?: string;
 }
 
 export interface CraftcloudQuoteResponse {

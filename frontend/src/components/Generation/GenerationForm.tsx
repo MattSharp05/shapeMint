@@ -3,9 +3,11 @@ import { Upload, Type, Settings, X, Loader2, Ruler, Wand2, Pen } from 'lucide-re
 import { Button } from '../UI/Button';
 import { Card } from '../UI/Card';
 import { useAuth } from '../../hooks/useAuth';
-import type { StylePreset } from '../../data/printTypes';
+import type { StylePreset, CoupleToppersPresetSelection } from '../../data/printTypes';
+import { buildCoupleToppersPromptSuffix } from '../../data/printTypes';
 import { modelService } from '../../services/modelService';
 import type { DimensionUnit, DimensionTarget } from '../../utils/modelScaler';
+import { CoupleTopperControls, CoupleMode } from './CoupleTopperControls';
 
 export interface ModelDimensions {
   value: number;
@@ -15,7 +17,12 @@ export interface ModelDimensions {
 
 interface GenerationFormProps {
   onSuccess: (data: any) => void;
-  onImageTransformRequest?: (image: string | null, prompt: string, dimensions: ModelDimensions) => void;
+  onImageTransformRequest?: (
+    image: string | null,
+    prompt: string,
+    dimensions: ModelDimensions,
+    additionalImages?: string[],
+  ) => void;
   mode: 'text' | 'image';
   setMode: (mode: 'text' | 'image') => void;
   prompt: string;
@@ -39,6 +46,17 @@ interface GenerationFormProps {
   isCustom?: boolean;
   /** Pre-defined style options for image mode */
   stylePresets?: StylePreset[];
+  /** Print-type slug — drives specialized UI like the cake-topper couple flow. */
+  printTypeSlug?: string;
+  /** Cake-topper couple-mode state (only consulted when printTypeSlug==='cake-topper'). */
+  coupleMode?: CoupleMode;
+  setCoupleMode?: (m: CoupleMode) => void;
+  partner2File?: File | null;
+  setPartner2File?: (f: File | null) => void;
+  partner2Preview?: string | null;
+  setPartner2Preview?: (p: string | null) => void;
+  couplePresets?: CoupleToppersPresetSelection;
+  setCouplePresets?: (p: CoupleToppersPresetSelection) => void;
 }
 
 export function GenerationForm({
@@ -60,7 +78,17 @@ export function GenerationForm({
   defaultDimensions,
   isCustom = true,
   stylePresets,
+  printTypeSlug,
+  coupleMode,
+  setCoupleMode,
+  partner2File,
+  setPartner2File,
+  partner2Preview,
+  setPartner2Preview,
+  couplePresets,
+  setCouplePresets,
 }: GenerationFormProps) {
+  const isCakeTopper = printTypeSlug === 'cake-topper';
   const { user } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState({
@@ -89,15 +117,32 @@ export function GenerationForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Validate inputs based on mode
-    if (mode === 'text' && !prompt.trim()) {
-      setError('Please enter a prompt');
-      return;
-    }
 
-    if (mode === 'image' && !imageFile) {
-      setError('Please select an image');
-      return;
+    // Cake-topper has its own validation path — partner uploads + mode picker.
+    if (isCakeTopper && mode === 'image') {
+      if (!coupleMode) {
+        setError('Please choose how you want to upload your photos');
+        return;
+      }
+      if (!imageFile) {
+        setError(coupleMode === 'pair' ? "Please upload Partner 1's photo" : "Please upload a photo of the couple");
+        return;
+      }
+      if (coupleMode === 'pair' && !partner2File) {
+        setError("Please upload Partner 2's photo");
+        return;
+      }
+    } else {
+      // Standard validation for non-cake-topper flows
+      if (mode === 'text' && !prompt.trim()) {
+        setError('Please enter a prompt');
+        return;
+      }
+
+      if (mode === 'image' && !imageFile) {
+        setError('Please select an image');
+        return;
+      }
     }
 
     setError(null);
@@ -109,6 +154,16 @@ export function GenerationForm({
         const fullPrompt = `${prompt.trim()}${prefilledData?.socialTag ? ` #${prefilledData.socialTag}` : ''}`;
         console.log('Routing text prompt to fal.ai for 2D previews:', fullPrompt);
         onImageTransformRequest(null, fullPrompt, dimensions);
+      } else if (isCakeTopper && coupleMode) {
+        // Cake-topper: build the composite prompt from preset selections;
+        // in 'pair' mode partner 2 rides along as an additionalImage so
+        // nano-banana sees both photos in the image_urls array.
+        const suffix = buildCoupleToppersPromptSuffix(coupleMode, couplePresets || {});
+        const userExtra = imagePrompt.trim();
+        const fullPrompt = userExtra ? `${suffix} ${userExtra}` : suffix;
+        const additional = coupleMode === 'pair' && partner2Preview ? [partner2Preview] : undefined;
+        console.log(`Routing cake-topper (${coupleMode}) to fal.ai with ${additional ? additional.length + 1 : 1} image(s)`);
+        onImageTransformRequest(imagePreview, fullPrompt, dimensions, additional);
       } else if (imagePrompt.trim()) {
         // Image + transform prompt
         console.log('Routing image + prompt to fal.ai for 2D previews:', imagePrompt.trim());
@@ -300,6 +355,21 @@ export function GenerationForm({
                 required
               />
             </div>
+          ) : isCakeTopper && setCoupleMode && setPartner2File && setPartner2Preview && setCouplePresets ? (
+            <CoupleTopperControls
+              coupleMode={coupleMode ?? null}
+              setCoupleMode={setCoupleMode}
+              partner1File={imageFile}
+              setPartner1File={setImageFile}
+              partner1Preview={imagePreview}
+              setPartner1Preview={setImagePreview}
+              partner2File={partner2File ?? null}
+              setPartner2File={setPartner2File}
+              partner2Preview={partner2Preview ?? null}
+              setPartner2Preview={setPartner2Preview}
+              presets={couplePresets ?? {}}
+              setPresets={setCouplePresets}
+            />
           ) : (
             <div>
               <label className={labelClasses}>

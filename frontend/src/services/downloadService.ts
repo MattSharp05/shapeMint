@@ -55,6 +55,30 @@ export class DownloadService {
   }
 
   /**
+   * Download an image by fetching it as a blob, so the browser saves it
+   * instead of navigating to it. Falls back to opening the URL in a new
+   * tab if the fetch fails (CORS, network, etc.).
+   */
+  async downloadImage(url: string, filename: string): Promise<void> {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.warn(`Blob download failed for ${filename}, opening in new tab:`, err);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }
+
+  /**
    * Download multiple files for a model
    */
   async downloadModelFiles(modelData: {

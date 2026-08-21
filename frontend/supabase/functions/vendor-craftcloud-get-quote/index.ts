@@ -6,6 +6,10 @@ import { corsHeaders } from '../_shared/cors.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CRAFTCLOUD_API = 'https://api.craftcloud3d.com';
+// Model upload/inspection moved to a separate service. The old multipart
+// POST /v5/model on the core API now 404s; uploads are a 3-step presigned-S3
+// flow here (initiate → PUT to S3 → confirm), unauthenticated like the old one.
+const CRAFTCLOUD_CUSTOMER_API = 'https://customer-api.craftcloud3d.com';
 
 interface QuoteInput {
   modelUrl: string;
@@ -178,27 +182,62 @@ function crc32(data: Uint8Array): number {
   return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 
-// Step 1: Upload model to Craftcloud (multipart form-data)
+// Step 1: Upload model to Craftcloud — 3-step presigned S3 flow.
+//   a) POST /model/upload/initiate {fileName, fileUnit} -> {uploadId, uploadUrl}
+//   b) PUT the raw bytes to uploadUrl (S3 presigned, no auth header)
+//   c) POST /model/upload/confirm {uploadId} -> [{modelId, isParsing, ...}]
 async function uploadModel(fileBytes: Uint8Array, fileName: string): Promise<string> {
-  const formData = new FormData();
-  formData.append('file', new Blob([fileBytes], { type: 'application/octet-stream' }), fileName);
-  formData.append('unit', 'mm');
-
   console.log(JSON.stringify({ evt: 'cc_uploading_model', fileName, sizeBytes: fileBytes.length }));
 
-  const resp = await fetchWithTimeout(`${CRAFTCLOUD_API}/v5/model`, {
+  // (a) Ask for a presigned upload target
+  const initResp = await fetchWithTimeout(`${CRAFTCLOUD_CUSTOMER_API}/model/upload/initiate`, {
     method: 'POST',
-    body: formData,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileName, fileUnit: 'mm' }),
+    timeoutMs: 30000,
+  });
+
+  if (!initResp.ok) {
+    const errText = await initResp.text().catch(() => '');
+    console.error(JSON.stringify({ evt: 'cc_upload_initiate_failed', status: initResp.status, body: errText }));
+    throw new Error(`Craftcloud upload initiate failed (${initResp.status})`);
+  }
+
+  const { uploadId, uploadUrl } = await initResp.json();
+  if (!uploadId || !uploadUrl) {
+    console.error(JSON.stringify({ evt: 'cc_upload_initiate_incomplete', uploadId: !!uploadId, uploadUrl: !!uploadUrl }));
+    throw new Error('Craftcloud upload initiate did not return uploadId/uploadUrl');
+  }
+
+  // (b) Upload the bytes straight to S3. The presigned URL carries its own
+  // credentials — sending an Authorization header here breaks the signature.
+  const putResp = await fetchWithTimeout(uploadUrl, {
+    method: 'PUT',
+    body: fileBytes,
+    timeoutMs: 120000,
+  });
+
+  if (!putResp.ok) {
+    const errText = await putResp.text().catch(() => '');
+    console.error(JSON.stringify({ evt: 'cc_upload_put_failed', status: putResp.status, body: errText.slice(0, 300) }));
+    throw new Error(`Craftcloud S3 upload failed (${putResp.status})`);
+  }
+
+  // (c) Confirm — this is what actually creates the model record
+  const confirmResp = await fetchWithTimeout(`${CRAFTCLOUD_CUSTOMER_API}/model/upload/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uploadId }),
     timeoutMs: 60000,
   });
 
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => '');
-    console.error(JSON.stringify({ evt: 'cc_upload_failed', status: resp.status, body: errText }));
-    throw new Error(`Craftcloud model upload failed (${resp.status})`);
+  if (!confirmResp.ok) {
+    const errText = await confirmResp.text().catch(() => '');
+    console.error(JSON.stringify({ evt: 'cc_upload_confirm_failed', status: confirmResp.status, body: errText }));
+    throw new Error(`Craftcloud upload confirm failed (${confirmResp.status})`);
   }
 
-  const data = await resp.json();
+  const data = await confirmResp.json();
   // Response is an array of models
   const modelId = Array.isArray(data) ? data[0]?.modelId : data?.modelId;
   if (!modelId) {
@@ -210,19 +249,28 @@ async function uploadModel(fileBytes: Uint8Array, fileName: string): Promise<str
   return modelId;
 }
 
-// Step 2: Poll model parsing until complete
+// Step 2: Poll model parsing until complete.
+// The customer API returns 200 with an `isParsing` flag (the old core API
+// used a 206 status instead), so readiness is read from the body.
 async function pollModelReady(modelId: string): Promise<void> {
   const maxAttempts = 15;
   const delayMs = 2000;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const resp = await fetchWithTimeout(`${CRAFTCLOUD_API}/v5/model/${modelId}`, {
-      timeoutMs: 10000,
-    });
+    const resp = await fetchWithTimeout(
+      `${CRAFTCLOUD_CUSTOMER_API}/model/${modelId}?refresh=false`,
+      { timeoutMs: 10000 },
+    );
 
     if (resp.status === 200) {
-      console.log(JSON.stringify({ evt: 'cc_model_ready', modelId, attempt }));
-      return;
+      const model = await resp.json().catch(() => null);
+      if (model && model.isParsing === false) {
+        console.log(JSON.stringify({ evt: 'cc_model_ready', modelId, attempt }));
+        return;
+      }
+      console.log(JSON.stringify({ evt: 'cc_model_parsing', modelId, attempt }));
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, delayMs));
+      continue;
     }
 
     if (resp.status === 206) {
